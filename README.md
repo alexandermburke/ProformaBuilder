@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://res.cloudinary.com/storelocal/image/fetch/q_auto,w_282/https://dr2r4w0s7b8qm.cloudfront.net/image_manager_app/Desktop_-_Store_the_Grove-20250930-150318.svg" alt="STORE Management company logo/banner" />
+</p>
+
 # STORE Management — Pro Forma Builder
 
 A Next.js + TypeScript web app for generating storage-facility pro formas from Excel templates. It ingests a standardized workbook, validates structure, applies configurable assumptions (Latest, T12Avg, PercentOfRevenue, Growth), previews monthly series, and exports clean Excel outputs. PDF export and Firebase-backed persistence are planned next.
@@ -40,7 +44,7 @@ A Next.js + TypeScript web app for generating storage-facility pro formas from E
   - **T12Avg** (trailing 12-month average)  
   - **PercentOfRevenue** (Opex as % of revenue)  
   - **Growth** (MoM or YoY patterns)
-
+  
 - **Monthly Series Preview**  
   Visual + tabular preview before export.
 
@@ -203,7 +207,6 @@ If Firebase is **not** configured, the app still runs; snapshots are limited to 
 - **TypeScript first**: strong types across UI and data layers.
 - **No `any`**: code adheres to `@typescript-eslint/no-explicit-any`.  
   Use `unknown` + safe narrowing or a named type (e.g., `MonthlySeries`).
-- Utility types live near the parsing/validation layer for clarity and reuse.
 
 ---
 
