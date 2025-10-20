@@ -247,7 +247,7 @@ App code follows a standard Next.js (App Router) layout with feature-oriented mo
 
 ## License
 
-Add your license here (e.g., MIT, Apache-2.0, or Private/Proprietary). If this is internal only, note that clearly.
+TBD at a later date.
 
 ---
 
