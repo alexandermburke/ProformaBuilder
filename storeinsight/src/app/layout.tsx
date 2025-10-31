@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Report Builder',
+    default: 'STORE Insight',
     template: '%s | Report Builder',
   },
   description: 'Upload Extra Space data, normalize, and export Proforma (.xlsx) and Owner Report (.pdf).',
-  icons: { icon: '/favicon.ico' },
+  icons: { icon: '/favicon.png' },
   themeColor: '#ffffff',
 };
 
