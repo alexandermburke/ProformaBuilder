@@ -57,32 +57,16 @@ const features: Feature[] = [
       'Schedule recurring deliveries aligned to asset manager timelines',
     ],
   },
-  {
-    title: 'Update Log',
-    description: 'Review the most recent releases and see what is planned next.',
-    href: '/updatelog',
-    badge: 'New',
-    accent: 'bg-[#DCFCE7] text-[#047857]',
-    icon: '/globe.svg',
-    highlights: [
-      'Digest change notes after every notable release',
-      'Skim upcoming roadmap items and owners',
-      'Share wins and ship reminders with the team',
-    ],
-  },
 ];
 
 export default function DirectoryPage(): JSX.Element {
   const [isDark, setIsDark] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | null>(null);
 
   const toggleDarkMode = () => setIsDark((prev) => !prev);
   const openSettings = () => setIsSettingsOpen(true);
   const closeSettings = () => setIsSettingsOpen(false);
-  const openGuide = () => setIsGuideOpen(true);
-  const closeGuide = () => setIsGuideOpen(false);
 
   const handleUnavailable = (featureTitle: string) => {
     setModalFeature(featureTitle);
@@ -132,14 +116,6 @@ export default function DirectoryPage(): JSX.Element {
                 </p>
               </div>
               <div className="flex flex-col items-start gap-3 md:items-end">
-                <div className="flex gap-2">
-                  <button type="button" onClick={openGuide} className={primaryButtonClass}>
-                    Guide
-                  </button>
-                  <button type="button" onClick={openSettings} className={secondaryButtonClass}>
-                    Settings
-                  </button>
-                </div>
               </div>
             </div>
           </header>
@@ -228,13 +204,19 @@ export default function DirectoryPage(): JSX.Element {
                 <p>All workspaces share source data, audit history, and permissions managed by STORE Management.</p>
               </div>
               <div className="flex flex-wrap gap-3">
-                 <button
+                <button
                   type="button"
-                  onClick={openGuide}
+                  onClick={openSettings}
+                  className={`${secondaryButtonClass}`}
+                >
+                  Settings
+                </button>
+                <Link
+                  href="/updatelog"
                   className={`${buttonBase} px-4 py-2 text-sm bg-[#2563EB] text-white hover:opacity-75`}
                 >
                   Update Log
-                </button>
+                </Link>
               </div>
             </div>
           </footer>
@@ -313,66 +295,6 @@ export default function DirectoryPage(): JSX.Element {
                 Settings persist for this browser session. Additional preferences will surface here as they become
                 available.
               </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {isGuideOpen ? (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-[#0B1120]/60 px-4 py-10">
-          <div
-            className={`w-full max-w-lg rounded-3xl border p-6 shadow-2xl ${
-              isDark ? 'border-white/15 bg-[#0F172A]' : 'border-white/40 bg-white'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className={`text-lg font-semibold ${headingTextClass}`}>Directory guide</h3>
-                <p className={`mt-1 text-sm ${bodyTextClass}`}>
-                  Reference the primary actions for STORE Management teams using this workspace directory.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeGuide}
-                className={tertiaryButtonClass}
-              >
-                Close
-              </button>
-            </div>
-            <ul className={`mt-5 space-y-3 text-sm ${detailTextClass}`}>
-              <li className="flex gap-2">
-                <span className="mt-1 inline-block h-2 w-2 flex-none rounded-full bg-[#2563EB]" />
-                <span>Select an available workspace to launch its dedicated tooling. Disabled cards indicate the
-                  experience is still in development.</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="mt-1 inline-block h-2 w-2 flex-none rounded-full bg-[#F97316]" />
-                <span>Use the Settings control to toggle dark mode for low-light environments during portfolio reviews.</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="mt-1 inline-block h-2 w-2 flex-none rounded-full bg-[#10B981]" />
-                <span>Platform notes summarize shared data sources and permissions. Check team comms for release alerts.</span>
-              </li>
-              <li className="flex gap-2">
-                <span className="mt-1 inline-block h-2 w-2 flex-none rounded-full bg-[#A855F7]" />
-                <span>Owner report update history is tracked on the <Link href="/owner-reports/update-log" className="text-[#2563EB] underline-offset-2 hover:underline">Owner Reports Update Log</Link>.</span>
-              </li>
-            </ul>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href="/owner-reports/update-log"
-                className={`${primaryButtonClass} justify-center`}
-              >
-                Open update log
-              </Link>
-              <button
-                type="button"
-                onClick={closeGuide}
-                className={`${secondaryButtonClass}`}
-              >
-                Dismiss
-              </button>
             </div>
           </div>
         </div>
