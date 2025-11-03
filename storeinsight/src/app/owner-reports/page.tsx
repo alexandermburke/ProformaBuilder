@@ -313,7 +313,7 @@ export default function OwnerReportsPage() {
                 <div className="font-semibold text-[#1E3A8A]">Need help?</div>
                 <p className="mt-1 leading-relaxed">
                   Make sure the first worksheet contains the address, owner group, and key totals. Tokens in the
-                  PPTX should use single braces like {"{ADDRESS}"} for best results.
+                  PPTX should use double braces like {"{{ADDRESS}}"} for best results.
                 </p>
               </div>
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import type { LineSeriesByLabel, SnapshotDetail } from '@/lib/types';
+import type PptxGenJSTypes from 'pptxgenjs';
 
 type OwnerDeckSeries = {
   toi?: number[];
@@ -69,6 +70,15 @@ function summariseLineItems(seriesByLabel: LineSeriesByLabel | null | undefined)
   entries.sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   return entries.slice(0, 6);
 }
+
+type TableCell = PptxGenJSTypes.TableCell;
+type TableRow = PptxGenJSTypes.TableRow;
+
+const toTableCell = (cell: string | TableCell): TableCell => (
+  typeof cell === 'string' ? { text: cell } : cell
+);
+
+const toTableRow = (cells: Array<string | TableCell>): TableRow => cells.map(toTableCell);
 
 export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Promise<void> {
   const PptxGenJS = (await import('pptxgenjs')).default;
@@ -142,26 +152,26 @@ export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Prom
     fontFace: 'Segoe UI',
   });
 
-  const summaryRows = [
-    [
-      { text: 'Metric', options: { bold: true, color: 'FFFFFF', fill: '2563EB', fontSize: 13, fontFace: 'Segoe UI' } },
-      { text: 'Value', options: { bold: true, color: 'FFFFFF', fill: '2563EB', fontSize: 13, fontFace: 'Segoe UI' } },
-    ],
-    ['Total Operating Income (T12)', formatCurrency(input.snapshot.totals.totalOperatingIncome)],
-    ['Total Operating Expense (T12)', formatCurrency(input.snapshot.totals.totalOperatingExpense)],
-    ['Net Operating Income (T12)', formatCurrency(input.snapshot.totals.noi)],
+  const summaryRows: TableRow[] = [
+    toTableRow([
+      { text: 'Metric', options: { bold: true, color: 'FFFFFF', fill: { color: '2563EB' }, fontSize: 13, fontFace: 'Segoe UI' } },
+      { text: 'Value', options: { bold: true, color: 'FFFFFF', fill: { color: '2563EB' }, fontSize: 13, fontFace: 'Segoe UI' } },
+    ]),
+    toTableRow(['Total Operating Income (T12)', formatCurrency(input.snapshot.totals.totalOperatingIncome)]),
+    toTableRow(['Total Operating Expense (T12)', formatCurrency(input.snapshot.totals.totalOperatingExpense)]),
+    toTableRow(['Net Operating Income (T12)', formatCurrency(input.snapshot.totals.noi)]),
   ];
 
   const noiSummary = summarizeSeries(safeSeries.noi);
   if (noiSummary.latest != null && noiSummary.rolling != null) {
-    summaryRows.push([
+    summaryRows.push(toTableRow([
       'Latest NOI (current month)',
       formatCurrency(noiSummary.latest),
-    ]);
-    summaryRows.push([
+    ]));
+    summaryRows.push(toTableRow([
       'Rolling NOI (3-month avg)',
       formatCurrency(noiSummary.rolling),
-    ]);
+    ]));
   }
 
   summarySlide.addTable(summaryRows, {
@@ -173,7 +183,7 @@ export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Prom
     fontSize: 12,
     color: '0F172A',
     border: { type: 'solid', pt: 1, color: 'CBD5F5' },
-    fill: 'FFFFFF',
+    fill: { color: 'FFFFFF' },
   });
 
   /* --------------------- NOI monthly detail slide ------------------- */
@@ -189,15 +199,17 @@ export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Prom
       fontFace: 'Segoe UI',
     });
 
-    const noiRows = [
-      [
-        { text: 'Month', options: { bold: true, color: 'FFFFFF', fill: '2563EB', fontSize: 12, fontFace: 'Segoe UI' } },
-        { text: 'NOI', options: { bold: true, color: 'FFFFFF', fill: '2563EB', fontSize: 12, fontFace: 'Segoe UI' } },
-      ],
-      ...safeSeries.noi.map((value, idx) => [
-        monthLabels[idx] ?? `Month ${idx + 1}`,
-        formatCurrency(value),
+    const noiRows: TableRow[] = [
+      toTableRow([
+        { text: 'Month', options: { bold: true, color: 'FFFFFF', fill: { color: '2563EB' }, fontSize: 12, fontFace: 'Segoe UI' } },
+        { text: 'NOI', options: { bold: true, color: 'FFFFFF', fill: { color: '2563EB' }, fontSize: 12, fontFace: 'Segoe UI' } },
       ]),
+      ...safeSeries.noi.map((value, idx) =>
+        toTableRow([
+          monthLabels[idx] ?? `Month ${idx + 1}`,
+          formatCurrency(value),
+        ]),
+      ),
     ];
 
     noiSlide.addTable(noiRows, {
@@ -209,7 +221,7 @@ export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Prom
       fontSize: 12,
       color: '0F172A',
       border: { type: 'solid', pt: 1, color: 'E2E8F0' },
-      fill: 'FFFFFF',
+      fill: { color: 'FFFFFF' },
     });
   }
 
@@ -227,12 +239,14 @@ export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Prom
       fontFace: 'Segoe UI',
     });
 
-    const breakdownRows = [
-      [
-        { text: 'Line Item', options: { bold: true, color: 'FFFFFF', fill: '2563EB', fontSize: 12, fontFace: 'Segoe UI' } },
-        { text: 'T12 Total', options: { bold: true, color: 'FFFFFF', fill: '2563EB', fontSize: 12, fontFace: 'Segoe UI' } },
-      ],
-      ...lineSummaries.map((entry) => [entry.name, formatCurrency(entry.total)]),
+    const breakdownRows: TableRow[] = [
+      toTableRow([
+        { text: 'Line Item', options: { bold: true, color: 'FFFFFF', fill: { color: '2563EB' }, fontSize: 12, fontFace: 'Segoe UI' } },
+        { text: 'T12 Total', options: { bold: true, color: 'FFFFFF', fill: { color: '2563EB' }, fontSize: 12, fontFace: 'Segoe UI' } },
+      ]),
+      ...lineSummaries.map((entry) =>
+        toTableRow([entry.name, formatCurrency(entry.total)]),
+      ),
     ];
 
     breakdownSlide.addTable(breakdownRows, {
@@ -244,7 +258,7 @@ export async function downloadOwnerReportDeck(input: OwnerReportDeckInput): Prom
       fontSize: 12,
       color: '0F172A',
       border: { type: 'solid', pt: 1, color: 'CBD5F5' },
-      fill: 'FFFFFF',
+      fill: { color: 'FFFFFF' },
     });
   }
 

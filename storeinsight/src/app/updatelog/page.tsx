@@ -17,22 +17,29 @@ type RoadmapItem = {
   owner?: string;
 };
 
+type PlannedUpdate = {
+  id: string;
+  title: string;
+  eta: string;
+  summary: string;
+};
+
 const updates: UpdateItem[] = [
   {
     id: "2025-10-30",
     date: "Oct 30, 2025",
     title: "Owner report flow goes live",
     highlights: [
-      "Excel → PPTX pipeline wired with single-click export.",
+      "Excel > PPTX pipeline wired with single-click export.",
       "Field overrides, validation, and download recap added to the flow.",
-      "Docxtemplater safeguards to normalize tokens coming from PPT design.",
+      "Docxtemplater safeguards normalize tokens coming from PPT design.",
     ],
     tags: ["Owner report", "Automation"],
   },
   {
     id: "2025-10-18",
     date: "Oct 18, 2025",
-    title: "UI refresh + rails",
+    title: "UI refresh and rails",
     highlights: [
       "Gradient layout rolled out across wizard surfaces.",
       "Sidebar quick actions updated with production copy.",
@@ -56,7 +63,7 @@ const roadmap: RoadmapItem[] = [
     id: "roadmap-owner-pdf",
     title: "Owner PDF layout",
     note: "Finalize the PDF design pass and hook into the export step.",
-    owner: "Design × Eng",
+    owner: "Design & Engineering",
   },
   {
     id: "roadmap-template-selector",
@@ -69,6 +76,21 @@ const roadmap: RoadmapItem[] = [
     title: "Automation toggles",
     note: "Expose auto-map and facility detection switches in the wizard sidebar.",
     owner: "Product",
+  },
+];
+
+const planned: PlannedUpdate[] = [
+  {
+    id: "planned-owner-pdf-export",
+    title: "Owner PDF export",
+    eta: "Targeting Nov 2025",
+    summary: "Wire the approved PDF layout into the owner report flow alongside the PPTX option.",
+  },
+  {
+    id: "planned-insights-feed",
+    title: "Insights feed",
+    eta: "Exploring Q1 2026",
+    summary: "Surface variance alerts and automated commentary on the dashboard home view.",
   },
 ];
 
@@ -85,8 +107,8 @@ export default function UpdateLogPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2563EB]">Store insight</p>
               <h1 className="text-3xl font-semibold tracking-tight text-[#0B1120]">Update Log</h1>
               <p className="mt-2 max-w-2xl text-sm text-[#4B5563]">
-                A lightweight digest of product changes and what is queued up next. We refresh this page after each
-                notable release and at the end of every week.
+                A lightweight digest of product changes and what is queued up next. We refresh this page after each notable
+                release and during the end-of-week sync.
               </p>
             </div>
             <Link
@@ -148,7 +170,7 @@ export default function UpdateLogPage() {
             <section className="rounded-2xl border border-white/25 bg-white/95 p-6 shadow-lg backdrop-blur">
               <h2 className="text-lg font-semibold text-[#0B1120]">Up next</h2>
               <p className="mt-1 text-sm text-[#4B5563]">
-                Quick look at near-term items. We snapshot these each Friday before the release sync.
+                Quick look at near-term items. We snapshot these every Friday before the release sync.
               </p>
               <ul className="mt-4 space-y-3">
                 {roadmap.map((item) => (
@@ -163,21 +185,6 @@ export default function UpdateLogPage() {
                   </li>
                 ))}
               </ul>
-            </section>
-
-            <section className="rounded-2xl border border-dashed border-[#CBD5F5] bg-white/60 p-6 shadow-inner backdrop-blur">
-              <h3 className="text-[15px] font-semibold text-[#1E3A8A]">Release cadence</h3>
-              <p className="mt-2 text-sm text-[#4B5563]">
-                Ship notes land here after every noteworthy change and during the weekly Friday recap. Drop wins in
-                <span className="mx-1 font-medium text-[#2563EB]">#store-release</span> to make sure they are captured.
-              </p>
-              <div className="mt-4 rounded-xl bg-[#EEF2FF] p-4 text-xs text-[#1E3A8A]">
-                <div className="font-semibold uppercase tracking-wide">Next review</div>
-                <p className="mt-1 text-sm text-[#1F2937]">Friday · 4:00 PM ET</p>
-                <p className="mt-2 leading-snug">
-                  Agenda: owner PDF export scope, template selector spike, automation toggle UX.
-                </p>
-              </div>
             </section>
           </aside>
         </main>

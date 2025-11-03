@@ -43,13 +43,14 @@ const features: Feature[] = [
       'Model NOI scenarios with configurable STORE assumptions',
       'Produce outputs formatted for internal review',
     ],
+     disabled: true,
   },
   {
     title: 'Owner Reports',
     description: 'Build owner report packages with STORE portfolio and market data.',
     href: '/owner-reports',
-    badge: 'WIP',
-    accent: 'bg-[#DBEAFE] text-[#1D4ED8]',
+    badge: 'Beta',
+    accent: 'bg-[#DCFCE7] text-[#15803D]',
     icon: '/globe.svg',
     highlights: [
       'Combine STORE portfolio data with market comparisons',
