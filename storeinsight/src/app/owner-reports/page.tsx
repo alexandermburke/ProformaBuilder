@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { OwnerFields } from "@/types/ownerReport";
+import { useTheme } from "@/components/ThemeProvider";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -111,6 +112,17 @@ function downloadFromUrl(url: string, fileName: string) {
 }
 
 export default function OwnerReportsPage() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const pageBackground = isDark
+    ? "bg-gradient-to-br from-[#020817] via-[#0f172a] to-[#111c33] text-[var(--text-primary)]"
+    : "bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]";
+  const overlayTop = isDark
+    ? "bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_55%)]"
+    : "bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]";
+  const overlayBottom = isDark
+    ? "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_60%)]"
+    : "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]";
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [fields, setFields] = useState<OwnerFields | null>(null);
@@ -291,9 +303,9 @@ export default function OwnerReportsPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]" />
+    <div className={`relative min-h-screen w-full ${pageBackground}`}>
+      <div className={`pointer-events-none absolute inset-0 ${overlayTop}`} />
+      <div className={`pointer-events-none absolute inset-0 ${overlayBottom}`} />
       <div className="relative mx-auto max-w-[1200px] px-6 py-10 lg:px-10 lg:py-16">
         <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className="rounded-2xl border border-white/25 bg-white/85 p-6 shadow-lg backdrop-blur-md">

@@ -7,6 +7,7 @@ import React from 'react';
 
 import UploadZone from '@/components/UploadZone';
 import HeaderMapper from '@/components/HeaderMapper';
+import { useTheme } from '@/components/ThemeProvider';
 
 import { parseExcelFile } from '@/lib/parseExcel';
 import type { UploadParseResult } from '@/lib/parseExcel';
@@ -271,6 +272,17 @@ function extractSeriesByLabelFromParsed(parsed: UploadParseResult): {
 /* ------------------------------------------------------------------------- */
 
 export default function Home(): JSX.Element {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const pageBackground = isDark
+    ? 'bg-gradient-to-br from-[#020817] via-[#0f172a] to-[#111c33] text-[var(--text-primary)]'
+    : 'bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]';
+  const overlayTop = isDark
+    ? 'bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_55%)]'
+    : 'bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]';
+  const overlayBottom = isDark
+    ? 'bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_60%)]'
+    : 'bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]';
   const [step, setStep] = React.useState<WizardStep>(0);
 
   const [parseResult, setParseResult] = React.useState<UploadParseResult | null>(null);
@@ -727,9 +739,9 @@ export default function Home(): JSX.Element {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]" />
+    <div className={`relative min-h-screen w-full ${pageBackground}`}>
+      <div className={`pointer-events-none absolute inset-0 ${overlayTop}`} />
+      <div className={`pointer-events-none absolute inset-0 ${overlayBottom}`} />
       <div className="relative mx-auto max-w-[1440px] px-6 py-10 lg:px-10 lg:py-14">
         <div className="grid grid-cols-[260px_minmax(0,1fr)] gap-6 lg:gap-8">
           {/* Sidebar */}

@@ -42,7 +42,9 @@ function massageForTemplate(fields: OwnerFields): Record<string, string> {
   };
 }
 
-function normalizeTemplateTokens(zip: PizZip, keys: string[]) {
+function normalizeTemplateTokens(zip: PizZip, keys: string[]): Set<string> {
+  const discovered = new Set<string>();
+  const keyLookup = new Map(keys.map((key) => [key.toUpperCase(), key]));
   const xmlPaths = Object.keys(zip.files).filter(
     (filename) => filename.startsWith("ppt/") && filename.endsWith(".xml"),
   );
@@ -50,31 +52,41 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]) {
     const file = zip.file(filename);
     if (!file) continue;
     const original = file.asText();
-    let updated = original.replace(/\{\{/g, "{").replace(/\}\}/g, "}");
-    updated = updated.replace(/\{[\s\r\n]+/g, "{").replace(/[\s\r\n]+\}/g, "}");
-    const generalPattern =
-      /\{(?:\s|\{|\}|<\/?[^>]+>)*?([A-Za-z0-9_]+)(?:\s|\{|\}|<\/?[^>]+>)*?\}/g;
-    updated = updated.replace(generalPattern, (_match, token) => `{${String(token).toUpperCase()}}`);
-    for (const key of keys) {
-      const pattern = new RegExp(`\\{(?:\\s|\\{|\\}|</?[^>]+>)*?${key}(?:\\s|\\{|\\}|</?[^>]+>)*?\\}`, "gi");
-      updated = updated.replace(pattern, `{${key}}`);
-    }
+    const updated = original.replace(/\{\{([\s\S]*?)\}\}/g, (match, rawToken) => {
+      const cleaned = rawToken
+        .replace(/<\/?[^>]+>/g, "")
+        .replace(/&[a-z0-9#]+;/gi, "")
+        .replace(/[\s\r\n]+/g, "")
+        .replace(/[{}]/g, "")
+        .replace(/[^A-Za-z0-9_]/g, "");
+      if (!cleaned) return match;
+      const lookupKey = cleaned.toUpperCase();
+      const canonical = keyLookup.get(lookupKey) ?? lookupKey;
+      discovered.add(canonical);
+      const normalized = `{{${canonical}}}`;
+      return normalized;
+    });
     if (updated !== original) {
       zip.file(filename, updated);
     }
   }
+  return discovered;
 }
 
 export async function buildOwnerPptx(data: OwnerFields): Promise<Buffer> {
-  const templatePath = path.join(process.cwd(), "public", "BETATEMPLATE.pptx");
+  const templatePath = path.join(process.cwd(), "public", "GAMMATEMPLATE.pptx");
   const template = await fs.readFile(templatePath);
   const zip = new PizZip(template);
   const prepared = massageForTemplate(data);
-  normalizeTemplateTokens(zip, Object.keys(prepared));
+  const templateTokens = normalizeTemplateTokens(zip, Object.keys(prepared));
+  for (const token of templateTokens) {
+    if (!(token in prepared)) prepared[token] = "";
+  }
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,
-    delimiters: { start: "{", end: "}" },
+    delimiters: { start: "{{", end: "}}" },
+    nullGetter: () => "",
   });
   doc.setData(prepared);
   try {

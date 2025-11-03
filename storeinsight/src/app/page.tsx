@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { JSX } from 'react';
+import { useTheme } from '@/components/ThemeProvider';
 
 type Feature = {
   title: string;
@@ -61,11 +62,12 @@ const features: Feature[] = [
 ];
 
 export default function DirectoryPage(): JSX.Element {
-  const [isDark, setIsDark] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | null>(null);
 
-  const toggleDarkMode = () => setIsDark((prev) => !prev);
+  const toggleDarkMode = () => toggleTheme();
   const openSettings = () => setIsSettingsOpen(true);
   const closeSettings = () => setIsSettingsOpen(false);
 
