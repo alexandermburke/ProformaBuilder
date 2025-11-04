@@ -1,7 +1,7 @@
 ﻿export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { extractBudgetTableFields } from "@/lib/extractBudgetTableFields";
+import { extractBudgetTableFields } from "@/lib/extractBudget";
 
 export async function POST(req: NextRequest) {
   const form = await req.formData();
@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
     financial instanceof Blob ? Buffer.from(await financial.arrayBuffer()) : undefined;
 
   try {
-    const tokens = extractBudgetTableFields(budgetBuffer, financialBuffer);
-    return NextResponse.json({ tokens });
+    const result = await extractBudgetTableFields(budgetBuffer, financialBuffer);
+    return NextResponse.json({ tokens: result.tokens, count: result.count });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
     return NextResponse.json({ error: message }, { status: 500 });

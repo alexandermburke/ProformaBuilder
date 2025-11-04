@@ -1,9 +1,10 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
+import { extractBudgetTableFields } from "@/lib/extractBudget";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -168,7 +169,7 @@ const BUDGET_PAGES = [
   { page: 1, title: "{{CURRENTMONTH}} Data (continued)" },
 ];
 
-const TOTAL_BUDGET_TOKENS = BUDGET_LINES.length * BUDGET_COLUMNS.length;
+const TOTAL_BUDGET_TOKENS = 272;
 
 function downloadFromUrl(url: string, fileName: string) {
   const link = document.createElement("a");
@@ -205,12 +206,14 @@ export default function OwnerReportsPage() {
     data: OwnerFields;
   } | null>(null);
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
-  const [financialFile, setFinancialFile] = useState<File | null>(null);
+  const [financialsFile, setFinancialsFile] = useState<File | null>(null);
   const [budgetTokens, setBudgetTokens] = useState<Record<string, number>>({});
   const [budgetOverrides, setBudgetOverrides] = useState<Record<string, string>>({});
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [budgetPage, setBudgetPage] = useState(0);
+  const budgetExtractionId = useRef(0);
+  const lastAutoExtractionRef = useRef<string | null>(null);
   const budgetLinesByPage = useMemo(
     () => [
       BUDGET_LINES.filter((line) => line.page === 0),
@@ -282,62 +285,82 @@ export default function OwnerReportsPage() {
     );
   }, [mergedFields, fields]);
   const hasBudgetData = detectedBudgetTokens > 0;
-  const loadBudgetPreview = useCallback(
-    async (budget: File, financial: File | null) => {
+  const runBudgetExtraction = useCallback(
+    async (nextBudget: File, nextFinancial: File | null) => {
+      const extractionKey = budgetExtractionId.current + 1;
+      budgetExtractionId.current = extractionKey;
       setBudgetLoading(true);
       setBudgetError(null);
       try {
-        const form = new FormData();
-        form.append("budget", budget);
-        if (financial) form.append("financial", financial);
-        const res = await fetch("/api/owner-reports/budget-preview", { method: "POST", body: form });
-        if (!res.ok) {
-          const message = await res.text();
-          throw new Error(message || "Unable to parse the budget workbook.");
-        }
-        const json = (await res.json()) as { tokens?: Record<string, number> };
-        setBudgetTokens(json.tokens ?? {});
+        const [budgetBuffer, financialBuffer] = await Promise.all([
+          nextBudget.arrayBuffer(),
+          nextFinancial ? nextFinancial.arrayBuffer() : Promise.resolve<ArrayBuffer | undefined>(undefined),
+        ]);
+        const result = await extractBudgetTableFields(budgetBuffer, financialBuffer);
+        if (budgetExtractionId.current !== extractionKey) return;
+        setBudgetTokens(result.tokens ?? {});
         setBudgetOverrides({});
         setBudgetPage(0);
       } catch (err) {
+        if (budgetExtractionId.current !== extractionKey) return;
         const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
         setBudgetError(message);
         setBudgetTokens({});
         setBudgetOverrides({});
       } finally {
-        setBudgetLoading(false);
+        if (budgetExtractionId.current === extractionKey) {
+          setBudgetLoading(false);
+        }
       }
     },
-    [],
+    [budgetExtractionId],
   );
   useEffect(() => {
-    if (!budgetFile) {
-      setBudgetTokens({});
-      setBudgetOverrides({});
-      setBudgetError(null);
-      setBudgetLoading(false);
-      return;
-    }
-    void loadBudgetPreview(budgetFile, financialFile);
-  }, [budgetFile, financialFile, loadBudgetPreview]);
-  useEffect(() => {
-    if (step === 3) {
-      setBudgetPage(0);
-    }
-  }, [step]);
-  const handleBudgetFileChange = useCallback((next: File | null) => {
-    setBudgetFile(next);
-    if (!next) {
-      setBudgetTokens({});
-      setBudgetOverrides({});
-      setBudgetError(null);
-      setBudgetLoading(false);
-      setBudgetPage(0);
-    }
-  }, []);
-  const handleFinancialFileChange = useCallback((next: File | null) => {
-    setFinancialFile(next);
-  }, []);
+    if (step !== 3) return;
+    setBudgetPage(0);
+    if (!budgetFile || budgetLoading || budgetError) return;
+    if (Object.keys(budgetTokens).length > 0) return;
+    const fingerprint = `${budgetFile.name}-${budgetFile.size}-${budgetFile.lastModified}`;
+    if (lastAutoExtractionRef.current === fingerprint) return;
+    lastAutoExtractionRef.current = fingerprint;
+    void runBudgetExtraction(budgetFile, financialsFile);
+  }, [
+    step,
+    budgetFile,
+    financialsFile,
+    budgetTokens,
+    budgetLoading,
+    budgetError,
+    runBudgetExtraction,
+    lastAutoExtractionRef,
+  ]);
+  const handleBudgetFileChange = useCallback(
+    (next: File | null) => {
+      lastAutoExtractionRef.current = null;
+      setBudgetFile(next);
+      if (!next) {
+        budgetExtractionId.current += 1;
+        setBudgetTokens({});
+        setBudgetOverrides({});
+        setBudgetError(null);
+        setBudgetLoading(false);
+        setBudgetPage(0);
+        return;
+      }
+      void runBudgetExtraction(next, financialsFile);
+    },
+    [financialsFile, runBudgetExtraction, lastAutoExtractionRef],
+  );
+  const handleFinancialFileChange = useCallback(
+    (next: File | null) => {
+      lastAutoExtractionRef.current = null;
+      setFinancialsFile(next);
+      if (budgetFile) {
+        void runBudgetExtraction(budgetFile, next);
+      }
+    },
+    [budgetFile, runBudgetExtraction, lastAutoExtractionRef],
+  );
   const updateBudgetOverride = useCallback((token: string, value: string) => {
     setBudgetOverrides((prev) => {
       const next = { ...prev };
@@ -363,9 +386,9 @@ export default function OwnerReportsPage() {
       if (budgetOverrides[token] !== undefined) {
         return budgetOverrides[token];
       }
-      const numeric = budgetTokens[token];
-      if (numeric === undefined) return "";
-      return String(numeric);
+      const detected = budgetTokens[token];
+      if (detected === undefined) return "";
+      return String(detected);
     },
     [budgetOverrides, budgetTokens],
   );
@@ -449,8 +472,8 @@ export default function OwnerReportsPage() {
       if (budgetFile) {
         form.append("budget", budgetFile);
       }
-      if (financialFile) {
-        form.append("financial", financialFile);
+      if (financialsFile) {
+        form.append("financial", financialsFile);
       }
       const overridesPayload: OwnerFieldOverrides = {};
       for (const key of FIELD_ORDER) {
@@ -460,6 +483,9 @@ export default function OwnerReportsPage() {
       }
       if (Object.keys(overridesPayload).length > 0) {
         form.append("overrides", JSON.stringify(overridesPayload));
+      }
+      if (Object.keys(budgetTokens).length > 0) {
+        form.append("budgetTokens", JSON.stringify(budgetTokens));
       }
       if (Object.keys(budgetOverrides).length > 0) {
         form.append("budgetOverrides", JSON.stringify(budgetOverrides));
@@ -496,12 +522,14 @@ export default function OwnerReportsPage() {
     if (lastDownload) {
       URL.revokeObjectURL(lastDownload.url);
     }
+    budgetExtractionId.current = 0;
+    lastAutoExtractionRef.current = null;
     setLastDownload(null);
     setFile(null);
     setFields(null);
     setOverrides({});
     setBudgetFile(null);
-    setFinancialFile(null);
+    setFinancialsFile(null);
     setBudgetTokens({});
     setBudgetOverrides({});
     setBudgetError(null);
@@ -541,7 +569,7 @@ export default function OwnerReportsPage() {
               <div className="mt-3">
                 <Link
                   href="/guide"
-                  className="inline-flex items-center gap-2 rounded-lg w-full bg-blue-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-blue-600 hover:bg-blue-300 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40"
+                  className="inline-flex items-center gap-2 rounded-lg w-full bg-blue-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-blue-600 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40"
                   role="button"
                 >
                   Guide
@@ -658,7 +686,7 @@ export default function OwnerReportsPage() {
                           <p className="text-sm font-semibold text-[#1E3A8A]">Financial Statements (.xlsx)</p>
                           <p className="text-xs text-[#6B7280]">Optional fallback file for budget values</p>
                         </div>
-                        {financialFile && (
+                        {financialsFile && (
                           <button
                             type="button"
                             className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
@@ -678,9 +706,9 @@ export default function OwnerReportsPage() {
                           event.target.value = "";
                         }}
                       />
-                      {financialFile && (
+                      {financialsFile && (
                         <p className="text-xs text-[#4B5563]">
-                          Selected: <span className="font-medium text-[#1F2937]">{financialFile.name}</span>
+                          Selected: <span className="font-medium text-[#1F2937]">{financialsFile.name}</span>
                         </p>
                       )}
                     </div>
@@ -843,7 +871,10 @@ export default function OwnerReportsPage() {
                   </div>
                   <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
                     <p>
-                      Detected tokens: <span className="font-semibold text-[#1E3A8A]">{detectedBudgetTokens}</span> / {TOTAL_BUDGET_TOKENS}
+                      Detected tokens:{" "}
+                      <span className="font-semibold text-[#1E3A8A]">
+                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      </span>
                     </p>
                     <p>
                       Manual overrides ready: <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
@@ -915,7 +946,10 @@ export default function OwnerReportsPage() {
                   </div>
                   <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
                     <p>
-                      Detected tokens: <span className="font-semibold text-[#1E3A8A]">{detectedBudgetTokens}</span> / {TOTAL_BUDGET_TOKENS}
+                      Detected tokens:{" "}
+                      <span className="font-semibold text-[#1E3A8A]">
+                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      </span>
                     </p>
                     <p>
                       Manual overrides ready: <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
@@ -1029,7 +1063,10 @@ export default function OwnerReportsPage() {
                   </div>
                   <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
                     <p>
-                      Detected tokens: <span className="font-semibold text-[#1E3A8A]">{detectedBudgetTokens}</span> / {TOTAL_BUDGET_TOKENS}
+                      Detected tokens:{" "}
+                      <span className="font-semibold text-[#1E3A8A]">
+                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      </span>
                     </p>
                     <p>
                       Manual overrides ready: <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
@@ -1076,13 +1113,3 @@ export default function OwnerReportsPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-

@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
   const overrides = form.get("overrides");
   const budget = form.get("budget");
   const financial = form.get("financial");
+  const budgetTokensRaw = form.get("budgetTokens");
   const budgetOverridesRaw = form.get("budgetOverrides");
 
   if (!(file instanceof Blob)) {
@@ -37,6 +38,27 @@ export async function POST(req: NextRequest) {
     financialBuffer = Buffer.from(await financial.arrayBuffer());
   }
 
+  let budgetTokens: Record<string, number> | undefined;
+  if (typeof budgetTokensRaw === "string" && budgetTokensRaw.trim()) {
+    try {
+      const parsed = JSON.parse(budgetTokensRaw) as Record<string, unknown>;
+      const normalized: Record<string, number> = {};
+      if (parsed && typeof parsed === "object") {
+        for (const [token, value] of Object.entries(parsed)) {
+          const numeric = toNumber(value);
+          if (Number.isFinite(numeric)) {
+            normalized[token] = numeric;
+          }
+        }
+      }
+      if (Object.keys(normalized).length > 0) {
+        budgetTokens = normalized;
+      }
+    } catch (err) {
+      console.error("[owner-reports] Unable to parse budget tokens", err);
+    }
+  }
+
   let budgetOverrides: Record<string, number> | undefined;
   if (typeof budgetOverridesRaw === "string" && budgetOverridesRaw.trim()) {
     try {
@@ -59,6 +81,7 @@ export async function POST(req: NextRequest) {
   const pptx = await buildOwnerPptx(data, {
     budget: budgetBuffer,
     financial: financialBuffer,
+    budgetTokens,
     overrides: budgetOverrides,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;

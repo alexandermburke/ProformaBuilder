@@ -3,7 +3,7 @@ import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import type { OwnerFields } from "@/types/ownerReport";
-import { extractBudgetTableFields } from "@/lib/extractBudgetTableFields";
+import { extractBudgetTableFields } from "@/lib/extractBudget";
 
 const fmtNumber = (n: number) => new Intl.NumberFormat("en-US").format(n);
 const fmtPercent = (n: number) => {
@@ -77,8 +77,18 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Set<string> {
 type BudgetOptions = {
   budget?: Buffer | null;
   financial?: Buffer | null;
+  budgetTokens?: Record<string, number>;
   overrides?: Record<string, number>;
 };
+
+function toStringRecord(input?: Record<string, number>): Record<string, string> {
+  if (!input) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input)) {
+    out[key] = String(value);
+  }
+  return out;
+}
 
 export async function buildOwnerPptx(
   data: OwnerFields,
@@ -87,22 +97,25 @@ export async function buildOwnerPptx(
   const templatePath = path.join(process.cwd(), "public", "XRAYTEMPLATE.pptx");
   const template = await fs.readFile(templatePath);
   const zip = new PizZip(template);
-  const prepared = massageForTemplate(data);
-  if (options?.budget) {
+  const ownerTokens = massageForTemplate(data);
+
+  let budgetTokens: Record<string, number> = options?.budgetTokens ?? {};
+  if (!options?.budgetTokens && options?.budget) {
     try {
-      const budgetTokens = extractBudgetTableFields(options.budget, options.financial ?? undefined);
-      for (const [key, value] of Object.entries(budgetTokens)) {
-        prepared[key] = String(value);
-      }
+      const result = await extractBudgetTableFields(options.budget, options.financial ?? undefined);
+      budgetTokens = result.tokens;
     } catch (err) {
       console.error("[owner-reports] Unable to extract budget tokens", err);
+      budgetTokens = {};
     }
   }
-  if (options?.overrides) {
-    for (const [key, value] of Object.entries(options.overrides)) {
-      prepared[key] = String(value);
-    }
-  }
+
+  const prepared = {
+    ...ownerTokens,
+    ...toStringRecord(budgetTokens),
+    ...toStringRecord(options?.overrides),
+  };
+
   const templateTokens = normalizeTemplateTokens(zip, Object.keys(prepared));
   for (const token of templateTokens) {
     if (!(token in prepared)) prepared[token] = "";
