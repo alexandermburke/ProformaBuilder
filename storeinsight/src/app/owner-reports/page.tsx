@@ -192,6 +192,7 @@ export default function OwnerReportsPage() {
   const overlayBottom = isDark
     ? "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_60%)]"
     : "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]";
+  const [guideOpen, setGuideOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [fields, setFields] = useState<OwnerFields | null>(null);
@@ -536,6 +537,15 @@ export default function OwnerReportsPage() {
                   Make sure the first worksheet contains the address, owner group, and key totals. Tokens in the
                   PPTX should use double braces like {"{{ADDRESS}}"} for best results.
                 </p>
+              </div>
+              <div className="mt-3">
+                <Link
+                  href="/guide"
+                  className="inline-flex items-center gap-2 rounded-lg w-full bg-blue-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-blue-600 hover:bg-blue-300 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40"
+                  role="button"
+                >
+                  Guide
+                </Link>
               </div>
             </div>
           </aside>
