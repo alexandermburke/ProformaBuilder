@@ -135,10 +135,10 @@ export default function AutomatedAccountingPage(): JSX.Element {
                 the automation build to accelerate delivery.
               </p>
               <Link
-                href="mailto:insightops@store.com"
+                href="mailto:alex@mystorestorage.com"
                 className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#2563EB] px-5 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#1D4ED8]"
               >
-                Request beta access
+                Request early access
                 <span aria-hidden>{'->'}</span>
               </Link>
             </div>

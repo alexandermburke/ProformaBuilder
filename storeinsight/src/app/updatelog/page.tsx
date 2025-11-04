@@ -116,7 +116,7 @@ export default function UpdateLogPage() {
         <header className="flex flex-col gap-6 rounded-2xl border border-white/30 bg-white/90 p-8 shadow-xl backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2563EB]">Store insight</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2563EB]">STORE Internal Platform</p>
               <h1 className="text-3xl font-semibold tracking-tight text-[#0B1120]">Update Log</h1>
               <p className="mt-2 max-w-2xl text-sm text-[#4B5563]">
                 A lightweight digest of product changes and what is queued up next. We refresh this page after each notable

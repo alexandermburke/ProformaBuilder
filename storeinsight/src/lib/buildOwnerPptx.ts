@@ -3,6 +3,7 @@ import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import type { OwnerFields } from "@/types/ownerReport";
+import { extractBudgetTableFields } from "@/lib/extractBudgetTableFields";
 
 const fmtNumber = (n: number) => new Intl.NumberFormat("en-US").format(n);
 const fmtPercent = (n: number) => {
@@ -73,11 +74,35 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Set<string> {
   return discovered;
 }
 
-export async function buildOwnerPptx(data: OwnerFields): Promise<Buffer> {
-  const templatePath = path.join(process.cwd(), "public", "GAMMATEMPLATE.pptx");
+type BudgetOptions = {
+  budget?: Buffer | null;
+  financial?: Buffer | null;
+  overrides?: Record<string, number>;
+};
+
+export async function buildOwnerPptx(
+  data: OwnerFields,
+  options?: BudgetOptions,
+): Promise<Buffer> {
+  const templatePath = path.join(process.cwd(), "public", "XRAYTEMPLATE.pptx");
   const template = await fs.readFile(templatePath);
   const zip = new PizZip(template);
   const prepared = massageForTemplate(data);
+  if (options?.budget) {
+    try {
+      const budgetTokens = extractBudgetTableFields(options.budget, options.financial ?? undefined);
+      for (const [key, value] of Object.entries(budgetTokens)) {
+        prepared[key] = String(value);
+      }
+    } catch (err) {
+      console.error("[owner-reports] Unable to extract budget tokens", err);
+    }
+  }
+  if (options?.overrides) {
+    for (const [key, value] of Object.entries(options.overrides)) {
+      prepared[key] = String(value);
+    }
+  }
   const templateTokens = normalizeTemplateTokens(zip, Object.keys(prepared));
   for (const token of templateTokens) {
     if (!(token in prepared)) prepared[token] = "";

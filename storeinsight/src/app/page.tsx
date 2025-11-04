@@ -106,7 +106,7 @@ export default function DirectoryPage(): JSX.Element {
         <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-20">
           <header className={`grid gap-6 rounded-3xl ${surfaceClass} p-10 shadow-2xl backdrop-blur-xl`}>
             <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2563EB]">
-              Store Insight Platform
+              STORE Internal platform
             </span>
             <div className="grid gap-4 md:flex md:items-end md:justify-between">
               <div className="max-w-3xl space-y-4">
@@ -157,7 +157,7 @@ export default function DirectoryPage(): JSX.Element {
                     ))}
                   </ul>
                   <span className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[#2563EB]">
-                    Check status
+                    Request early access
                   </span>
                 </button>
               ) : (
@@ -235,7 +235,7 @@ export default function DirectoryPage(): JSX.Element {
           >
             <h3 className={`text-lg font-semibold ${headingTextClass}`}>Not yet available</h3>
             <p className={`mt-2 text-sm ${bodyTextClass}`}>
-              {modalFeature} is currently in development within the STORE Insight platform.
+              {modalFeature} is currently in development within the STORE Internal platform.
             </p>
             <button
               type="button"

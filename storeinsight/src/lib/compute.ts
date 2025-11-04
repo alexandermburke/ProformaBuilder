@@ -8,7 +8,7 @@ export function toNumber(v: unknown): number {
   if (typeof v === 'string') {
     // Handle $, commas, spaces; parentheses = negative
     const neg = v.includes('(') && v.includes(')');
-    const cleaned = v.replace(/[$,\s()]/g, '');
+    const cleaned = v.replace(/[$,%\s()]/g, '');
     const n = Number(cleaned);
     const out = Number.isFinite(n) ? (neg ? -n : n) : 0;
     return out;
