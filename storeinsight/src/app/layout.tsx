@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'STORE Insight',
+    default: 'STORE Internal',
     template: '%s | Report Builder',
   },
   description: 'Upload Extra Space data, normalize, and export Proforma (.xlsx) and Owner Report (.pdf).',
