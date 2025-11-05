@@ -156,9 +156,14 @@ export async function extractBudgetTableFields(
 
   const located = locateBudgetSheet(workbook);
   if (!located) {
-    console.warn("[budget] no header row found");
+    console.warn("[budget] header not found: check PTD/YTD columns in sheet 1");
     return { tokens: {}, count: 0 };
   }
+
+  const headerSummary = Array.from(located.header.columnMap.entries())
+    .map(([col, suffix]) => `${col}:${suffix}`)
+    .join(",");
+  console.warn("[budget] header row", located.header.rowIndex, "cols", headerSummary);
 
   const {
     grid,
@@ -219,3 +224,4 @@ export async function extractBudgetTableFields(
   console.warn("[budget] detected", count);
   return { tokens, count };
 }
+

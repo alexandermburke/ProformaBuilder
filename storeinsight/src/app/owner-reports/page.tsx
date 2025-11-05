@@ -169,7 +169,7 @@ const BUDGET_PAGES = [
   { page: 1, title: "{{CURRENTMONTH}} Data (continued)" },
 ];
 
-const TOTAL_BUDGET_TOKENS = 272;
+const TOTAL_BUDGET_TOKENS = BUDGET_LINES.length * BUDGET_COLUMNS.length;
 
 function downloadFromUrl(url: string, fileName: string) {
   const link = document.createElement("a");
@@ -184,15 +184,12 @@ function downloadFromUrl(url: string, fileName: string) {
 export default function OwnerReportsPage() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
-  const pageBackground = isDark
-    ? "bg-gradient-to-br from-[#020817] via-[#0f172a] to-[#111c33] text-[var(--text-primary)]"
-    : "bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]";
   const overlayTop = isDark
-    ? "bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_55%)]"
-    : "bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]";
+    ? "bg-[radial-gradient(circle_at_12%_12%,rgba(59,130,246,0.26),transparent_60%)]"
+    : "bg-[radial-gradient(circle_at_18%_10%,rgba(37,99,235,0.18),transparent_60%)]";
   const overlayBottom = isDark
-    ? "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_60%)]"
-    : "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]";
+    ? "bg-[radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.22),transparent_62%)]"
+    : "bg-[radial-gradient(circle_at_84%_88%,rgba(125,211,252,0.16),transparent_62%)]";
   const [guideOpen, setGuideOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
@@ -208,22 +205,18 @@ export default function OwnerReportsPage() {
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
   const [financialsFile, setFinancialsFile] = useState<File | null>(null);
   const [budgetTokens, setBudgetTokens] = useState<Record<string, number>>({});
+  const [detectedCount, setDetectedCount] = useState(0);
   const [budgetOverrides, setBudgetOverrides] = useState<Record<string, string>>({});
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [budgetPage, setBudgetPage] = useState(0);
-  const budgetExtractionId = useRef(0);
-  const lastAutoExtractionRef = useRef<string | null>(null);
+  const lastProcessedFiles = useRef<{ budget: File | null; financial: File | null }>({ budget: null, financial: null });
   const budgetLinesByPage = useMemo(
     () => [
       BUDGET_LINES.filter((line) => line.page === 0),
       BUDGET_LINES.filter((line) => line.page === 1),
     ],
     [],
-  );
-  const detectedBudgetTokens = useMemo(
-    () => Object.keys(budgetTokens).length,
-    [budgetTokens],
   );
   const budgetOverrideCount = useMemo(
     () => Object.keys(budgetOverrides).length,
@@ -284,83 +277,81 @@ export default function OwnerReportsPage() {
       "Current Month"
     );
   }, [mergedFields, fields]);
-  const hasBudgetData = detectedBudgetTokens > 0;
-  const runBudgetExtraction = useCallback(
-    async (nextBudget: File, nextFinancial: File | null) => {
-      const extractionKey = budgetExtractionId.current + 1;
-      budgetExtractionId.current = extractionKey;
-      setBudgetLoading(true);
-      setBudgetError(null);
-      try {
-        const [budgetBuffer, financialBuffer] = await Promise.all([
-          nextBudget.arrayBuffer(),
-          nextFinancial ? nextFinancial.arrayBuffer() : Promise.resolve<ArrayBuffer | undefined>(undefined),
-        ]);
-        const result = await extractBudgetTableFields(budgetBuffer, financialBuffer);
-        if (budgetExtractionId.current !== extractionKey) return;
-        setBudgetTokens(result.tokens ?? {});
-        setBudgetOverrides({});
-        setBudgetPage(0);
-      } catch (err) {
-        if (budgetExtractionId.current !== extractionKey) return;
-        const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
-        setBudgetError(message);
+  const hasBudgetData = detectedCount > 0;
+  const runBudgetExtract = useCallback(
+    async (nextBudget: File | null, nextFinancial: File | null) => {
+      if (!nextBudget) {
+        lastProcessedFiles.current = {
+          budget: null,
+          financial: nextFinancial ?? null,
+        };
         setBudgetTokens({});
-        setBudgetOverrides({});
-      } finally {
-        if (budgetExtractionId.current === extractionKey) {
-          setBudgetLoading(false);
-        }
-      }
-    },
-    [budgetExtractionId],
-  );
-  useEffect(() => {
-    if (step !== 3) return;
-    setBudgetPage(0);
-    if (!budgetFile || budgetLoading || budgetError) return;
-    if (Object.keys(budgetTokens).length > 0) return;
-    const fingerprint = `${budgetFile.name}-${budgetFile.size}-${budgetFile.lastModified}`;
-    if (lastAutoExtractionRef.current === fingerprint) return;
-    lastAutoExtractionRef.current = fingerprint;
-    void runBudgetExtraction(budgetFile, financialsFile);
-  }, [
-    step,
-    budgetFile,
-    financialsFile,
-    budgetTokens,
-    budgetLoading,
-    budgetError,
-    runBudgetExtraction,
-    lastAutoExtractionRef,
-  ]);
-  const handleBudgetFileChange = useCallback(
-    (next: File | null) => {
-      lastAutoExtractionRef.current = null;
-      setBudgetFile(next);
-      if (!next) {
-        budgetExtractionId.current += 1;
-        setBudgetTokens({});
+        setDetectedCount(0);
         setBudgetOverrides({});
         setBudgetError(null);
         setBudgetLoading(false);
         setBudgetPage(0);
         return;
       }
-      void runBudgetExtraction(next, financialsFile);
-    },
-    [financialsFile, runBudgetExtraction, lastAutoExtractionRef],
-  );
-  const handleFinancialFileChange = useCallback(
-    (next: File | null) => {
-      lastAutoExtractionRef.current = null;
-      setFinancialsFile(next);
-      if (budgetFile) {
-        void runBudgetExtraction(budgetFile, next);
+      lastProcessedFiles.current = {
+        budget: nextBudget,
+        financial: nextFinancial ?? null,
+      };
+      setBudgetLoading(true);
+      setBudgetError(null);
+      try {
+        const budgetBuffer = await nextBudget.arrayBuffer();
+        const financialBuffer = nextFinancial ? await nextFinancial.arrayBuffer() : undefined;
+        const { tokens, count } = await extractBudgetTableFields(budgetBuffer, financialBuffer);
+        console.log("[budget] files", Boolean(nextBudget), Boolean(nextFinancial));
+        console.log("[budget] count", count, "sample", Object.keys(tokens).slice(0, 6));
+        setBudgetTokens(tokens);
+        setDetectedCount(count);
+        setBudgetOverrides({});
+        setBudgetPage(0);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
+        setBudgetError(message);
+        setBudgetTokens({});
+        setDetectedCount(0);
+        setBudgetOverrides({});
+      } finally {
+        setBudgetLoading(false);
       }
     },
-    [budgetFile, runBudgetExtraction, lastAutoExtractionRef],
+    [],
   );
+
+  useEffect(() => {
+    if (
+      budgetFile === lastProcessedFiles.current.budget &&
+      financialsFile === lastProcessedFiles.current.financial
+    ) {
+      return;
+    }
+    void runBudgetExtract(budgetFile, financialsFile);
+  }, [budgetFile, financialsFile, runBudgetExtract]);
+
+  useEffect(() => {
+    if (step === 3) setBudgetPage(0);
+  }, [step]);
+
+  const handleBudgetFileChange = useCallback(
+    (next: File | null) => {
+      setBudgetFile(next);
+      void runBudgetExtract(next, financialsFile);
+    },
+    [financialsFile, runBudgetExtract],
+  );
+
+  const handleFinancialFileChange = useCallback(
+    (next: File | null) => {
+      setFinancialsFile(next);
+      void runBudgetExtract(budgetFile, next);
+    },
+    [budgetFile, runBudgetExtract],
+  );
+
   const updateBudgetOverride = useCallback((token: string, value: string) => {
     setBudgetOverrides((prev) => {
       const next = { ...prev };
@@ -522,15 +513,15 @@ export default function OwnerReportsPage() {
     if (lastDownload) {
       URL.revokeObjectURL(lastDownload.url);
     }
-    budgetExtractionId.current = 0;
-    lastAutoExtractionRef.current = null;
     setLastDownload(null);
     setFile(null);
     setFields(null);
     setOverrides({});
     setBudgetFile(null);
     setFinancialsFile(null);
+    lastProcessedFiles.current = { budget: null, financial: null };
     setBudgetTokens({});
+    setDetectedCount(0);
     setBudgetOverrides({});
     setBudgetError(null);
     setBudgetLoading(false);
@@ -539,70 +530,67 @@ export default function OwnerReportsPage() {
     setBusy(false);
     setStep(1);
   }
-
   return (
-    <div className={`relative min-h-screen w-full ${pageBackground}`}>
+    <div className="owner-reports-page relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
       <div className={`pointer-events-none absolute inset-0 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 ${overlayBottom}`} />
       <div className="relative mx-auto max-w-[1200px] px-6 py-10 lg:px-10 lg:py-16">
         <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="rounded-2xl border border-white/25 bg-white/85 p-6 shadow-lg backdrop-blur-md">
-            <div className="space-y-6">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2563EB]">Store</div>
-                <div className="text-[22px] font-semibold tracking-tight text-[#0B1120]">Insight Workbench</div>
-              </div>
-              <div className="rounded-xl bg-[#EEF2FF] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[#1E3A8A]">
-                Owner Reports
-              </div>
-              <div className="space-y-3 text-sm text-[#4B5563]">
-                <p>Upload an Excel workbook, adjust any detected values, and export a templated PPTX in minutes.</p>
-                <p className="text-[#1E3A8A]">No data is stored; everything stays in memory during generation.</p>
-              </div>
-              <div className="rounded-xl border border-dashed border-[#CBD5F5] bg-[#F8FAFF] p-4 text-xs text-[#1F2937]">
-                <div className="font-semibold text-[#1E3A8A]">Need help?</div>
-                <p className="mt-1 leading-relaxed">
-                  Make sure the first worksheet contains the address, owner group, and key totals. Tokens in the
-                  PPTX should use double braces like {"{{ADDRESS}}"} for best results.
-                </p>
-              </div>
-              <div className="mt-3">
-                <Link
-                  href="/guide"
-                  className="inline-flex items-center gap-2 rounded-lg w-full bg-blue-100 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-blue-600 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40"
-                  role="button"
-                >
-                  Guide
-                </Link>
-              </div>
+          <aside className="owner-card owner-card--accent ios-animate-up space-y-6 p-6" data-tone="blue">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">Store</div>
+              <div className="text-[22px] font-semibold tracking-tight text-[color:var(--text-primary)]">Insight Workbench</div>
             </div>
+            <div className="ios-pill text-[11px]" data-tone="neutral">
+              Owner Reports
+            </div>
+            <div className="space-y-3 text-sm text-[color:var(--text-secondary)]">
+              <p>Upload an Excel workbook, adjust detected values, and export a templated PPTX in minutes.</p>
+              <p className="text-[color:var(--accent-strong)]">No data is stored; everything stays in memory during generation.</p>
+            </div>
+            <div className="rounded-[18px] border border-dashed border-[rgba(148,163,255,0.32)] bg-[rgba(37,99,235,0.08)] p-4 text-xs text-[color:var(--text-secondary)]">
+              <div className="font-semibold text-[color:var(--accent-strong)]">Need help?</div>
+              <p className="mt-1 leading-relaxed">
+                Make sure the first worksheet contains the address, owner group, and key totals. Tokens in the PPTX should use
+                double braces like {"{{ADDRESS}}"} for best results.
+              </p>
+            </div>
+            <Link
+              href="/guide"
+              className="ios-button w-full justify-center px-3 py-1.5 text-xs"
+              data-variant="secondary"
+              role="button"
+            >
+              Guide
+            </Link>
           </aside>
 
-          <main className="rounded-2xl border border-white/25 bg-white/90 p-8 shadow-xl backdrop-blur">
+          <main className="ios-card ios-animate-up space-y-6 p-8">
             <div className="flex flex-col gap-6">
-              <header>
-                <h1 className="text-2xl font-semibold text-[#0B1120]">Create Owner Report</h1>
-                <p className="mt-1 text-sm text-[#4B5563]">
-                  Follow the guided flow to review extracted fields and merge them into the PowerPoint template.
-                </p>
+              <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1.5">
+                  <h1 className="text-2xl font-semibold text-[color:var(--text-primary)]">Create Owner Report</h1>
+                  <p className="text-sm text-[color:var(--text-secondary)]">
+                    Follow the guided flow to review extracted fields and merge them into the PowerPoint template.
+                  </p>
+                </div>
+                <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
+                  <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
+                  Back
+                </Link>
               </header>
 
-              <ol className="flex flex-wrap gap-2 text-xs font-medium uppercase tracking-wide text-[#6B7280]">
+              <ol className="owner-step-nav text-xs font-medium uppercase tracking-wide text-[color:var(--text-muted)]">
                 {(Object.keys(STEP_LABELS) as unknown as Step[]).map((keyStep) => (
                   <li
                     key={keyStep}
-                    className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
-                      keyStep === step
-                        ? "border-[#2563EB] bg-[#2563EB]/10 text-[#1E40AF]"
-                        : keyStep < step
-                        ? "border-[#34D399] bg-[#D1FAE5]/60 text-[#047857]"
-                        : "border-[#E5E7EB] bg-white text-[#9CA3AF]"
-                    }`}
+                    data-state={keyStep === step ? "active" : keyStep < step ? "complete" : "upcoming"}
+                    className="owner-step-chip"
                   >
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-[#2563EB]">
+                    <span className="owner-step-number" data-state={keyStep === step ? "active" : keyStep < step ? "complete" : "upcoming"}>
                       {String(keyStep).padStart(2, "0")}
                     </span>
-                    {STEP_LABELS[keyStep]}
+                    <span className="owner-step-label">{STEP_LABELS[keyStep]}</span>
                   </li>
                 ))}
               </ol>
@@ -614,44 +602,44 @@ export default function OwnerReportsPage() {
               )}
 
               {step === 1 && (
-                <section className="rounded-xl border border-[#E5E7EB] bg-white px-6 py-8 shadow-sm">
-                  <h2 className="text-lg font-semibold text-[#1F2937]">Step 1 · Upload</h2>
-                  <p className="mt-1 text-sm text-[#6B7280]">
+                <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 1 - Upload</h2>
+                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Drop your <span className="font-bold">Executive Summary Report</span> (.xlsx) below. Only the first sheet is parsed for now.
                   </p>
                   <div className="mt-5">
                     <input
                       type="file"
                       accept=".xlsx,.xls"
-                      className="text-sm text-[#1F2937]"
+                      className="text-sm text-[color:var(--text-primary)]"
                       onChange={(event) => {
                         const nextFile = event.target.files?.[0];
                         if (nextFile) onUpload(nextFile);
                       }}
                     />
                   </div>
-                  {busy && <p className="mt-3 text-sm text-[#6B7280]">Parsing workbook…</p>}
+                  {busy && <p className="mt-3 text-sm text-[color:var(--text-secondary)]">Parsing workbook…</p>}
                   {file && !busy && (
-                    <p className="mt-3 text-sm text-[#4B5563]">
-                      Last uploaded: <span className="font-medium text-[#1F2937]">{file.name}</span>
+                    <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
+                      Last uploaded: <span className="font-medium text-[color:var(--text-primary)]">{file.name}</span>
                     </p>
                   )}
                 </section>
               )}
 
               {step === 2 && (
-                <section className="rounded-xl border border-[#E5E7EB] bg-white px-6 py-8 shadow-sm">
-                  <h2 className="text-lg font-semibold text-[#1F2937]">Step 2 - Budget Inputs</h2>
-                  <p className="mt-1 text-sm text-[#6B7280]">
+                <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 2 - Budget Inputs</h2>
+                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Upload an optional Budget Comparison workbook and Financial Statements file. They are kept in memory
                     during this session so you can reuse them when generating the presentation.
                   </p>
                   <div className="mt-6 space-y-6">
-                    <div className="space-y-3 rounded-xl border border-[#CBD5F5] bg-[#F9FBFF] p-4">
+                    <div className="owner-input-tile space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-[#1E3A8A]">Budget Comparison (.xlsx)</p>
-                          <p className="text-xs text-[#6B7280]">Recommended for Budget Variance autofill</p>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Budget Comparison (.xlsx)</p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">Recommended for Budget Variance autofill</p>
                         </div>
                         {budgetFile && (
                           <button
@@ -666,7 +654,7 @@ export default function OwnerReportsPage() {
                       <input
                         type="file"
                         accept=".xlsx,.xls"
-                        className="text-sm text-[#1F2937]"
+                        className="text-sm text-[color:var(--text-primary)]"
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
                           handleBudgetFileChange(nextFile);
@@ -674,17 +662,17 @@ export default function OwnerReportsPage() {
                         }}
                       />
                       {budgetFile && (
-                        <p className="text-xs text-[#4B5563]">
-                          Selected: <span className="font-medium text-[#1F2937]">{budgetFile.name}</span>
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{budgetFile.name}</span>
                         </p>
                       )}
                     </div>
 
-                    <div className="space-y-3 rounded-xl border border-[#CBD5F5] bg-[#F9FBFF] p-4">
+                    <div className="owner-input-tile space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-[#1E3A8A]">Financial Statements (.xlsx)</p>
-                          <p className="text-xs text-[#6B7280]">Optional fallback file for budget values</p>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Financial Statements (.xlsx)</p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">Optional fallback file for budget values</p>
                         </div>
                         {financialsFile && (
                           <button
@@ -699,7 +687,7 @@ export default function OwnerReportsPage() {
                       <input
                         type="file"
                         accept=".xlsx,.xls"
-                        className="text-sm text-[#1F2937]"
+                        className="text-sm text-[color:var(--text-primary)]"
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
                           handleFinancialFileChange(nextFile);
@@ -707,15 +695,15 @@ export default function OwnerReportsPage() {
                         }}
                       />
                       {financialsFile && (
-                        <p className="text-xs text-[#4B5563]">
-                          Selected: <span className="font-medium text-[#1F2937]">{financialsFile.name}</span>
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{financialsFile.name}</span>
                         </p>
                       )}
                     </div>
                   </div>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[#1E3A8A] hover:border-[#2563EB] hover:bg-[#EEF2FF]"
+                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]"
                       type="button"
                       onClick={() => setStep(1)}
                     >
@@ -733,26 +721,26 @@ export default function OwnerReportsPage() {
                 </section>
               )}
               {step === 3 && (
-                <section className="rounded-xl border border-[#E5E7EB] bg-white px-6 py-8 shadow-sm">
-                  <h2 className="text-lg font-semibold text-[#1F2937]">Step 3 - Map Budget Table</h2>
-                  <p className="mt-1 text-sm text-[#6B7280]">
+                <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 3 - Map Budget Table</h2>
+                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Review the detected budget values and override any amounts before continuing.
                   </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-sm text-[#1F2937]">
+                  <div className="owner-info-bar mt-4 text-sm">
                     <span>
                       Detected tokens:{" "}
-                      <span className="font-semibold text-[#1E3A8A]">
-                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      <span className="font-semibold text-[color:var(--accent-strong)]">
+                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
                       </span>
                     </span>
-                    <span className="hidden text-[#CBD5F5] sm:inline">|</span>
+                    <span className="hidden opacity-50 text-[color:var(--text-muted)] sm:inline">|</span>
                     <span>
                       Manual overrides:{" "}
-                      <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
+                      <span className="font-semibold text-[color:var(--accent-strong)]">{budgetOverrideCount}</span>
                     </span>
                   </div>
                   {budgetLoading && (
-                    <div className="mt-4 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                    <div className="mt-4 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[color:var(--accent-strong)]">
                       Parsing budget workbook...
                     </div>
                   )}
@@ -762,15 +750,15 @@ export default function OwnerReportsPage() {
                     </div>
                   )}
                   {!budgetLoading && !budgetError && !hasBudgetData && budgetOverrideCount === 0 && (
-                    <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
+                    <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[color:var(--text-primary)]">
                       No budget values were detected yet. You can still enter amounts manually in the table below.
                     </div>
                   )}
                   <div className="mt-6 space-y-6">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-[#1F2937]">{budgetPageTitle}</p>
-                        <p className="text-xs text-[#6B7280]">
+                        <p className="text-sm font-semibold text-[color:var(--text-primary)]">{budgetPageTitle}</p>
+                        <p className="text-xs text-[color:var(--text-secondary)]">
                           {displayedBudgetPage === 0
                             ? "Income rows mapped to the first slide."
                             : "Expense rows mapped to the continued slide."}
@@ -779,18 +767,18 @@ export default function OwnerReportsPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#1E3A8A] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
+                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
                           onClick={() => setBudgetPage((prev) => Math.max(0, prev - 1))}
                           disabled={displayedBudgetPage === 0 || budgetLoading}
                         >
                           Previous
                         </button>
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
                           Page {displayedBudgetPage + 1} of {totalBudgetPages}
                         </span>
                         <button
                           type="button"
-                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#1E3A8A] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
+                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
                           onClick={() => setBudgetPage((prev) => Math.min(totalBudgetPages - 1, prev + 1))}
                           disabled={displayedBudgetPage >= totalBudgetPages - 1 || budgetLoading}
                         >
@@ -799,9 +787,9 @@ export default function OwnerReportsPage() {
                       </div>
                     </div>
                     {budgetLinesForPage.length === 0 ? (
-                      <p className="rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
+                      <div className="owner-info-bar text-sm" data-variant="dashed">
                         No budget rows are configured for this page.
-                      </p>
+                      </div>
                     ) : (
                       budgetLinesForPage.map((line) => {
                         const rowHasOverride = BUDGET_COLUMNS.some(
@@ -810,12 +798,12 @@ export default function OwnerReportsPage() {
                         return (
                           <div
                             key={line.baseKey}
-                            className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4 shadow-sm"
+                            className="owner-card owner-card--surface rounded-xl p-4 shadow-sm"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div>
-                                <p className="text-sm font-semibold text-[#1E3A8A]">{line.label}</p>
-                                <p className="text-xs text-[#6B7280]">Token prefix: {line.baseKey}</p>
+                                <p className="text-sm font-semibold text-[color:var(--accent-strong)]">{line.label}</p>
+                                <p className="text-xs text-[color:var(--text-secondary)]">Token prefix: {line.baseKey}</p>
                               </div>
                               <button
                                 type="button"
@@ -838,25 +826,25 @@ export default function OwnerReportsPage() {
                                   ? "Detected"
                                   : "Blank";
                                 const statusClass =
-                                  hasOverride ? "text-[#1D4ED8]" : detectedValue !== undefined ? "text-[#047857]" : "text-[#6B7280]";
+                                  hasOverride ? "text-[#1D4ED8]" : detectedValue !== undefined ? "text-[#047857]" : "text-[color:var(--text-secondary)]";
                                 return (
                                   <label
                                     key={token}
-                                    className="flex flex-col gap-2 rounded-lg border border-[#E5E7EB] bg-white p-3 shadow-sm"
+                                    className="owner-input-tile flex flex-col gap-2 p-3"
                                   >
                                     <span className="text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
                                       {column.label}
-                                      <span className="ml-1 text-[11px] font-normal text-[#6B7280]">
+                                      <span className="ml-1 text-[11px] font-normal text-[color:var(--text-secondary)]">
                                         {column.description}
                                       </span>
                                     </span>
                                     <input
-                                      className="rounded-md border border-[#CBD5F5] px-2 py-1 text-sm text-[#1F2937] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+                                      className="rounded-md border border-[#CBD5F5] px-2 py-1 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
                                       value={inputValue}
                                       onChange={(event) => updateBudgetOverride(token, event.target.value)}
                                       placeholder={detectedValue !== undefined ? String(detectedValue) : "Enter value"}
                                     />
-                                    <div className="flex items-center justify-between text-[11px] text-[#6B7280]">
+                                    <div className="flex items-center justify-between text-[11px] text-[color:var(--text-secondary)]">
                                       <span>{`{{${token}}}`}</span>
                                       <span className={`font-semibold ${statusClass}`}>{statusLabel}</span>
                                     </div>
@@ -869,19 +857,19 @@ export default function OwnerReportsPage() {
                       })
                     )}
                   </div>
-                  <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
+                  <div className="owner-info-bar mt-4 text-sm" data-variant="dashed">
                     <p>
                       Detected tokens:{" "}
-                      <span className="font-semibold text-[#1E3A8A]">
-                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      <span className="font-semibold text-[color:var(--accent-strong)]">
+                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
                       </span>
                     </p>
                     <p>
-                      Manual overrides ready: <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
+                      Manual overrides ready: <span className="font-semibold text-[color:var(--accent-strong)]">{budgetOverrideCount}</span>
                     </p>
                   </div>
                   {budgetLoading && (
-                    <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                    <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[color:var(--accent-strong)]">
                       Parsing budget workbook...
                     </div>
                   )}
@@ -892,7 +880,7 @@ export default function OwnerReportsPage() {
                   )}
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[#1E3A8A] hover:border-[#2563EB] hover:bg-[#EEF2FF]"
+                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]"
                       type="button"
                       onClick={() => setStep(2)}
                     >
@@ -910,12 +898,12 @@ export default function OwnerReportsPage() {
                 </section>
               )}
               {step === 4 && mergedFields && (
-                <section className="rounded-xl border border-[#E5E7EB] bg-white px-6 py-8 shadow-sm">
-                  <h2 className="text-lg font-semibold text-[#1F2937]">Step 4 - Map Summary Fields</h2>
-                  <p className="mt-1 text-sm text-[#6B7280]">
+                <section className="owner-card owner-card--surface rounded-xl px-6 py-8 shadow-sm">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 4 - Map Summary Fields</h2>
+                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Review the detected summary values and override anything that needs to be adjusted before validation.
                   </p>
-                  <div className="mt-6 divide-y divide-[#F3F4F6]">
+                  <div className="mt-6 divide-y divide-[rgba(148,163,255,0.35)]">
                     {FIELD_ORDER.map((key) => {
                       const rawValue = fieldValue(key);
                       const isNumeric = NUMERIC_FIELDS.has(key);
@@ -929,11 +917,11 @@ export default function OwnerReportsPage() {
                         : String(rawValue ?? "");
                       return (
                         <div key={key} className="grid gap-4 py-3 md:grid-cols-[200px_minmax(0,1fr)]">
-                          <div className="text-sm font-medium uppercase tracking-wide text-[#1E3A8A]">
+                          <div className="text-sm font-medium uppercase tracking-wide text-[color:var(--accent-strong)]">
                             {FIELD_TITLES[key]}
                           </div>
                           <input
-                            className="w-full rounded-lg border border-[#CBD5F5] bg-white px-3 py-2 text-sm text-[#1F2937] shadow-sm focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
+                            className="owner-field-input w-full px-3 py-2 text-sm"
                             type={isNumeric ? "number" : "text"}
                             inputMode={isNumeric ? "decimal" : undefined}
                             value={displayValue}
@@ -944,19 +932,19 @@ export default function OwnerReportsPage() {
                       );
                     })}
                   </div>
-                  <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
+                  <div className="owner-info-bar mt-4 text-sm" data-variant="dashed">
                     <p>
                       Detected tokens:{" "}
-                      <span className="font-semibold text-[#1E3A8A]">
-                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      <span className="font-semibold text-[color:var(--accent-strong)]">
+                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
                       </span>
                     </p>
                     <p>
-                      Manual overrides ready: <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
+                      Manual overrides ready: <span className="font-semibold text-[color:var(--accent-strong)]">{budgetOverrideCount}</span>
                     </p>
                   </div>
                   {budgetLoading && (
-                    <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                    <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[color:var(--accent-strong)]">
                       Parsing budget workbook...
                     </div>
                   )}
@@ -967,7 +955,7 @@ export default function OwnerReportsPage() {
                   )}
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[#1E3A8A] hover:border-[#2563EB] hover:bg-[#EEF2FF]"
+                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]"
                       type="button"
                       onClick={() => setStep(3)}
                     >
@@ -985,21 +973,20 @@ export default function OwnerReportsPage() {
                 </section>
               )}
               {step === 5 && mergedFields && (
-                <section className="rounded-xl border border-[#E5E7EB] bg-white px-6 py-8 shadow-sm">
-                  <h2 className="text-lg font-semibold text-[#1F2937]">Step 5 - Validate</h2>
-                  <p className="mt-1 text-sm text-[#6B7280]">
+                <section className="owner-card owner-card--surface rounded-xl px-6 py-8 shadow-sm">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 5 - Validate</h2>
+                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Quick check before generation. Required totals must be greater than zero.
                   </p>
-                  <ul className="mt-5 space-y-2 text-sm text-[#1F2937]">
+                  <ul className="mt-5 space-y-2 text-sm text-[color:var(--text-primary)]">
                     {FIELD_ORDER.map((key) => {
                       const value = mergedFields[key];
                       const missing = missingFields.has(key);
                       return (
                         <li
                           key={key}
-                          className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
-                            missing ? "border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]" : "border-transparent bg-[#F9FAFB]"
-                          }`}
+                          className="owner-validate-row"
+                          data-state={missing ? 'error' : undefined}
                         >
                           <span className="font-medium">{FIELD_TITLES[key]}</span>
                           <span className="text-sm">
@@ -1013,7 +1000,7 @@ export default function OwnerReportsPage() {
                   </ul>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[#1E3A8A] hover:border-[#2563EB] hover:bg-[#EEF2FF]"
+                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]"
                       type="button"
                       onClick={() => setStep(4)}
                     >
@@ -1028,11 +1015,11 @@ export default function OwnerReportsPage() {
                       Generate PPTX
                     </button>
                   </div>
-                  {busy && <p className="mt-3 text-sm text-[#6B7280]">Generating presentation...</p>}
+                  {busy && <p className="mt-3 text-sm text-[color:var(--text-secondary)]">Generating presentation...</p>}
                 </section>
               )}
               {step === 6 && (
-                <section className="rounded-xl border border-[#DBEAFE] bg-[#EEF2FF] px-6 py-8 text-[#1E3A8A] shadow-inner">
+                <section className="owner-card rounded-xl border border-[#DBEAFE] bg-[rgba(37,99,235,0.08)] px-6 py-8 text-[color:var(--accent-strong)] shadow-inner">
                   <h2 className="text-lg font-semibold">Step 6 - Generate</h2>
                   <p className="mt-2 text-sm">Hold tight while we merge your data into the PowerPoint template.</p>
                   <p className="mt-4 text-sm font-medium">This only takes a moment.</p>
@@ -1040,18 +1027,18 @@ export default function OwnerReportsPage() {
               )}
 
               {step === 7 && lastDownload && (
-                <section className="rounded-xl border border-[#E5E7EB] bg-white px-6 py-8 shadow-sm">
-                  <h2 className="text-lg font-semibold text-[#1F2937]">Step 7 - Export complete</h2>
-                  <p className="mt-1 text-sm text-[#6B7280]">
+                <section className="owner-card owner-card--surface rounded-xl px-6 py-8 shadow-sm">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 7 - Export complete</h2>
+                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Your PowerPoint has been downloaded. Review the values below or download the file again.
                   </p>
-                  <div className="mt-5 overflow-hidden rounded-lg border border-[#E5E7EB]">
-                    <table className="min-w-full divide-y divide-[#F3F4F6] text-sm">
-                      <tbody className="divide-y divide-[#F3F4F6] bg-white">
+                  <div className="mt-5 overflow-hidden rounded-lg border border-[color:var(--border-soft)]/70">
+                    <table className="min-w-full divide-y divide-[rgba(148,163,255,0.3)] text-sm">
+                      <tbody className="divide-y divide-[rgba(148,163,255,0.25)] bg-[color:var(--surface)]">
                         {FIELD_ORDER.map((key) => (
                           <tr key={key}>
-                            <td className="px-4 py-2 font-medium text-[#1E3A8A]">{FIELD_TITLES[key]}</td>
-                            <td className="px-4 py-2 text-right text-[#1F2937]">
+                            <td className="px-4 py-2 font-medium text-[color:var(--accent-strong)]">{FIELD_TITLES[key]}</td>
+                            <td className="px-4 py-2 text-right text-[color:var(--text-primary)]">
                               {NUMERIC_FIELDS.has(key)
                                 ? formatNumericValue(key, lastDownload.data[key] as number)
                                 : String(lastDownload.data[key] || "") || "(blank)"}
@@ -1061,19 +1048,19 @@ export default function OwnerReportsPage() {
                       </tbody>
                     </table>
                   </div>
-                  <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[#1F2937]">
+                  <div className="owner-info-bar mt-4 text-sm" data-variant="dashed">
                     <p>
                       Detected tokens:{" "}
-                      <span className="font-semibold text-[#1E3A8A]">
-                        {detectedBudgetTokens}/{TOTAL_BUDGET_TOKENS}
+                      <span className="font-semibold text-[color:var(--accent-strong)]">
+                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
                       </span>
                     </p>
                     <p>
-                      Manual overrides ready: <span className="font-semibold text-[#1E3A8A]">{budgetOverrideCount}</span>
+                      Manual overrides ready: <span className="font-semibold text-[color:var(--accent-strong)]">{budgetOverrideCount}</span>
                     </p>
                   </div>
                   {budgetLoading && (
-                    <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[#1E3A8A]">
+                    <div className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[color:var(--accent-strong)]">
                       Parsing budget workbook...
                     </div>
                   )}
@@ -1091,7 +1078,7 @@ export default function OwnerReportsPage() {
                       Download again
                     </button>
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[#1E3A8A] hover:border-[#2563EB] hover:bg-[#EEF2FF]"
+                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]"
                       type="button"
                       onClick={startAnother}
                     >
@@ -1099,7 +1086,7 @@ export default function OwnerReportsPage() {
                     </button>
                     <Link
                       href="/"
-                      className="rounded-full border border-transparent bg-[#F9FAFB] px-5 py-2 text-sm font-medium text-[#1E3A8A] shadow hover:border-[#CBD5F5] hover:bg-white"
+                      className="rounded-full border border-transparent bg-[rgba(255,255,255,0.9)] px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] shadow hover:border-[#CBD5F5] hover:bg-white"
                     >
                       Return home
                     </Link>
@@ -1113,3 +1100,40 @@ export default function OwnerReportsPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

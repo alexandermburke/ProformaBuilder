@@ -37,7 +37,7 @@ export default function RootLayout({
         className={[
           geistSans.variable,
           geistMono.variable,
-          'min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased transition-colors duration-300',
+          'min-h-screen text-[var(--foreground)] antialiased transition-colors duration-500',
         ].join(' ')}
       >
         <ThemeProvider>

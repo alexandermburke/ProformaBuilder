@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { JSX } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 
 type UpdateItem = {
@@ -27,11 +28,22 @@ type PlannedUpdate = {
 
 const updates: UpdateItem[] = [
   {
+    id: "2025-11-06",
+    date: "Nov 06, 2025",
+    title: "Interface adopts glassmorphism and motion system",
+    highlights: [
+      "Introduced modern tokens, gradients, and motion utilities across the app shell.",
+      "Refreshed navigation cards, modals, and wizards with live icons, glass surfaces, and animated step indicators.",
+      "Added inline platform and Next.js version badges to help track deployments.",
+    ],
+    tags: ["UI", "Experience"],
+  },
+  {
     id: "2025-10-30",
     date: "Oct 30, 2025",
     title: "Owner report flow goes live",
     highlights: [
-      "Excel > PPTX pipeline wired with single-click export.",
+      "Excel to PPTX pipeline wired with single-click export.",
       "Field overrides, validation, and download recap added to the flow.",
       "Docxtemplater safeguards normalize tokens coming from PPT design.",
     ],
@@ -69,7 +81,7 @@ const roadmap: RoadmapItem[] = [
   {
     id: "roadmap-template-selector",
     title: "Template selector",
-    note: "Allow switching between STORE v3/v4 PowerPoint templates.",
+    note: "Allow switching between STORE v3 and v4 PowerPoint templates.",
     owner: "Engineering",
   },
   {
@@ -95,72 +107,78 @@ const planned: PlannedUpdate[] = [
   },
 ];
 
-export default function UpdateLogPage() {
+export default function UpdateLogPage(): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === "dark";
-  const pageBackground = isDark
-    ? "bg-gradient-to-br from-[#020817] via-[#0f172a] to-[#111c33] text-[var(--text-primary)]"
-    : "bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]";
+
   const overlayTop = isDark
-    ? "bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_55%)]"
-    : "bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]";
+    ? "bg-[radial-gradient(circle_at_12%_12%,rgba(59,130,246,0.28),transparent_60%)]"
+    : "bg-[radial-gradient(circle_at_18%_10%,rgba(37,99,235,0.18),transparent_62%)]";
   const overlayBottom = isDark
-    ? "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_60%)]"
-    : "bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]";
+    ? "bg-[radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.22),transparent_60%)]"
+    : "bg-[radial-gradient(circle_at_84%_88%,rgba(125,211,252,0.16),transparent_60%)]";
+
   return (
-    <div className={`relative min-h-screen w-full ${pageBackground}`}>
-      <div className={`pointer-events-none absolute inset-0 ${overlayTop}`} />
-      <div className={`pointer-events-none absolute inset-0 ${overlayBottom}`} />
+    <div className="relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
       <div className="relative mx-auto max-w-[1200px] px-6 py-10 lg:px-10 lg:py-16">
-        <header className="flex flex-col gap-6 rounded-2xl border border-white/30 bg-white/90 p-8 shadow-xl backdrop-blur">
+        <header className="ios-card ios-animate-up flex flex-col gap-6 p-8" data-tone="blue">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2563EB]">STORE Internal Platform</p>
-              <h1 className="text-3xl font-semibold tracking-tight text-[#0B1120]">Update Log</h1>
-              <p className="mt-2 max-w-2xl text-sm text-[#4B5563]">
-                A lightweight digest of product changes and what is queued up next. We refresh this page after each notable
-                release and during the end-of-week sync.
+            <div className="space-y-3">
+              <span className="ios-badge text-[10px]">STORE Internal Platform</span>
+              <h1 className="text-3xl font-semibold tracking-tight text-[color:var(--text-primary)]">Update log</h1>
+              <p className="max-w-2xl text-sm text-[color:var(--text-secondary)]">
+                A lightweight digest of product changes and what is queued up next. We refresh this page after notable releases
+                and during the end-of-week sync.
               </p>
             </div>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 rounded-full border border-[#CBD5F5] bg-white px-4 py-2 text-sm font-medium text-[#1E3A8A] transition hover:border-[#2563EB] hover:bg-[#EEF2FF]"
-            >
-              <span aria-hidden>←</span> Back to dashboard
+            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
+              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
+              Back to directory
             </Link>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {planned.map((item) => (
+              <div key={item.id} className="ios-list-card space-y-2 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)]">{item.eta}</p>
+                <p className="text-sm font-semibold text-[color:var(--text-primary)]">{item.title}</p>
+                <p className="text-xs text-[color:var(--text-secondary)]">{item.summary}</p>
+              </div>
+            ))}
           </div>
         </header>
 
         <main className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="space-y-4 rounded-2xl border border-white/25 bg-white/95 p-6 shadow-lg backdrop-blur">
+          <section className="ios-card ios-animate-up space-y-4 p-6">
             <header className="flex items-baseline justify-between gap-2">
               <div>
-                <h2 className="text-lg font-semibold text-[#0B1120]">Latest releases</h2>
-                <p className="text-xs uppercase tracking-wide text-[#9CA3AF]">Most recent first</p>
+                <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Latest releases</h2>
+                <p className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">Most recent first</p>
               </div>
-              <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-xs font-semibold text-[#1E40AF]">
+              <span className="ios-pill text-[11px]" data-tone="neutral">
                 {updates.length} entries
               </span>
             </header>
-
             <div className="space-y-4">
-              {updates.map((entry) => (
+              {updates.map((entry, index) => (
                 <article
                   key={entry.id}
-                  className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4 shadow-sm transition hover:border-[#CBD5F5] hover:shadow-md"
+                  className={`ios-list-card space-y-3 p-4 ${index % 2 === 1 ? "ios-animate-up ios-animate-delay-sm" : "ios-animate-up"}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-[15px] font-semibold text-[#111827]">{entry.title}</h3>
-                      <p className="text-xs text-[#6B7280]">{entry.date}</p>
+                      <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{entry.title}</h3>
+                      <p className="text-xs text-[color:var(--text-secondary)]">{entry.date}</p>
                     </div>
                     {entry.tags && entry.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {entry.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[11px] font-medium text-[#1D4ED8]"
+                            className="ios-pill text-[10px]"
+                            data-tone="neutral"
                           >
                             {tag}
                           </span>
@@ -168,7 +186,7 @@ export default function UpdateLogPage() {
                       </div>
                     )}
                   </div>
-                  <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#4B5563]">
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-[color:var(--text-secondary)]">
                     {entry.highlights.map((point) => (
                       <li key={point}>{point}</li>
                     ))}
@@ -179,19 +197,19 @@ export default function UpdateLogPage() {
           </section>
 
           <aside className="space-y-4">
-            <section className="rounded-2xl border border-white/25 bg-white/95 p-6 shadow-lg backdrop-blur">
-              <h2 className="text-lg font-semibold text-[#0B1120]">Up next</h2>
-              <p className="mt-1 text-sm text-[#4B5563]">
+            <section className="ios-card ios-animate-up space-y-3 p-6">
+              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Up next</h2>
+              <p className="text-sm text-[color:var(--text-secondary)]">
                 Quick look at near-term items. We snapshot these every Friday before the release sync.
               </p>
-              <ul className="mt-4 space-y-3">
+              <ul className="space-y-3">
                 {roadmap.map((item) => (
-                  <li key={item.id} className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-4">
-                    <div className="text-[15px] font-semibold text-[#111827]">{item.title}</div>
-                    <p className="mt-1 text-sm text-[#4B5563]">{item.note}</p>
+                  <li key={item.id} className="ios-list-card space-y-2 p-4">
+                    <div className="text-sm font-semibold text-[color:var(--text-primary)]">{item.title}</div>
+                    <p className="text-sm text-[color:var(--text-secondary)]">{item.note}</p>
                     {item.owner && (
-                      <p className="mt-2 text-xs text-[#6B7280]">
-                        Owner: <span className="font-medium text-[#1F2937]">{item.owner}</span>
+                      <p className="text-xs text-[color:var(--text-muted)]">
+                        Owner: <span className="font-medium text-[color:var(--text-primary)]">{item.owner}</span>
                       </p>
                     )}
                   </li>

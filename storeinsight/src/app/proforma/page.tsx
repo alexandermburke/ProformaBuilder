@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Image from 'next/image';
 import Link from 'next/link';
@@ -274,12 +274,9 @@ function extractSeriesByLabelFromParsed(parsed: UploadParseResult): {
 export default function Home(): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const pageBackground = isDark
-    ? 'bg-gradient-to-br from-[#020817] via-[#0f172a] to-[#111c33] text-[var(--text-primary)]'
-    : 'bg-gradient-to-br from-[#EEF2FF] via-[#F8FAFF] to-[#E0F2FE] text-[#0B1120]';
   const overlayTop = isDark
-    ? 'bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.22),transparent_55%)]'
-    : 'bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.12),transparent_55%)]';
+    ? 'bg-[radial-gradient(circle_at_12%_12%,rgba(59,130,246,0.26),transparent_60%)]'
+    : 'bg-[radial-gradient(circle_at_18%_10%,rgba(37,99,235,0.18),transparent_60%)]';
   const overlayBottom = isDark
     ? 'bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.18),transparent_60%)]'
     : 'bg-[radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_60%)]';
@@ -700,7 +697,7 @@ export default function Home(): JSX.Element {
       <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,220px)_minmax(0,180px)_minmax(0,300px)]">
         <div className="truncate text-sm text-[#111827]">{labelWithAcronym(label)}</div>
         <select
-          className="h-10 rounded-xl border border-white/20 bg-white/90 px-3 text-sm text-[#0B1120] shadow-sm transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+          className="h-10 rounded-xl border border-white/20 bg-white/90 px-3 text-sm text-[color:var(--text-primary)] shadow-sm transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
           value={value.method}
           onChange={(e) => setMethod(e.target.value as Method)}
           title="Method used to compute this line"
@@ -715,7 +712,7 @@ export default function Home(): JSX.Element {
             <input
               type="number"
               step="0.001"
-              className="h-10 w-36 rounded-xl border border-white/20 bg-white/90 px-3 text-sm text-[#0B1120] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+              className="h-10 w-36 rounded-xl border border-white/20 bg-white/90 px-3 text-sm text-[color:var(--text-primary)] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
               placeholder="Percent (0.04)"
               value={value.percent ?? ''}
               onChange={(e) => onChange({ ...value, percent: Number(e.target.value) })}
@@ -726,7 +723,7 @@ export default function Home(): JSX.Element {
             <input
               type="number"
               step="0.001"
-              className="h-10 w-36 rounded-xl border border-white/20 bg-white/90 px-3 text-sm text-[#0B1120] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+              className="h-10 w-36 rounded-xl border border-white/20 bg-white/90 px-3 text-sm text-[color:var(--text-primary)] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
               placeholder="Growth (0.005)"
               value={value.growthPct ?? ''}
               onChange={(e) => onChange({ ...value, growthPct: Number(e.target.value) })}
@@ -739,33 +736,33 @@ export default function Home(): JSX.Element {
   }
 
   return (
-    <div className={`relative min-h-screen w-full ${pageBackground}`}>
+    <div className="proforma-page relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
       <div className={`pointer-events-none absolute inset-0 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 ${overlayBottom}`} />
       <div className="relative mx-auto max-w-[1440px] px-6 py-10 lg:px-10 lg:py-14">
         <div className="grid grid-cols-[260px_minmax(0,1fr)] gap-6 lg:gap-8">
           {/* Sidebar */}
-          <aside className="rounded-2xl border border-white/25 bg-white/85 shadow-lg backdrop-blur-md">
+          <aside className="owner-card rounded-2xl border border-white/25 bg-white/85 shadow-lg backdrop-blur-md">
             <div className="space-y-6 px-6 py-7">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.35em] text-[#2563EB]">Store</div>
-                  <div className="text-[22px] font-semibold tracking-tight text-[#0B1120]">Insight Workbench</div>
+                  <div className="text-[22px] font-semibold tracking-tight text-[color:var(--text-primary)]">Insight Workbench</div>
                 </div>
-                <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-[11px] font-semibold text-[#1E40AF]">
+                <span className="rounded-full bg-[rgba(37,99,235,0.08)] px-3 py-1 text-[11px] font-semibold text-[color:var(--accent-strong)]">
                   Proforma
                 </span>
               </div>
               <nav className="flex flex-col gap-1.5">
                 <a
-                  className="rounded-xl px-3 py-2 text-sm font-medium text-[#1F2937] outline-none ring-0 transition hover:bg-[#2563EB]/10 hover:text-[#1D4ED8] data-[active=true]:bg-[#2563EB]/15 data-[active=true]:text-[#1E3A8A]"
+                  className="owner-card rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-primary)] outline-none ring-0 transition hover:bg-[#2563EB]/10 hover:text-[#1D4ED8] data-[active=true]:bg-[#2563EB]/15 data-[active=true]:text-[color:var(--accent-strong)]"
                   data-active="true"
                   href="#create"
                 >
                   Create Report
                 </a>
                 <Link
-                  className="rounded-xl px-3 py-2 text-sm font-medium text-[#4B5563] outline-none ring-0 transition hover:bg-[#2563EB]/10 hover:text-[#1D4ED8]"
+                  className="owner-card rounded-xl px-3 py-2 text-sm font-medium text-[color:var(--text-secondary)] outline-none ring-0 transition hover:bg-[#2563EB]/10 hover:text-[#1D4ED8]"
                   href="/snapshots"
                   id="snapshots-link"
                   onClick={() => console.log('[nav] go to /snapshots')}
@@ -779,35 +776,23 @@ export default function Home(): JSX.Element {
           {/* Main column */}
           <main className="space-y-6">
             {/* Header + Stepper */}
-            <section className="rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
+            <section className="owner-card rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
               <div className="mb-4 flex items-center justify-between">
                 <div className="text-[18px] font-semibold">Create Report</div>
-                <div className="rounded-full bg-[#F5F7FF] px-3 py-1 text-[11px] text-[#1E40AF]">
+                <div className="owner-status-badge text-[11px]" data-tone={auto.vendorHint ? 'neutral' : 'neutral'}>
                   {auto.vendorHint ? `Vendor: ${auto.vendorHint}` : 'Vendor: Auto'}
                 </div>
               </div>
-              <ol className="flex flex-wrap items-center gap-3">
+              <ol className="owner-step-nav flex flex-wrap items-center gap-3">
                 {steps.map((label, idx) => {
                   const isActive = idx === currentStepIndex;
                   const isDone = idx < currentStepIndex;
                   return (
-                    <li key={label} className="flex items-center gap-2">
-                      <div
-                        className={[
-                          'flex h-8 w-8 items-center justify-center rounded-full border text-sm font-medium transition-colors',
-                          isActive
-                            ? 'border-[#2563EB] bg-[#2563EB] text-white'
-                            : isDone
-                            ? 'border-[#2563EB] bg-[#DBEAFE] text-[#1E40AF]'
-                            : 'border-[#E5E7EB] bg-white text-[#6B7280]',
-                        ].join(' ')}
-                        aria-current={isActive ? 'step' : undefined}
-                      >
+                    <li key={label} className="flex items-center gap-2" data-state={isActive ? 'active' : isDone ? 'complete' : 'upcoming'}>
+                      <div className="owner-pill px-3 py-1 text-[12px]" data-tone={isDone ? 'success' : undefined} aria-current={isActive ? 'step' : undefined}>
                         {idx + 1}
                       </div>
-                      <span
-                        className={['text-sm', isActive ? 'text-[#111827] font-medium' : 'text-[#6B7280]'].join(' ')}
-                      >
+                      <span className={`text-sm ${isActive ? 'font-semibold text-[color:var(--text-primary)]' : 'text-[color:var(--text-muted)]'}`}>
                         {label}
                       </span>
                       {idx < steps.length - 1 && <span className="mx-1 h-px w-8 bg-[#E5E7EB]" />}
@@ -820,14 +805,14 @@ export default function Home(): JSX.Element {
             {/* Content grid */}
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
               {/* Left Card (wizard body) */}
-              <div className="rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
+              <div className="owner-card rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
                 {stepGuidance && (
                   <div
                     className={[
                       'mb-5 rounded-xl border p-4 text-sm',
                       stepGuidance.tone === 'warn'
                         ? 'border-[#F59E0B] bg-[#FFFBEB] text-[#7C2D12]'
-                        : 'border-[#E5E7EB] bg-[#F9FAFB] text-[#4B5563]',
+                        : 'border-[#E5E7EB] bg-[rgba(255,255,255,0.9)] text-[color:var(--text-secondary)]',
                     ].join(' ')}
                   >
                     <div className="text-[12px] font-semibold uppercase tracking-wide text-[#111827]">
@@ -839,7 +824,7 @@ export default function Home(): JSX.Element {
                       ))}
                     </ul>
                     {stepGuidance.meta && (
-                      <div className="mt-3 text-xs text-[#4B5563]">{stepGuidance.meta}</div>
+                      <div className="mt-3 text-xs text-[color:var(--text-secondary)]">{stepGuidance.meta}</div>
                     )}
                   </div>
                 )}
@@ -849,7 +834,7 @@ export default function Home(): JSX.Element {
                     <UploadZone onFile={onFile} />
                     <div className="flex gap-2">
                       <button
-                        className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[#EEF2FF] text-[#111827]"
+                        className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] text-[#111827]"
                         onClick={() => console.log('[wizard] waiting for upload')}
                         title="Upload a file to continue"
                       >
@@ -864,12 +849,12 @@ export default function Home(): JSX.Element {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-[15px] font-semibold">{parseResult.fileName}</div>
-                        <div className="mt-1 text-sm text-[#6B7280]">
+                        <div className="mt-1 text-sm text-[color:var(--text-secondary)]">
                           Mapping helps align headers. If skipped, the extractor still attempts to read totals.
                         </div>
                       </div>
                     </div>
-                    <div className="rounded-xl border border-white/20 p-3">
+                    <div className="owner-card rounded-xl border border-white/20 p-3">
                       <HeaderMapper
                         requiredFields={requiredFields}
                         detectedHeaders={(parseResult.sheets[0] as any)?.headers ?? []}
@@ -880,7 +865,7 @@ export default function Home(): JSX.Element {
                       />
                     </div>
                     <div className="flex gap-2">
-                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[#EEF2FF]" onClick={prev}>
+                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]" onClick={prev}>
                         Back
                       </button>
                       <button
@@ -897,17 +882,17 @@ export default function Home(): JSX.Element {
                 {step === 2 && (
                   <div className="space-y-5">
                     <div className="text-[15px] font-semibold">Validate</div>
-                    <div className="rounded-xl border border-white/20 p-4 text-sm">
+                    <div className="owner-card rounded-xl border border-white/20 p-4 text-sm">
                       <div className="mb-2 font-medium text-[#111827]">Checks</div>
                       <ul className="list-disc pl-5 text-[#374151]">
                         <li>Required fields mapped (optional for this prototype)</li>
                         <li>Month band detection from the grid</li>
                         <li>Series-by-label will be saved alongside totals</li>
                       </ul>
-                    <div className="mt-3 text-[#6B7280]">Result: {validateMsg || '-'}</div>
+                    <div className="mt-3 text-[color:var(--text-secondary)]">Result: {validateMsg || '-'}</div>
                     </div>
                     <div className="flex gap-2">
-                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[#EEF2FF]" onClick={prev}>
+                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]" onClick={prev}>
                         Back
                       </button>
                       <button
@@ -927,27 +912,27 @@ export default function Home(): JSX.Element {
 
                     <div className="grid gap-3 sm:grid-cols-3">
                       <label className="text-sm">
-                        <span className="mb-1 block text-[#4B5563]">Facility</span>
+                        <span className="mb-1 block text-[color:var(--text-secondary)]">Facility</span>
                         <input
-                          className="h-10 w-full rounded-xl border border-white/25 bg-white/90 px-4 text-sm text-[#0B1120] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+                          className="h-10 w-full rounded-xl border border-white/25 bg-white/90 px-4 text-sm text-[color:var(--text-primary)] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
                           value={facility}
                           onChange={(e) => setFacility(e.target.value)}
                         />
                       </label>
                       <label className="text-sm">
-                        <span className="mb-1 block text-[#4B5563]">Period</span>
+                        <span className="mb-1 block text-[color:var(--text-secondary)]">Period</span>
                         <input
-                          className="h-10 w-full rounded-xl border border-white/25 bg-white/90 px-4 text-sm text-[#0B1120] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+                          className="h-10 w-full rounded-xl border border-white/25 bg-white/90 px-4 text-sm text-[color:var(--text-primary)] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
                           value={period}
                           onChange={(e) => setPeriod(e.target.value)}
                         />
                       </label>
                       <label className="text-sm">
-                        <span className="mb-1 block text-[#4B5563]">
+                        <span className="mb-1 block text-[color:var(--text-secondary)]">
                           <abbr title="Net Operating Income">Preview NOI</abbr> (auto)
                         </span>
                         <input
-                          className="h-10 w-full rounded-xl border border-white/25 bg-white/90 px-4 text-sm text-[#0B1120] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+                          className="h-10 w-full rounded-xl border border-white/25 bg-white/90 px-4 text-sm text-[color:var(--text-primary)] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
                           type="number"
                           value={previewNoi}
                           onChange={(e) => setPreviewNoi(Number(e.target.value))}
@@ -955,7 +940,7 @@ export default function Home(): JSX.Element {
                       </label>
                     </div>
 
-                    <div className="rounded-xl border border-white/20 p-4 space-y-4">
+                    <div className="owner-card rounded-xl border border-white/20 p-4 space-y-4">
                       <AssumptionRow
                         label="rentalIncome"
                         value={assumptions.rentalIncome}
@@ -986,7 +971,7 @@ export default function Home(): JSX.Element {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 rounded-2xl border border-[#DBEAFE]/80 bg-[#EEF2FF]/70 p-5 text-xs text-[#1E3A8A] shadow-inner sm:grid-cols-2">
+                    <div className="grid gap-3 rounded-2xl border border-[#DBEAFE]/80 bg-[rgba(37,99,235,0.08)]/70 p-5 text-xs text-[color:var(--accent-strong)] shadow-inner sm:grid-cols-2">
                       <div>
                         <div className="text-[12px] font-semibold uppercase tracking-wide text-[#1D4ED8]">
                           Revenue focus
@@ -1008,10 +993,10 @@ export default function Home(): JSX.Element {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[#EEF2FF]" onClick={prev}>
+                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]" onClick={prev}>
                         Back
                       </button>
-                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[#EEF2FF]" onClick={buildPreviewSeries}>
+                      <button className="h-10 rounded-full border border-[#CBD5F5] bg-white/80 px-5 text-sm font-medium text-[#1D4ED8] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)]" onClick={buildPreviewSeries}>
                         Preview Series
                       </button>
                       <button
@@ -1036,8 +1021,8 @@ export default function Home(): JSX.Element {
                   <div className="space-y-5">
                     <div>
                       <div className="text-[15px] font-semibold">Preview</div>
-                      <div className="mt-1 text-sm text-[#6B7280]">
-                      <div className="mt-1 text-sm text-[#6B7280]">Period <span className="tabular-nums">{period}</span> - Facility {facility}</div>
+                      <div className="mt-1 text-sm text-[color:var(--text-secondary)]">
+                      <div className="mt-1 text-sm text-[color:var(--text-secondary)]">Period <span className="tabular-nums">{period}</span> - Facility {facility}</div>
                       </div>
                     </div>
 
@@ -1045,15 +1030,15 @@ export default function Home(): JSX.Element {
                       {previewStats.map((stat) => (
                         <div
                           key={stat.key}
-                          className="rounded-xl border border-white/20 bg-[#F3F4F6] p-4"
+                          className="owner-card rounded-xl border border-white/20 bg-[#F3F4F6] p-4"
                         >
-                          <div className="text-[11px] font-medium uppercase tracking-wide text-[#6B7280]">
+                          <div className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--text-secondary)]">
                             {stat.label}
                           </div>
                           <div className="mt-1 text-[20px] font-semibold text-[#111827]">
                             {stat.value}
                           </div>
-                          <div className="mt-1 text-xs text-[#4B5563]">{stat.caption}</div>
+                          <div className="mt-1 text-xs text-[color:var(--text-secondary)]">{stat.caption}</div>
                         </div>
                       ))}
                     </div>
@@ -1061,7 +1046,7 @@ export default function Home(): JSX.Element {
                     {seriesPreview && (
                       <div className="overflow-auto rounded-xl border border-white/20">
                         <table className="w-full table-fixed text-left text-sm">
-                          <thead className="sticky top-0 z-10 bg-[#F9FAFB] text-[#6B7280]">
+                          <thead className="sticky top-0 z-10 bg-[rgba(255,255,255,0.9)] text-[color:var(--text-secondary)]">
                             <tr>
                               <th className="w-48 px-3 py-2">Line</th>
                               {Array.from({ length: 12 }).map((_, i) => (
@@ -1114,7 +1099,7 @@ export default function Home(): JSX.Element {
                       <button
                         type="button"
                         onClick={onExportExcel}
-                        className="inline-flex h-10 items-center justify-center rounded-full border border-[#2563EB]/70 bg-[#F5F7FF] px-5 text-sm font-semibold text-[#1E3A8A] transition hover:border-[#1D4ED8] hover:bg-[#E0ECFF]"
+                        className="inline-flex h-10 items-center justify-center rounded-full border border-[#2563EB]/70 bg-[#F5F7FF] px-5 text-sm font-semibold text-[color:var(--accent-strong)] transition hover:border-[#1D4ED8] hover:bg-[#E0ECFF]"
                         title="Download an .xlsx export"
                       >
                         Export Proforma (.xlsx)
@@ -1134,11 +1119,11 @@ export default function Home(): JSX.Element {
               {/* Right rail */}
               <div className="space-y-6">
                 {/* Recent Snapshots */}
-                <div className="rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
+                <div className="owner-card rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
                   <div className="mb-4 text-[15px] font-semibold">Recent Snapshots</div>
                   <div className="overflow-hidden rounded-xl border border-white/20">
                     <table className="w-full text-left text-[13px]">
-                      <thead className="bg-[#F9FAFB] text-[#6B7280]">
+                      <thead className="bg-[rgba(255,255,255,0.9)] text-[color:var(--text-secondary)]">
                         <tr>
                           <th className="px-3 py-2 font-medium">Facility</th>
                           <th className="px-3 py-2 font-medium">Period</th>
@@ -1179,7 +1164,7 @@ export default function Home(): JSX.Element {
                         ))}
                         {recent.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="px-3 py-6 text-center text-[#6B7280]">
+                            <td colSpan={5} className="px-3 py-6 text-center text-[color:var(--text-secondary)]">
                               No snapshots yet.
                             </td>
                           </tr>
@@ -1190,9 +1175,9 @@ export default function Home(): JSX.Element {
                 </div>
 
                 {/* Automation snapshot */}
-                <div className="rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
+                <div className="owner-card rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
                   <div className="mb-3 text-[15px] font-semibold">Automation Snapshot</div>
-                  <div className="space-y-3 text-[13px] text-[#4B5563]">
+                  <div className="space-y-3 text-[13px] text-[color:var(--text-secondary)]">
                     <div className="flex items-center justify-between">
                       <span>Auto-map headers</span>
                       <span
@@ -1207,7 +1192,7 @@ export default function Home(): JSX.Element {
                       <span>Detect facility &amp; period</span>
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          auto.autoDetectFacilityPeriod ? 'bg-[#DBEAFE] text-[#1D4ED8]' : 'bg-[#FEE2E2] text-[#B91C1C]'
+                          auto.autoDetectFacilityPeriod ? 'bg-[rgba(37,99,235,0.12)] text-[#1D4ED8]' : 'bg-[#FEE2E2] text-[#B91C1C]'
                         }`}
                       >
                         {auto.autoDetectFacilityPeriod ? 'Active' : 'Off'}
@@ -1220,7 +1205,7 @@ export default function Home(): JSX.Element {
                       </span>
                     </div>
                   </div>
-                  <div className="mt-4 rounded-2xl border border-dashed border-[#DBEAFE]/70 bg-[#EEF2FF]/70 p-5 text-xs text-[#1E3A8A] shadow-inner">
+                  <div className="mt-4 rounded-2xl border border-dashed border-[#DBEAFE]/70 bg-[rgba(37,99,235,0.08)]/70 p-5 text-xs text-[color:var(--accent-strong)] shadow-inner">
                     <div className="flex items-baseline justify-between">
                       <span className="font-medium uppercase tracking-wide">Confidence threshold</span>
                       <span>{Math.round(auto.threshold * 100)}%</span>
@@ -1233,9 +1218,9 @@ export default function Home(): JSX.Element {
                 </div>
 
                 {/* Export checklist */}
-                <div className="rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
+                <div className="owner-card rounded-2xl border border-white/30 bg-white/90 p-6 shadow-xl backdrop-blur-md">
                   <div className="mb-3 text-[15px] font-semibold">Export Checklist</div>
-                  <ul className="space-y-2 text-[13px] text-[#4B5563]">
+                  <ul className="space-y-2 text-[13px] text-[color:var(--text-secondary)]">
                     <li className="flex items-start gap-2">
                       <span className="mt-[3px] inline-block h-3 w-3 flex-none rounded-full bg-[#2563EB]" />
                       <span>Validate headers and facility metadata before generating.</span>
@@ -1249,7 +1234,7 @@ export default function Home(): JSX.Element {
                       <span>Share exports from the right rail to keep stakeholders aligned.</span>
                     </li>
                     {recent.length > 0 && (
-                      <li className="flex items-start gap-2 text-[#1E3A8A]">
+                      <li className="flex items-start gap-2 text-[color:var(--accent-strong)]">
                         <span className="mt-[3px] inline-block h-3 w-3 flex-none rounded-full bg-[#1E3A8A]" />
                         <span>Latest snapshot: {recent[0]?.facility ?? ''} - {recent[0]?.period ?? ''}</span>
                       </li>
@@ -1272,6 +1257,11 @@ export default function Home(): JSX.Element {
     </div>
   );
 }
+
+
+
+
+
 
 
 

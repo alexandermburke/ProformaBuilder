@@ -48,20 +48,22 @@ export default function UploadZone({ onFile }: UploadZoneProps): JSX.Element {
   return (
     <label
       htmlFor="upload-zone-input"
-      className={`group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-white/30 bg-gradient-to-br from-[#F8FAFF] via-white to-[#EEF2FF] p-6 text-center shadow-lg transition-all hover:-translate-y-0.5 hover:border-[#93C5FD] hover:shadow-xl ${
-        isDragging ? 'ring-2 ring-[#2563EB]/40' : ''
+      className={`ios-card ios-animate-up group relative flex cursor-pointer flex-col items-center justify-center overflow-hidden p-8 text-center transition-all duration-500 ${
+        isDragging ? 'ring-4 ring-[var(--accent)]/40' : ''
       }`}
       onDragEnter={toggleDrag(true)}
       onDragOver={toggleDrag(true)}
       onDragLeave={toggleDrag(false)}
       onDrop={onDrop}
     >
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,#DBEAFE_0%,transparent_60%)] opacity-80 transition-opacity group-hover:opacity-100" />
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/80 shadow-sm">
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.18)_0%,transparent_65%)] opacity-75 transition-opacity duration-500 group-hover:opacity-95" />
+      <div className="pointer-events-none absolute -top-20 right-0 -z-10 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(14,165,233,0.25),transparent_65%)] blur-3xl opacity-60 group-hover:opacity-75" />
+
+      <div className="flex h-16 w-16 items-center justify-center rounded-[26px] border border-white/60 bg-white/70 text-[color:var(--accent-strong)] shadow-[0_16px_36px_rgba(15,23,42,0.12)] backdrop-blur-md transition-transform duration-500 group-hover:scale-110 group-hover:shadow-[0_22px_44px_rgba(37,99,235,0.22)]">
         <svg
           aria-hidden
           viewBox="0 0 24 24"
-          className="h-7 w-7 text-[#2563EB] transition-transform group-hover:scale-105"
+          className="h-8 w-8 text-[var(--accent-strong)] transition-transform duration-500 group-hover:rotate-3"
         >
           <path
             fill="currentColor"
@@ -74,22 +76,22 @@ export default function UploadZone({ onFile }: UploadZoneProps): JSX.Element {
         </svg>
       </div>
 
-      <div className="mt-4 space-y-2">
-        <p className="text-base font-semibold text-[#0B1120]">
+      <div className="mt-5 space-y-2 text-balance">
+        <p className="text-lg font-semibold text-[color:var(--text-primary)]">
           Drop your Excel file here
         </p>
-        <p className="text-sm text-[#4B5563]">
-          .xls or .xlsx - streamlined parsing happens right in your browser.
+        <p className="text-sm text-[color:var(--text-secondary)]">
+          .xls or .xlsx &mdash; streamlined parsing happens securely in your browser.
         </p>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-center gap-3 text-sm">
-        <span className="rounded-full border border-[#DBEAFE] bg-[#EEF2FF] px-4 py-1 text-xs font-semibold text-[#2563EB]">
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm">
+        <span className="ios-pill text-[11px] uppercase tracking-[0.24em]">
           Secure &amp; private
         </span>
         <button
           type="button"
-          className="rounded-full bg-[#2563EB] px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white shadow-sm transition hover:bg-[#1D4ED8]"
+          className="ios-button px-6 py-2 text-xs uppercase tracking-[0.18em]"
           onClick={() => inputRef.current?.click()}
         >
           Browse files

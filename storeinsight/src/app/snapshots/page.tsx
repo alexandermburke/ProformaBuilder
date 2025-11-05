@@ -4,6 +4,7 @@ import Link from 'next/link';
 import React from 'react';
 import type { JSX } from 'react';
 
+import { useTheme } from '@/components/ThemeProvider';
 import { subscribeSnapshots } from '@/lib/snapshots';
 import type { SnapshotRowLite } from '@/lib/types';
 
@@ -20,6 +21,15 @@ function formatCurrency(value: number | null | undefined): string {
 
 export default function SnapshotsPage(): JSX.Element {
   const [rows, setRows] = React.useState<SnapshotRowLite[]>([]);
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
+  const overlayTop = isDark
+    ? 'bg-[radial-gradient(circle_at_12%_12%,rgba(59,130,246,0.26),transparent_60%)]'
+    : 'bg-[radial-gradient(circle_at_18%_10%,rgba(37,99,235,0.18),transparent_60%)]';
+  const overlayBottom = isDark
+    ? 'bg-[radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.22),transparent_62%)]'
+    : 'bg-[radial-gradient(circle_at_84%_88%,rgba(125,211,252,0.16),transparent_62%)]';
 
   React.useEffect(() => {
     const unsub = subscribeSnapshots((items) => {
@@ -57,95 +67,92 @@ export default function SnapshotsPage(): JSX.Element {
   }, [sortedRows]);
 
   return (
-    <div className="min-h-screen w-full bg-white text-[#111827]">
-      <div className="mx-auto max-w-[1200px] p-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="text-[26px] font-semibold tracking-tight">Snapshots</div>
-            <div className="mt-1 text-sm text-[#6B7280]">
-              Live view of generated proforma snapshots with quick facility trends.
-            </div>
-          </div>
-          <Link
-            href="/"
-            className="inline-flex items-center rounded-lg border border-[#D1D5DB] px-3 py-2 text-sm text-[#1D4ED8] hover:bg-[#EEF2FF]"
-          >
-            ← Back to Create Report
-          </Link>
-        </div>
+    <div className="relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="relative mx-auto max-w-[1200px] px-6 py-10">
+        <header className="ios-card ios-animate-up flex flex-wrap items-center justify-between gap-4 p-6" data-tone="blue">
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-[27px]">Snapshots</h1>
+            <p className="text-sm text-[color:var(--text-secondary)]">
+              Live view of generated proforma snapshots with quick facility trends.
+            </p>
+          </div>
+          <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
+            Back to report builder
+          </Link>
+        </header>
+
+        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-6">
-            <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <section className="ios-card ios-animate-up space-y-5 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[17px] font-semibold">Snapshot activity</div>
-                  <div className="text-xs uppercase tracking-wide text-[#9CA3AF]">Totals &amp; latest entry</div>
+                  <div className="text-lg font-semibold text-[color:var(--text-primary)]">Snapshot activity</div>
+                  <div className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">Totals and latest entry</div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-xs text-[#4B5563]">
-                    <div className="uppercase tracking-wide text-[11px] text-[#9CA3AF]">Snapshots</div>
-                    <div className="mt-1 text-[18px] font-semibold text-[#111827]">
-                      {stats.count}
-                    </div>
+                  <div className="ios-list-card space-y-1 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Snapshots</div>
+                    <div className="text-[18px] font-semibold text-[color:var(--text-primary)]">{stats.count}</div>
                   </div>
-                  <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-xs text-[#4B5563]">
-                    <div className="uppercase tracking-wide text-[11px] text-[#9CA3AF]">Avg NOI</div>
-                    <div className="mt-1 text-[18px] font-semibold text-[#111827]">
+                  <div className="ios-list-card space-y-1 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Avg NOI</div>
+                    <div className="text-[18px] font-semibold text-[color:var(--text-primary)]">
                       {formatCurrency(stats.avgNoi)}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-2 text-xs text-[#4B5563]">
-                    <div className="uppercase tracking-wide text-[11px] text-[#9CA3AF]">Facilities</div>
-                    <div className="mt-1 text-[18px] font-semibold text-[#111827]">
+                  <div className="ios-list-card space-y-1 p-4">
+                    <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Facilities</div>
+                    <div className="text-[18px] font-semibold text-[color:var(--text-primary)]">
                       {stats.uniqueFacilities}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[#E5E7EB] overflow-hidden">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-[#F9FAFB] text-[#6B7280]">
+              <div className="overflow-hidden rounded-[20px] border border-[rgba(148,163,255,0.25)] bg-white/90 shadow-inner dark:bg-[rgba(12,19,36,0.8)]">
+                <table className="ios-table text-sm">
+                  <thead>
                     <tr>
-                      <th className="px-3 py-2">ID</th>
-                      <th className="px-3 py-2">Facility</th>
-                      <th className="px-3 py-2">Period</th>
+                      <th className="px-3 py-2 text-left">ID</th>
+                      <th className="px-3 py-2 text-left">Facility</th>
+                      <th className="px-3 py-2 text-left">Period</th>
                       <th className="px-3 py-2 text-right">
                         <abbr title="Net Operating Income">NOI</abbr>
                       </th>
-                      <th className="px-3 py-2">Created By</th>
-                      <th className="px-3 py-2">Created</th>
+                      <th className="px-3 py-2 text-left">Created by</th>
+                      <th className="px-3 py-2 text-left">Created at</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedRows.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-6 text-center text-[#6B7280]">
-                          No snapshots yet.{' '}
-                          <Link className="text-[#2563EB] underline-offset-2 hover:underline" href="/">
-                            Create one
-                          </Link>
-                          .
+                        <td className="px-4 py-6 text-center text-[color:var(--text-secondary)]" colSpan={6}>
+                          No snapshots yet. Run Generate in the proforma flow to populate this table.
                         </td>
                       </tr>
                     )}
                     {sortedRows.map((row) => (
-                      <tr key={row.id} className="border-t border-[#E5E7EB] hover:bg-[#FAFAFB]">
-                        <td className="px-3 py-2 font-mono text-xs">{row.id}</td>
-                        <td className="px-3 py-2">
+                      <tr
+                        key={row.id}
+                        className="transition-colors duration-300 hover:bg-[rgba(37,99,235,0.06)] dark:hover:bg-[rgba(37,99,235,0.16)]"
+                      >
+                        <td className="px-3 py-2 font-mono text-xs text-[color:var(--text-secondary)]">{row.id}</td>
+                        <td className="px-3 py-2 text-[color:var(--text-primary)]">
                           <div className="max-w-[220px] break-words leading-tight">{row.facility}</div>
                         </td>
                         <td className="px-3 py-2">
-                          <span className="rounded-full bg-[#F3F4F6] px-2 py-0.5 text-[12px] text-[#374151]">
+                          <span className="ios-pill text-[11px]" data-tone="neutral">
                             {row.period}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2 text-right tabular-nums text-[color:var(--text-primary)]">
                           {row.noi.toLocaleString()}
                         </td>
-                        <td className="px-3 py-2">{row.createdBy}</td>
-                        <td className="px-3 py-2 text-[#6B7280]">
+                        <td className="px-3 py-2 text-[color:var(--text-secondary)]">{row.createdBy}</td>
+                        <td className="px-3 py-2 text-[color:var(--text-muted)]">
                           {new Date(row.createdAt).toLocaleString()}
                         </td>
                       </tr>
@@ -155,26 +162,31 @@ export default function SnapshotsPage(): JSX.Element {
               </div>
             </section>
 
-            <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="mb-4">
-                <div className="text-[17px] font-semibold">Top facilities by NOI</div>
-                <div className="text-xs uppercase tracking-wide text-[#9CA3AF]">Rolling sum of exported snapshots</div>
+            <section className="ios-card ios-animate-up space-y-4 p-6">
+              <div>
+                <div className="text-lg font-semibold text-[color:var(--text-primary)]">Top facilities by NOI</div>
+                <div className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
+                  Rolling sum of exported snapshots
+                </div>
               </div>
               <ul className="space-y-3">
                 {topFacilities.length === 0 && (
-                  <li className="rounded-xl border border-dashed border-[#D1D5DB] bg-[#F9FAFB] px-4 py-3 text-sm text-[#6B7280]">
+                  <li className="ios-list-card border border-dashed border-[rgba(148,163,255,0.32)] bg-white/85 p-4 text-sm text-[color:var(--text-secondary)] shadow-inner">
                     Generate a snapshot to populate this list.
                   </li>
                 )}
                 {topFacilities.map(([facility, noi], idx) => (
-                  <li key={facility} className="flex items-center justify-between rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-sm text-[#111827]">
+                  <li
+                    key={facility}
+                    className="ios-list-card flex items-center justify-between p-4 text-sm text-[color:var(--text-primary)]"
+                  >
                     <div className="flex items-center gap-3">
-                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#EEF2FF] text-sm font-semibold text-[#1D4ED8]">
+                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgba(37,99,235,0.12)] text-sm font-semibold text-[color:var(--accent-strong)]">
                         {idx + 1}
                       </span>
                       <span className="font-medium">{facility}</span>
                     </div>
-                    <span className="text-[#4B5563]">{formatCurrency(noi)}</span>
+                    <span className="text-[color:var(--text-secondary)]">{formatCurrency(noi)}</span>
                   </li>
                 ))}
               </ul>
@@ -182,20 +194,18 @@ export default function SnapshotsPage(): JSX.Element {
           </div>
 
           <aside className="space-y-6">
-            <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="text-[15px] font-semibold">Snapshot cadence</div>
-              <p className="mt-2 text-sm text-[#4B5563]">
-                Snapshots subscribe to Firestore updates. If you do not see a recent run, confirm that the
-                Generate step completed and the Firestore write succeeded.
+            <section className="ios-card ios-animate-up space-y-4 p-6">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Snapshot cadence</div>
+              <p className="text-sm text-[color:var(--text-secondary)]">
+                Snapshots subscribe to Firestore updates. If you do not see a recent run, confirm that Generate completed and
+                the Firestore write succeeded.
               </p>
-              <div className="mt-4 rounded-lg border border-dashed border-[#DBEAFE] bg-[#F8FBFF] p-4 text-xs text-[#1E40AF]">
+              <div className="rounded-[16px] border border-dashed border-[rgba(148,163,255,0.35)] bg-[rgba(37,99,235,0.08)] p-4 text-xs text-[color:var(--accent-strong)]">
                 <div className="font-medium uppercase tracking-wide">Latest run</div>
-                <div className="mt-1 text-sm text-[#1F2937]">
-                  {stats.latest
-                    ? `${stats.latest.facility} · ${stats.latest.period}`
-                    : 'Waiting for first snapshot'}
+                <div className="mt-1 text-sm text-[color:var(--text-primary)]">
+                  {stats.latest ? `${stats.latest.facility} - ${stats.latest.period}` : 'Waiting for first snapshot'}
                 </div>
-                <p className="mt-2 leading-snug text-[#1E40AF]">
+                <p className="mt-2 leading-snug">
                   {stats.latest
                     ? `Created ${new Date(stats.latest.createdAt).toLocaleString()} by ${stats.latest.createdBy}.`
                     : 'Use Generate in the report builder to publish a row.'}
@@ -203,12 +213,12 @@ export default function SnapshotsPage(): JSX.Element {
               </div>
             </section>
 
-            <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
-              <div className="text-[15px] font-semibold">Tips</div>
-              <ul className="mt-3 list-disc space-y-2 pl-5 text-[13px] text-[#4B5563]">
+            <section className="ios-card ios-animate-up space-y-3 p-6">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Tips</div>
+              <ul className="list-disc space-y-2 pl-5 text-[13px] text-[color:var(--text-secondary)]">
                 <li>Keep facility names consistent so historical NOI aggregates correctly.</li>
                 <li>Use the Export page to download the Excel file tied to the latest snapshot.</li>
-                <li>Snapshots refresh live—no need to reload the page after generating.</li>
+                <li>Snapshots refresh live, so there is no need to reload the page after generating.</li>
               </ul>
             </section>
           </aside>

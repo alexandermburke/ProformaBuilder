@@ -81,15 +81,6 @@ type BudgetOptions = {
   overrides?: Record<string, number>;
 };
 
-function toStringRecord(input?: Record<string, number>): Record<string, string> {
-  if (!input) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(input)) {
-    out[key] = String(value);
-  }
-  return out;
-}
-
 export async function buildOwnerPptx(
   data: OwnerFields,
   options?: BudgetOptions,
@@ -110,15 +101,20 @@ export async function buildOwnerPptx(
     }
   }
 
-  const prepared = {
+  const mergedTokens: Record<string, string | number> = {
     ...ownerTokens,
-    ...toStringRecord(budgetTokens),
-    ...toStringRecord(options?.overrides),
+    ...budgetTokens,
+    ...(options?.overrides ?? {}),
   };
 
-  const templateTokens = normalizeTemplateTokens(zip, Object.keys(prepared));
+  const payload: Record<string, string> = {};
+  for (const [key, value] of Object.entries(mergedTokens)) {
+    payload[key] = typeof value === "number" ? String(value) : String(value ?? "");
+  }
+
+  const templateTokens = normalizeTemplateTokens(zip, Object.keys(payload));
   for (const token of templateTokens) {
-    if (!(token in prepared)) prepared[token] = "";
+    if (!(token in payload)) payload[token] = "";
   }
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
@@ -126,7 +122,7 @@ export async function buildOwnerPptx(
     delimiters: { start: "{{", end: "}}" },
     nullGetter: () => "",
   });
-  doc.setData(prepared);
+  doc.setData(payload);
   try {
     doc.render();
   } catch (err) {

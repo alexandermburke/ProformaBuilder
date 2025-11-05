@@ -28,9 +28,9 @@ const features: Feature[] = [
     tone: 'purple',
     icon: 'document',
     highlights: [
-      'Map income statement exports into STORE chart of accounts',
-      'Surface unmapped and mismatched ledger lines before month-end',
-      'Apply header suggestions learned from prior vendor imports',
+      'Ingest income statements directly into STORE templates',
+      'Flag mapping exceptions and variance discrepancies',
+      'Suggest headers based on vendor history',
     ],
     disabled: true,
   },
@@ -42,9 +42,9 @@ const features: Feature[] = [
     tone: 'blue',
     icon: 'layers',
     highlights: [
-      'Guide analysts through upload, mapping, validation, and export',
-      'Calculate NOI scenarios with configurable STORE assumptions',
-      'Generate proforma workbooks ready for review',
+      'Walk through upload, mapping, validation, and export steps',
+      'Model NOI scenarios with configurable STORE assumptions',
+      'Produce outputs formatted for internal review',
     ],
     disabled: true,
   },
@@ -56,9 +56,9 @@ const features: Feature[] = [
     tone: 'green',
     icon: 'globe',
     highlights: [
-      'Blend STORE portfolio results with market benchmarks',
-      'Assemble owner decks with structured commentary sections',
-      'Queue recurring owner report deliveries around asset manager cycles',
+      'Combine STORE portfolio data with market comparisons',
+      'Assemble OSR packs with internal commentary sections',
+      'Schedule recurring deliveries aligned to asset manager timelines',
     ],
   },
 ];
@@ -216,9 +216,9 @@ export default function DirectoryPage(): JSX.Element {
                 </div>
                 <ul className="space-y-2 text-sm text-[color:var(--text-muted)]">
                   {feature.highlights.map((highlight) => (
-                    <li key={highlight} className="flex items-start gap-2 text-left">
-                      <span className="mt-1 inline-flex h-1.5 w-1.5 flex-none rounded-full bg-[rgba(37,99,235,0.7)]" />
-                      <span className="flex-1 leading-snug">{highlight}</span>
+                    <li key={highlight} className="flex items-start gap-2">
+                      <span className="mt-[6px] inline-flex h-1.5 w-1.5 flex-none rounded-full bg-[rgba(37,99,235,0.7)]" />
+                      <span>{highlight}</span>
                     </li>
                   ))}
                 </ul>

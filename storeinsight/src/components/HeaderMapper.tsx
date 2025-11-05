@@ -32,16 +32,14 @@ export default function HeaderMapper(props: HeaderMapperProps): JSX.Element {
   );
 
   return (
-    <div className="space-y-5 rounded-2xl border border-white/30 bg-white/85 p-6 shadow-lg backdrop-blur-sm">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2563EB]">
-            Header mapping
-          </p>
-          <h2 className="text-lg font-semibold text-[#0B1120]">
+    <div className="ios-card ios-animate-up space-y-6 p-6 md:p-7">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-2">
+          <span className="ios-badge text-[10px]">Header mapping</span>
+          <h2 className="text-lg font-semibold text-[color:var(--text-primary)] md:text-xl">
             Align required STORE fields with your uploaded columns.
           </h2>
-          <p className="text-sm text-[#4B5563]">
+          <p className="text-sm leading-relaxed text-[color:var(--text-secondary)]">
             We detected {detectedCount} column{detectedCount === 1 ? '' : 's'}. Map anything missing to unlock automation.
           </p>
         </div>
@@ -49,36 +47,38 @@ export default function HeaderMapper(props: HeaderMapperProps): JSX.Element {
           <button
             type="button"
             onClick={onApplyAll}
-            className="inline-flex items-center gap-2 rounded-full border border-[#2563EB]/20 bg-[#2563EB]/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] transition hover:border-[#2563EB]/40 hover:bg-[#2563EB]/15"
+            className="ios-button px-6 py-2 text-xs uppercase tracking-[0.2em]"
+            data-variant="secondary"
           >
             Apply suggestions
-            <span aria-hidden className="text-[#2563EB]">{'->'}</span>
           </button>
         )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {requiredFields.map((field) => {
+        {requiredFields.map((field, index) => {
           const hint = hints?.[field] ?? null;
           const hintScore = hint ? `${Math.round(hint.score * 100)}%` : null;
 
           return (
             <label
               key={field}
-              className="group flex flex-col gap-2 rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB]/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#93C5FD] hover:shadow-md"
+              className={`group ios-list-card flex flex-col gap-3 p-4 transition-all duration-500 hover:-translate-y-1 md:p-5 ${
+                index > 1 ? 'ios-animate-up ios-animate-delay-sm' : 'ios-animate-up'
+              }`}
             >
-              <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-[#0B1120]">
+              <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-[color:var(--text-primary)]">
                 {field}
                 {hint && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E0F2FE] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#0369A1]">
+                  <span className="ios-pill text-[11px]" data-tone="neutral">
                     {hintScore}
-                    <span aria-hidden className="text-[#0284C7]">*</span>
+                    <span aria-hidden className="font-semibold text-[color:var(--accent-strong)]">|</span>
                     {hint.header}
                   </span>
                 )}
               </span>
               <select
-                className="w-full rounded-xl border border-[#D1D5DB] bg-white px-3 py-2 text-sm text-[#111827] transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
+                className="w-full rounded-[18px] border border-[color:var(--border-soft)] bg-white/90 px-3 py-2.5 text-sm text-[color:var(--text-primary)] shadow-[0_6px_18px_rgba(15,23,42,0.06)] transition focus:border-[color:var(--accent)] focus:outline-none focus:ring-4 focus:ring-[color:var(--focus-ring)]"
                 value={value[field] ?? ''}
                 onChange={(event) => setField(field, event.target.value)}
               >
@@ -90,7 +90,7 @@ export default function HeaderMapper(props: HeaderMapperProps): JSX.Element {
                 ))}
               </select>
               {!value[field] && (
-                <span className="text-xs text-[#6B7280]">
+                <span className="text-xs text-[color:var(--text-muted)]">
                   Required mapping missing - choose a source column.
                 </span>
               )}
