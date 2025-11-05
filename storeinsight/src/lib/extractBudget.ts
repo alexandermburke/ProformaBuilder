@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 
 type CellValue = string | number | boolean | Date | null | undefined;
 type Grid = CellValue[][];
-type WorkbookInput = ArrayBuffer | Buffer;
+type WorkbookInput = ArrayBuffer | Uint8Array | Buffer;
 
 const norm = (value: unknown): string =>
   String(value ?? "")
@@ -88,8 +88,13 @@ const toWorkbookSource = (
   if (typeof Buffer !== "undefined" && Buffer.isBuffer(input)) {
     return { data: input, type: "buffer" };
   }
-  const array = input instanceof ArrayBuffer ? new Uint8Array(input) : new Uint8Array(input as ArrayBuffer);
-  return { data: array, type: "array" };
+  if (input instanceof ArrayBuffer) {
+    return { data: new Uint8Array(input), type: "array" };
+  }
+  if (input instanceof Uint8Array) {
+    return { data: input, type: "array" };
+  }
+  throw new TypeError("Unsupported workbook input type");
 };
 
 const readWorkbook = (input: WorkbookInput): XLSX.WorkBook => {
