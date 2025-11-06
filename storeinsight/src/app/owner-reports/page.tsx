@@ -1,4 +1,6 @@
-﻿"use client";
+﻿// Presentation on hero page via Javascript - think Apple like presentation to update David & Mark on changes like UI, Logic, etc. 
+
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
