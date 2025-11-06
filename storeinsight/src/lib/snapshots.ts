@@ -33,18 +33,21 @@ export function subscribeSnapshots(
   return onSnapshot(q, (snap) => {
     const rows: SnapshotRowLite[] = [];
     snap.forEach((d) => {
-      const data = d.data() as any;
+      const data = d.data() as Record<string, unknown>;
+      const createdAtRaw = data.createdAt;
       const createdAt =
-        data.createdAt instanceof Timestamp
-          ? data.createdAt.toDate().toISOString()
-          : (data.createdAt ?? new Date().toISOString());
+        createdAtRaw instanceof Timestamp
+          ? createdAtRaw.toDate().toISOString()
+          : typeof createdAtRaw === 'string'
+            ? createdAtRaw
+            : new Date().toISOString();
 
       rows.push({
-        id: data.id,
-        facility: data.facility,
-        period: data.period,
+        id: String(data.id ?? d.id),
+        facility: typeof data.facility === 'string' ? data.facility : 'Unknown Facility',
+        period: typeof data.period === 'string' ? data.period : 'Unknown Period',
         noi: Number(data.noi) || 0,
-        createdBy: data.createdBy || 'User',
+        createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'User',
         createdAt,
       });
     });

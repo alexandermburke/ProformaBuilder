@@ -32,6 +32,11 @@ type ExcelCellValue =
   | undefined
   | { text?: string; richText?: { text?: string }[]; result?: string | number; [k: string]: unknown };
 
+type FormulaLike = ExcelJS.CellFormulaValue | ExcelJS.CellSharedFormulaValue;
+
+const isFormulaLike = (value: ExcelJS.CellValue | ExcelCellValue | undefined): value is FormulaLike =>
+  Boolean(value && typeof value === 'object' && ('formula' in value || 'sharedFormula' in value));
+
 /** --------------------------- Label aliases ---------------------------- */
 
 const CANON_KEY_TO_TEMPLATE_LABELS: Record<string, string[]> = {
@@ -112,7 +117,7 @@ async function ensureTemplatePath(): Promise<string | null> {
 
 function cellText(c: ExcelJS.Cell | undefined): string {
   if (!c) return '';
-  const v = (c as unknown as { value?: ExcelCellValue }).value;
+  const v = c.value as ExcelCellValue;
   if (v == null) return '';
   if (typeof v === 'string') return v.trim();
   if (typeof v === 'number') return String(v);
@@ -186,22 +191,6 @@ function detectMonthBand(ws: ExcelJS.Worksheet): { row: number; startCol: number
   return null;
 }
 
-function clearAllFormulas(ws: ExcelJS.Worksheet): number {
-  let cleared = 0;
-  ws.eachRow({ includeEmpty: true }, (_row, rNum) => {
-    ws.getRow(rNum).eachCell({ includeEmpty: true }, (cell) => {
-      const v = (cell as unknown as { value?: ExcelCellValue }).value;
-      if (v && typeof v === 'object' && ('formula' in (v as object) || 'sharedFormula' in (v as object))) {
-        const obj = v as { result?: string | number };
-        (cell as unknown as ExcelJS.Cell).value =
-          typeof obj.result === 'number' || typeof obj.result === 'string' ? (obj.result as string | number) : undefined;
-        cleared++;
-      }
-    });
-  });
-  return cleared;
-}
-
 function to12(vs: unknown[]): number[] {
   const out = new Array(12).fill(0);
   for (let i = 0; i < 12; i++) {
@@ -246,10 +235,10 @@ function detectStrideAndOffset(
 function clearSharedFormulasInCells(ws: ExcelJS.Worksheet, rows: number[], cols: number[]) {
   for (const r of rows) {
     for (const c of cols) {
-      const cell = ws.getCell(r, c) as unknown as ExcelJS.Cell & { value?: any };
-      const v = (cell as any).value;
-      if (v && typeof v === 'object' && ('sharedFormula' in v || 'formula' in v)) {
-        (cell as any).value = v.result != null ? v.result : undefined;
+      const cell = ws.getCell(r, c);
+      const value = cell.value;
+      if (isFormulaLike(value)) {
+        cell.value = value.result ?? null;
       }
     }
   }
@@ -260,37 +249,14 @@ function clearAllSharedFormulas(ws: ExcelJS.Worksheet): number {
   let cleared = 0;
   ws.eachRow({ includeEmpty: true }, (_row, rNum) => {
     ws.getRow(rNum).eachCell({ includeEmpty: true }, (cell) => {
-      const v = (cell as unknown as { value?: any }).value;
-      if (v && typeof v === 'object' && 'sharedFormula' in v) {
-        (cell as unknown as ExcelJS.Cell).value = v.result != null ? v.result : undefined;
+      const value = cell.value;
+      if (isFormulaLike(value) && 'sharedFormula' in value) {
+        cell.value = value.result ?? null;
         cleared++;
       }
     });
   });
   return cleared;
-}
-
-function findNextBlankRow(
-  ws: ExcelJS.Worksheet,
-  labelCol: number,
-  fromRow: number,
-  toRow: number,
-  startCol: number,
-  stride: number,
-  valueOffset: number
-): number | null {
-  for (let r = fromRow; r < toRow; r++) {
-    const labelOk = cellText(ws.getCell(r, labelCol)) === '';
-    if (!labelOk) continue;
-    let empties = 0;
-    for (let i = 0; i < 12; i++) {
-      const col = startCol + valueOffset + stride * i;
-      const t = cellText(ws.getCell(r, col));
-      if (t === '') empties++;
-    }
-    if (empties === 12) return r;
-  }
-  return null;
 }
 
 /** ------------------------------- Build -------------------------------- */
@@ -323,8 +289,8 @@ async function build(payload: ProformaExportPayload): Promise<ExcelJS.Workbook> 
   const incomeStart = findRowByExact(ws, 'Income') ?? 18;
   const toiRowFound = findRowByExact(ws, 'Total Operating Income') ?? 39;
   const expenseStart = findRowByExact(ws, 'Expenses') ?? 41;
-  let toeRow = findRowByExact(ws, 'Total Operating Expense') ?? 63;
-  let noiRow = findRowByExact(ws, 'Net Operating Income') ?? 65;
+  const toeRow = findRowByExact(ws, 'Total Operating Expense') ?? 63;
+  const noiRow = findRowByExact(ws, 'Net Operating Income') ?? 65;
 
   console.log('[export] anchors', { incomeStart, toiRow: toiRowFound, expenseStart, toeRow, noiRow });
 

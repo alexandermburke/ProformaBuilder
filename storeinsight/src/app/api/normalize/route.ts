@@ -23,6 +23,15 @@ type Normalized = {
   };
 };
 
+type NormalizeSheetPayload = { name?: string; grid?: unknown };
+type NormalizeRequestBody = {
+  facility?: string | null;
+  period?: string | null;
+  sheets?: NormalizeSheetPayload[];
+  grid?: unknown;
+  name?: string;
+};
+
 /** --------------------------- Month helpers ---------------------------- */
 
 // Excel serial (1900 system) -> JS Date
@@ -322,16 +331,21 @@ export async function POST(req: NextRequest): Promise<Response> {
   // Accepts:
   // 1) { sheets: [{name, grid}], facility?, period? }
   // 2) { grid, name? }
-  const body = (await req.json()) as any;
+  const body = (await req.json()) as NormalizeRequestBody;
 
   let sheets: { name: string; grid: Sheet2D }[] = [];
   if (Array.isArray(body?.sheets)) {
-    sheets = body.sheets.map((s: any, i: number) => ({
-      name: String(s?.name ?? `Sheet${i+1}`),
-      grid: (s?.grid ?? []) as Sheet2D,
+    sheets = body.sheets.map((s, i) => ({
+      name: String(s?.name ?? `Sheet${i + 1}`),
+      grid: Array.isArray(s?.grid) ? (s.grid as Sheet2D) : [],
     }));
   } else if (Array.isArray(body?.grid)) {
-    sheets = [{ name: String(body?.name ?? 'Sheet1'), grid: body.grid as Sheet2D }];
+    sheets = [
+      {
+        name: String(body?.name ?? 'Sheet1'),
+        grid: body.grid as Sheet2D,
+      },
+    ];
   } else {
     return Response.json({ error: 'No sheet data provided' }, { status: 400 });
   }

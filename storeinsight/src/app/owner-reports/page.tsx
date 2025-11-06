@@ -2,8 +2,24 @@
 
 "use client";
 
-import { CircleCheck, Circle, Pencil } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CircleCheck,
+  Circle,
+  Pencil,
+  TerminalSquare,
+  Copy,
+  Download,
+  WrapText,
+  X,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import Link from "next/link";
 import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
@@ -178,6 +194,67 @@ const ALL_BUDGET_TOKENS = BUDGET_LINES.flatMap((line) =>
   BUDGET_COLUMNS.map((column) => `${line.baseKey}${column.suffix}`),
 );
 
+const LOG_DASH_CHARACTER = "\u2013";
+const LOG_BLANK_LITERALS = new Set(["", "NaN", "undefined"]);
+const LOG_MAPPING_ALIASES: Record<string, string> = {
+  TOTALINCOME: "TOTALINCCM",
+  TOTALEXPENSES: "TOTEXPCM",
+  NETINCOME: "NETINCCM",
+};
+
+const BUDGET_LOG_PERCENT_SUFFIX = /(VARPER|YTDVARPER)$/i;
+const budgetLogCurrency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const ownerLogNumber = new Intl.NumberFormat("en-US");
+
+function coerceNegativeZeroString(input: string): string {
+  if (/^-\$0(\.0+)?$/.test(input)) return input.replace("-$", "$");
+  if (/^\$-0(\.0+)?$/.test(input)) return input.replace("$-0", "$0");
+  if (/^-0(\.0+)?%$/.test(input)) return input.replace("-0", "0");
+  if (/^-0(\.0+)?$/.test(input)) return input.replace("-0", "0");
+  return input;
+}
+
+function normalizeLogValue(value: unknown): string {
+  if (value == null) return LOG_DASH_CHARACTER;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return LOG_DASH_CHARACTER;
+    const normalized = coerceNegativeZeroString(String(value));
+    return normalized === "" ? LOG_DASH_CHARACTER : normalized;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || LOG_BLANK_LITERALS.has(trimmed)) return LOG_DASH_CHARACTER;
+    return coerceNegativeZeroString(trimmed);
+  }
+  return LOG_DASH_CHARACTER;
+}
+
+function formatOwnerFieldForLog(key: FieldKey, raw: OwnerFields[FieldKey]): string {
+  if (raw == null) return LOG_DASH_CHARACTER;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return LOG_DASH_CHARACTER;
+    if (key === "OCCUPIEDAREAPERCENT") {
+      const percent = Math.abs(raw) <= 1 ? raw * 100 : raw;
+      return normalizeLogValue(`${percent.toFixed(1)}%`);
+    }
+    return normalizeLogValue(ownerLogNumber.format(raw));
+  }
+  return normalizeLogValue(String(raw));
+}
+
+function formatBudgetTokenForLog(token: string, value: number): string {
+  if (!Number.isFinite(value)) return LOG_DASH_CHARACTER;
+  if (BUDGET_LOG_PERCENT_SUFFIX.test(token)) {
+    return normalizeLogValue(`${Number(value).toFixed(1)}%`);
+  }
+  return normalizeLogValue(budgetLogCurrency.format(value));
+}
+
 function downloadFromUrl(url: string, fileName: string) {
   const link = document.createElement("a");
   link.href = url;
@@ -197,7 +274,6 @@ export default function OwnerReportsPage() {
   const overlayBottom = isDark
     ? "bg-[radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.22),transparent_62%)]"
     : "bg-[radial-gradient(circle_at_84%_88%,rgba(125,211,252,0.16),transparent_62%)]";
-  const [guideOpen, setGuideOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
   const [file, setFile] = useState<File | null>(null);
   const [fields, setFields] = useState<OwnerFields | null>(null);
@@ -216,6 +292,46 @@ export default function OwnerReportsPage() {
   const [templateTokenCount, setTemplateTokenCount] = useState<number | null>(null);
   const [budgetOverrides, setBudgetOverrides] = useState<Record<string, string>>({});
   const [panelScroll, setPanelScroll] = useState(true);
+  const [budgetDebugLog, setBudgetDebugLog] = useState<string[]>([]);
+  const reportLogRef = useRef<string>("");
+  const [reportLog, setReportLog] = useState<string>("");
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [logFilter, setLogFilter] = useState<string>("");
+  const [logWrap, setLogWrap] = useState(false);
+  const viewLogButtonRef = useRef<HTMLButtonElement | null>(null);
+  const logModalRef = useRef<HTMLDivElement | null>(null);
+  const wasLogModalOpen = useRef(false);
+
+  const resetReportLog = useCallback(() => {
+    reportLogRef.current = "";
+    setReportLog("");
+  }, [setReportLog]);
+
+  const appendReportLog = useCallback(
+    (input: string | string[]) => {
+      const lines = Array.isArray(input) ? input : [input];
+      if (lines.length === 0) return;
+      const serialized = lines.map((line) =>
+        line == null ? "" : String(line),
+      );
+      const chunk = serialized.join("\n");
+      const next = reportLogRef.current
+        ? `${reportLogRef.current}\n${chunk}`
+        : chunk;
+      reportLogRef.current = next;
+      setReportLog(next);
+    },
+    [setReportLog],
+  );
+
+  const track = useCallback((event: string, props?: Record<string, unknown>) => {
+    if (typeof window === "undefined") return;
+    if (props && Object.keys(props).length > 0) {
+      console.log("[analytics]", event, props);
+    } else {
+      console.log("[analytics]", event);
+    }
+  }, []);
 
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
@@ -288,6 +404,30 @@ export default function OwnerReportsPage() {
     );
   }, [mergedFields, fields]);
   const hasBudgetData = detectedCount > 0;
+  const logLines = useMemo(
+    () => (reportLog ? reportLog.split(/\r?\n/) : []),
+    [reportLog],
+  );
+  const filteredLogLines = useMemo(() => {
+    const query = logFilter.trim().toLowerCase();
+    if (!query) return logLines;
+    return logLines.filter((line) => line.toLowerCase().includes(query));
+  }, [logFilter, logLines]);
+  const filteredLogText = useMemo(
+    () => filteredLogLines.join("\n"),
+    [filteredLogLines],
+  );
+  const hasAnyLog = logLines.length > 0;
+  const hasFilteredLog = filteredLogLines.length > 0;
+  const filterActive = logFilter.trim().length > 0;
+  const logDisplayText = hasFilteredLog
+    ? filteredLogText
+    : filterActive && hasAnyLog
+    ? "No lines match this filter."
+    : hasAnyLog
+    ? "Console log is empty."
+    : "No console output recorded yet.";
+  const isInformationalLog = !hasFilteredLog;
   const runBudgetExtract = useCallback(
     async (nextBudget: File | null, nextFinancial: File | null) => {
       if (!nextBudget) {
@@ -302,6 +442,7 @@ export default function OwnerReportsPage() {
         setBudgetError(null);
         setBudgetLoading(false);
         setBudgetPage(0);
+        setBudgetDebugLog([]);
         return;
       }
       lastProcessedFiles.current = {
@@ -324,6 +465,7 @@ export default function OwnerReportsPage() {
         setTemplateTokenCount(
           Array.isArray(templateTokens) && templateTokens.length > 0 ? templateTokens.length : null,
         );
+        setBudgetDebugLog(debug);
 
         if (typeof window !== "undefined" && "console" in window) {
           const preview = Object.entries(tokens)
@@ -378,6 +520,7 @@ export default function OwnerReportsPage() {
         setBudgetTokens({});
         setDetectedCount(0);
         setBudgetOverrides({});
+        setBudgetDebugLog([]);
         setTemplateTokenCount(null);
       } finally {
         setBudgetLoading(false);
@@ -576,6 +719,66 @@ export default function OwnerReportsPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const filename = `Owner-Report-${mergedFields.CURRENTDATE || "report"}.pptx`;
+
+      const numericOverrides: Record<string, number> = {};
+      for (const [token, raw] of Object.entries(budgetOverrides)) {
+        const numeric = toNumber(raw);
+        if (Number.isFinite(numeric)) numericOverrides[token] = numeric;
+      }
+      const ownerLogValues: Record<string, string> = {};
+      for (const key of FIELD_ORDER) {
+        ownerLogValues[key] = formatOwnerFieldForLog(
+          key,
+          mergedFields[key],
+        );
+      }
+      const budgetLogValues: Record<string, string> = {};
+      for (const [token, value] of Object.entries(budgetTokens)) {
+        budgetLogValues[token] = formatBudgetTokenForLog(token, value);
+      }
+      for (const [token, value] of Object.entries(numericOverrides)) {
+        budgetLogValues[token] = formatBudgetTokenForLog(token, value);
+      }
+      const combinedLogData: Record<string, string> = {
+        ...ownerLogValues,
+        ...budgetLogValues,
+      };
+      for (const [alias, source] of Object.entries(LOG_MAPPING_ALIASES)) {
+        if (combinedLogData[alias] !== undefined) continue;
+        if (combinedLogData[source] !== undefined) {
+          combinedLogData[alias] = combinedLogData[source];
+        }
+      }
+      const logKeys = Object.keys(combinedLogData).sort((a, b) => a.localeCompare(b));
+      const consoleLines: string[] = [];
+      consoleLines.push(`[export] completed ${new Date().toISOString()}`);
+      consoleLines.push(`[pptx] rendering ${logKeys.length} unique keys`);
+      for (const key of logKeys) {
+        consoleLines.push(`[pptx] key ${key} -> ${combinedLogData[key]}`);
+      }
+      const placeholderEstimate = templateTokenCount ?? TOTAL_BUDGET_TOKENS;
+      consoleLines.push(
+        `[pptx] template contains ${placeholderEstimate} placeholders (unique estimate)`,
+      );
+      const detectedSummary = `[budget] detected ${detectedCount}/${templateTokenCount ?? TOTAL_BUDGET_TOKENS} tokens`;
+      consoleLines.push(detectedSummary);
+      const missingForLog = ALL_BUDGET_TOKENS.filter(
+        (token) => budgetTokens[token] === undefined && numericOverrides[token] === undefined,
+      );
+      if (missingForLog.length > 0) {
+        consoleLines.push(
+          `[budget] WARNING: missing tokens not applied: ${
+            missingForLog.length > 50 ? `${missingForLog.length} tokens` : missingForLog.join(", ")
+          }`,
+        );
+      }
+      if (budgetDebugLog.length > 0) {
+        consoleLines.push("");
+        consoleLines.push(...budgetDebugLog);
+      }
+      resetReportLog();
+      appendReportLog(consoleLines);
+
       setLastDownload((prev) => {
         if (prev) URL.revokeObjectURL(prev.url);
         return { url, name: filename, data: mergedFields };
@@ -585,11 +788,129 @@ export default function OwnerReportsPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate the presentation.";
       setError(message);
+      resetReportLog();
+      const errorLines: string[] = [`[export] failed ${new Date().toISOString()}`];
+      if (budgetDebugLog.length > 0) {
+        errorLines.push(...budgetDebugLog, "");
+      }
+      errorLines.push(`[error] ${message}`);
+      appendReportLog(errorLines);
       setStep(5);
     } finally {
       setBusy(false);
     }
   }
+
+  const closeLogModal = useCallback(() => {
+    setLogModalOpen(false);
+  }, []);
+
+  const handleFilterChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const next = event.target.value;
+      setLogFilter(next);
+      track("console_log_filtered", { queryLength: next.trim().length });
+    },
+    [track],
+  );
+
+  const handleCopyLog = useCallback(async () => {
+    const text = filteredLogText || "";
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      track("console_log_copied", { filtered: logFilter.trim().length > 0 });
+    } catch (err) {
+      console.warn("[console-log] unable to copy", err);
+    }
+  }, [filteredLogText, logFilter, track]);
+
+  const handleDownloadLog = useCallback(() => {
+    const text = filteredLogText || "";
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "owner-report-console-log.txt";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    track("console_log_downloaded", { bytes: blob.size });
+  }, [filteredLogText, track]);
+
+  const toggleWrap = useCallback(() => {
+    setLogWrap((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (!logModalOpen) return;
+    wasLogModalOpen.current = true;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeLogModal();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const modalNode = logModalRef.current;
+      if (!modalNode) return;
+      const focusable = Array.from(
+        modalNode.querySelectorAll<HTMLElement>(
+          'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((node) => !node.hasAttribute("disabled"));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey) {
+        if (active === first || !modalNode.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    const frame = requestAnimationFrame(() => {
+      const autoFocusTarget =
+        logModalRef.current?.querySelector<HTMLElement>("[data-autofocus]") ??
+        logModalRef.current?.querySelector<HTMLElement>(
+          'input, button, textarea, select, [tabindex]:not([tabindex="-1"])',
+        );
+      autoFocusTarget?.focus();
+    });
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      cancelAnimationFrame(frame);
+    };
+  }, [closeLogModal, logModalOpen]);
+
+  useEffect(() => {
+    if (!logModalOpen && wasLogModalOpen.current) {
+      wasLogModalOpen.current = false;
+      requestAnimationFrame(() => {
+        viewLogButtonRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, [logModalOpen]);
 
   function downloadAgain() {
     if (!lastDownload) return;
@@ -613,6 +934,11 @@ export default function OwnerReportsPage() {
     setBudgetError(null);
     setBudgetLoading(false);
     setBudgetPage(0);
+    setBudgetDebugLog([]);
+    resetReportLog();
+    setLogFilter("");
+    setLogWrap(false);
+    setLogModalOpen(false);
     setError(null);
     setBusy(false);
     setStep(1);
@@ -989,24 +1315,24 @@ export default function OwnerReportsPage() {
                                           : ""
                                       : "";
 
-                                  const { statusIcon, statusClass, statusTitle } = (() => {
+                                  const { statusIcon, statusColorClass, statusTitle } = (() => {
                                     if (hasOverride) {
                                       return {
                                         statusIcon: <Pencil size={14} />,
-                                        statusClass: "text-[#1D4ED8]",
+                                        statusColorClass: "text-[#1d4ed8]",
                                         statusTitle: "Manual override",
                                       };
                                     }
                                     if (detectedValue !== undefined) {
                                       return {
                                         statusIcon: <CircleCheck size={14} />,
-                                        statusClass: "text-[#047857]",
+                                        statusColorClass: "text-emerald-500",
                                         statusTitle: "Detected",
                                       };
                                     }
                                     return {
                                       statusIcon: <Circle size={14} />,
-                                      statusClass: "text-[color:var(--text-secondary)]",
+                                      statusColorClass: "text-[#dc2626]",
                                       statusTitle: "Blank",
                                     };
                                   })();
@@ -1018,9 +1344,18 @@ export default function OwnerReportsPage() {
                                       key={token}
                                       className="owner-input-tile flex flex-col gap-2 p-3"
                                     >
-                                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
-                                        {column.label}
-                                        <span className="ml-1 text-[11px] font-normal text-[color:var(--text-secondary)]">
+                                      <span className="flex flex-col gap-1">
+                                        <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
+                                          {column.label}
+                                          <span
+                                            className={`inline-flex items-center justify-center text-sm ${statusColorClass}`}
+                                            aria-label={statusTitle}
+                                            title={statusTitle}
+                                          >
+                                            {statusIcon}
+                                          </span>
+                                        </span>
+                                        <span className="text-[11px] font-normal text-[color:var(--text-secondary)]">
                                           {column.description}
                                         </span>
                                       </span>
@@ -1032,16 +1367,6 @@ export default function OwnerReportsPage() {
                                         placeholder={placeholderValue}
                                       />
 
-                                      <div className="flex items-center justify-between text-[11px] text-[color:var(--text-secondary)]">
-                                        <span
-                                          className={`inline-flex items-center ${statusClass}`}
-                                          aria-label={statusTitle}
-                                          title={statusTitle}
-                                        >
-                                          {statusIcon}
-                                        </span>
-
-                                      </div>
                                     </label>
                                   );
                                 })}
@@ -1227,6 +1552,21 @@ export default function OwnerReportsPage() {
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Your PowerPoint has been downloaded. Review the values below or download the file again.
                   </p>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      ref={viewLogButtonRef}
+                      type="button"
+                      onClick={() => {
+                        setLogModalOpen(true);
+                        track("console_log_opened", { screen: "export_step7" });
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-[#CBD5F5] bg-white px-4 py-2 text-sm font-medium text-[color:var(--accent-strong)] shadow-sm transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40"
+                      title="Inspect the console output captured during the last export"
+                    >
+                      <TerminalSquare className="h-4 w-4" aria-hidden />
+                      View Console Log
+                    </button>
+                  </div>
                   <div className="mt-5 overflow-hidden rounded-lg border border-[color:var(--border-soft)]/70">
                     <table className="min-w-full divide-y divide-[rgba(148,163,255,0.3)] text-sm">
                       <tbody className="divide-y divide-[rgba(148,163,255,0.25)] bg-[color:var(--surface)]">
@@ -1292,6 +1632,95 @@ export default function OwnerReportsPage() {
           </main>
         </div>
       </div>
+      {logModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6"
+          role="presentation"
+          onClick={closeLogModal}
+        >
+          <div
+            ref={logModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="console-log-title"
+            aria-describedby="console-log-description"
+            className="relative max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h2 id="console-log-title" className="text-lg font-semibold text-slate-900">
+                Console Log
+              </h2>
+              <button
+                type="button"
+                onClick={closeLogModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40"
+                title="Close console log"
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <input
+                  type="text"
+                  className="h-10 w-full rounded-full border border-slate-200 bg-white px-4 text-sm text-slate-700 shadow-sm transition focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 sm:max-w-sm"
+                  placeholder="Filter lines (e.g., pptx, key, error, warning)"
+                  value={logFilter}
+                  onChange={handleFilterChange}
+                  data-autofocus
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleWrap}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 ${
+                      logWrap
+                        ? "border-[#2563EB] bg-[#2563EB]/10 text-[#1E3A8A]"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)]"
+                    }`}
+                    aria-pressed={logWrap}
+                    title="Toggle soft wrapping for log lines"
+                  >
+                    <WrapText className="h-4 w-4" aria-hidden />
+                    Wrap lines
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyLog}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40"
+                    title="Copy filtered log text to clipboard"
+                  >
+                    <Copy className="h-4 w-4" aria-hidden />
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadLog}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40"
+                    title="Download filtered log as .txt"
+                  >
+                    <Download className="h-4 w-4" aria-hidden />
+                    Download .txt
+                  </button>
+                </div>
+              </div>
+              <div
+                id="console-log-description"
+                className="relative max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-slate-950/95 p-4 text-sm shadow-inner"
+              >
+                <pre
+                  className={`font-mono text-xs leading-relaxed text-slate-100 ${
+                    logWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+                  } ${isInformationalLog ? "text-slate-400" : ""}`}
+                >
+                  {logDisplayText}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { JSX } from 'react';
+import { Check } from 'lucide-react';
 import type { HeaderMapping } from '@/lib/types';
 
 export type HeaderMapperProps = {
@@ -59,15 +60,26 @@ export default function HeaderMapper(props: HeaderMapperProps): JSX.Element {
         {requiredFields.map((field, index) => {
           const hint = hints?.[field] ?? null;
           const hintScore = hint ? `${Math.round(hint.score * 100)}%` : null;
+          const isMapped = Boolean(value[field]);
 
           return (
             <label
               key={field}
-              className={`group ios-list-card flex flex-col gap-3 p-4 transition-all duration-500 hover:-translate-y-1 md:p-5 ${
+              className={`group relative ios-list-card flex flex-col gap-3 p-4 transition-all duration-500 hover:-translate-y-1 md:p-5 ${
                 index > 1 ? 'ios-animate-up ios-animate-delay-sm' : 'ios-animate-up'
               }`}
             >
-              <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-[color:var(--text-primary)]">
+              {isMapped && (
+                <span
+                  className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.25)]"
+                  role="img"
+                  aria-label="Mapped successfully"
+                  title="Mapped successfully"
+                >
+                  <Check className="h-4 w-4" strokeWidth={2} />
+                </span>
+              )}
+              <span className="flex flex-wrap items-center gap-2 pr-8 text-sm font-medium text-[color:var(--text-primary)]">
                 {field}
                 {hint && (
                   <span className="ios-pill text-[11px]" data-tone="neutral">

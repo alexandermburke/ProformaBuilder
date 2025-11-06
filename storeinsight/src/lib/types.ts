@@ -17,6 +17,7 @@ export type ParsedSheet = {
   headers: string[];
   rows: Record<string, unknown>[]; // row objects (legacy)
   matrix: (string | number | null)[][]; // raw 2D grid for AI/layout work
+  grid?: unknown[][]; // backwards compat for UI helpers
 };
 
 export type UploadParseResult = {

@@ -34,6 +34,18 @@ type PlannedUpdate = {
 
 const updates: UpdateItem[] = [
   {
+    id: "2025-11-07",
+    date: "Nov 07, 2025",
+    title: "Owner reports gain audit trail + log viewer",
+    highlights: [
+      "Budget extractor now emits per-token provenance with percent safeguards and end-of-run counts.",
+      "PPTX generator unifies data casting, outputs searchable key/value logs, and normalizes blank placeholders.",
+      "Export Step 7 adds a console log modal with filtering, wrap toggle, copy, and download actions.",
+      "Type safety tightened across Excel parsing and API routes, resolving lint noise ahead of release.",
+    ],
+    tags: ["Owner report", "Instrumentation", "DX"],
+  },
+  {
     id: "2025-11-06",
     date: "Nov 06, 2025",
     title: "Interface adopts glassmorphism and motion system",
@@ -82,19 +94,19 @@ const roadmap: RoadmapItem[] = [
     id: "roadmap-owner-pdf",
     title: "Owner PDF layout",
     note: "Finalize the PDF design pass and hook into the export step.",
-    owner: "Design & Engineering",
+    owner: "Insights",
   },
   {
     id: "roadmap-template-selector",
     title: "Template selector",
     note: "Allow switching between STORE v3 and v4 PowerPoint templates.",
-    owner: "Engineering",
+    owner: "Insights",
   },
   {
-    id: "roadmap-automation-tuning",
-    title: "Automation toggles",
-    note: "Expose auto-map and facility detection switches in the wizard sidebar.",
-    owner: "Product",
+    id: "roadmap-management-digest",
+    title: "Automated management summary email",
+    note: "Generate daily owner/GM digests with top-line metrics and variance callouts.",
+    owner: "Insights",
   },
 ];
 

@@ -48,7 +48,7 @@ const guides: GuideContent[] = [
   {
     id: "owner-reports",
     label: "Owner Reports",
-    badge: "STORE Owner Reports",
+    badge: "Owner Reports",
     heading: "Owner's reports guide",
     description:
       "Move from raw vendor exports to a finished owner-ready deck with confidence. Follow the walkthrough below, drop in screenshots where the placeholders sit, and leverage the pro tips gathered from our onboarding playbooks.",

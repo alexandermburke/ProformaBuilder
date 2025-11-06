@@ -89,7 +89,7 @@ export function buildSeries(
   }
 
   // For Latest / T12Avg / Growth on own line
-  let base = seedFromAssumption(as, ctx, key);
+  const base = seedFromAssumption(as, ctx, key);
   for (let i = 0; i < 12; i++) {
     out[i] = base * Math.pow(1 + g, i);
   }

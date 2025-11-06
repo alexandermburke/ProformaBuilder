@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const templatePath = path.join(process.cwd(), "public", "XRAYTEMPLATE.pptx");
+  const templatePath = path.join(process.cwd(), "public", "UVTEMPLATE.pptx");
   const templateBuffer = await fs.readFile(templatePath);
   const templateTokens = listPptxTokens(templateBuffer);
 
@@ -134,7 +134,8 @@ export async function POST(req: NextRequest) {
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 
-  return new NextResponse(pptx, {
+  const pptxBytes = new Uint8Array(pptx);
+  return new NextResponse(pptxBytes, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "Content-Disposition": `attachment; filename="${outName}"`,

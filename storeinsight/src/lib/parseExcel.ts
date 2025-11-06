@@ -1,19 +1,7 @@
 // /src/lib/parseExcel.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as XLSX from 'xlsx';
-
-export type ParsedSheet = {
-  name: string;
-  headers: string[];
-  rows: Record<string, any>[];
-  /** 2D grid of raw cell values (kept for band detection) */
-  grid?: any[][];
-};
-
-export type UploadParseResult = {
-  fileName: string;
-  sheets: ParsedSheet[];
-};
+import type { ParsedSheet, UploadParseResult } from './types';
 
 /* ---------------------------- helpers ---------------------------------- */
 
@@ -142,6 +130,15 @@ export async function parseExcelFile(file: File): Promise<UploadParseResult> {
 
   const outSheets: ParsedSheet[] = [];
 
+  const toMatrixCell = (value: unknown): string | number | null => {
+    if (value == null) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') return value;
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    return String(value);
+  };
+
   wb.SheetNames.forEach((name) => {
     const ws = wb.Sheets[name];
     // 2D grid for detection
@@ -155,7 +152,15 @@ export async function parseExcelFile(file: File): Promise<UploadParseResult> {
       header: headers.length ? headers : 1,
     }) as Record<string, any>[];
 
-    outSheets.push({ name, headers: headers.length ? headers : [], rows, grid });
+    const matrix = grid.map((row) => row.map((cell) => toMatrixCell(cell))) as (string | number | null)[][];
+
+    outSheets.push({
+      name,
+      headers: headers.length ? headers : [],
+      rows,
+      matrix,
+      grid,
+    });
   });
 
   // Reorder: put first sheet with a valid 12-month band first

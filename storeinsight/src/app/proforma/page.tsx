@@ -10,7 +10,7 @@ import HeaderMapper from '@/components/HeaderMapper';
 import { useTheme } from '@/components/ThemeProvider';
 
 import { parseExcelFile } from '@/lib/parseExcel';
-import type { UploadParseResult } from '@/lib/parseExcel';
+import type { ParsedSheet, UploadParseResult } from '@/lib/types';
 import { subscribeSnapshots, createSnapshotRow } from '@/lib/snapshots';
 
 import {
@@ -465,8 +465,8 @@ export default function Home(): JSX.Element {
     const parsed = await parseExcelFile(file);
     setParseResult(parsed);
 
-    const first = parsed.sheets[0];
-    const vendor = detectVendor(parsed.fileName, first as any);
+    const first: ParsedSheet | undefined = parsed.sheets[0];
+    const vendor = first ? detectVendor(parsed.fileName, first) : 'Unknown';
     const vendorHint = vendor === 'Unknown' ? null : vendor;
     setAuto((a) => ({ ...a, vendorHint }));
 
@@ -476,7 +476,7 @@ export default function Home(): JSX.Element {
       if (guess.period) setPeriod(guess.period);
     }
 
-    const headers = (first as any)?.headers ?? [];
+    const headers = first?.headers ?? [];
     const { mapping, suggestions: sug } = autoMapRequiredFields(
       MAPPABLE_FIELDS,
       headers,
@@ -489,7 +489,6 @@ export default function Home(): JSX.Element {
     setStep(1);
   };
 
-  const next = (): void => setStep((s): WizardStep => clampStep(Number(s) + 1));
   const prev = (): void => setStep((s): WizardStep => clampStep(Number(s) - 1));
 
   const applyAllSuggestions = (): void => {
@@ -534,7 +533,7 @@ export default function Home(): JSX.Element {
 
     const { sheetName, seriesByLabel } = extractSeriesByLabelFromParsed(parseResult);
 
-    const sheet0 = parseResult.sheets[0] as any;
+    const sheet0 = parseResult.sheets[0];
     const totals = computeTotalsFromSheet(sheet0, mapper);
 
     const id = `SNAP-${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -555,7 +554,7 @@ export default function Home(): JSX.Element {
       sourceFile: parseResult.fileName,
       mapping: mapper,
       seriesByLabel,
-      extracted: { fromSheet: sheetName ?? sheet0?.name ?? 'Unknown', sampleCount: sheet0?.rows?.length ?? 0 },
+      extracted: { fromSheet: sheetName ?? sheet0.name ?? 'Unknown', sampleCount: sheet0.rows.length ?? 0 },
       totals: {
         totalOperatingIncome: seriesPreview
           ? seriesPreview.toi.reduce((a, b) => a + b, 0)
@@ -857,7 +856,7 @@ export default function Home(): JSX.Element {
                     <div className="owner-card rounded-xl border border-white/20 p-3">
                       <HeaderMapper
                         requiredFields={requiredFields}
-                        detectedHeaders={(parseResult.sheets[0] as any)?.headers ?? []}
+                        detectedHeaders={parseResult.sheets[0]?.headers ?? []}
                         value={mapper}
                         onChange={setMapper}
                         hints={suggestions}
