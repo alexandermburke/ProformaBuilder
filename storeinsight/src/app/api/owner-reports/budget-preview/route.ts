@@ -17,7 +17,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await extractBudgetTableFields(budgetBuffer, financialBuffer);
-    return NextResponse.json({ tokens: result.tokens, count: result.count });
+    return NextResponse.json({
+      tokens: result.tokens,
+      count: result.count,
+      details: result.details,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
     return NextResponse.json({ error: message }, { status: 500 });

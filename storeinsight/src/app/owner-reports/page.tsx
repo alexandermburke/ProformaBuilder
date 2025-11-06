@@ -174,6 +174,9 @@ const BUDGET_PAGES = [
 ];
 
 const TOTAL_BUDGET_TOKENS = BUDGET_LINES.length * BUDGET_COLUMNS.length;
+const ALL_BUDGET_TOKENS = BUDGET_LINES.flatMap((line) =>
+  BUDGET_COLUMNS.map((column) => `${line.baseKey}${column.suffix}`),
+);
 
 function downloadFromUrl(url: string, fileName: string) {
   const link = document.createElement("a");
@@ -210,6 +213,7 @@ export default function OwnerReportsPage() {
   const [financialsFile, setFinancialsFile] = useState<File | null>(null);
   const [budgetTokens, setBudgetTokens] = useState<Record<string, number>>({});
   const [detectedCount, setDetectedCount] = useState(0);
+  const [templateTokenCount, setTemplateTokenCount] = useState<number | null>(null);
   const [budgetOverrides, setBudgetOverrides] = useState<Record<string, string>>({});
   const [panelScroll, setPanelScroll] = useState(true);
 
@@ -294,6 +298,7 @@ export default function OwnerReportsPage() {
         setBudgetTokens({});
         setDetectedCount(0);
         setBudgetOverrides({});
+        setTemplateTokenCount(null);
         setBudgetError(null);
         setBudgetLoading(false);
         setBudgetPage(0);
@@ -308,19 +313,72 @@ export default function OwnerReportsPage() {
       try {
         const budgetBuffer = await nextBudget.arrayBuffer();
         const financialBuffer = nextFinancial ? await nextFinancial.arrayBuffer() : undefined;
-        const { tokens, count } = await extractBudgetTableFields(budgetBuffer, financialBuffer);
-        console.log("[budget] files", Boolean(nextBudget), Boolean(nextFinancial));
-        console.log("[budget] count", count, "sample", Object.keys(tokens).slice(0, 6));
+        const { tokens, details, count, debug, templateTokens } = await extractBudgetTableFields(
+          budgetBuffer,
+          financialBuffer,
+        );
         setBudgetTokens(tokens);
         setDetectedCount(count);
         setBudgetOverrides({});
         setBudgetPage(0);
+        setTemplateTokenCount(
+          Array.isArray(templateTokens) && templateTokens.length > 0 ? templateTokens.length : null,
+        );
+
+        if (typeof window !== "undefined" && "console" in window) {
+          const preview = Object.entries(tokens)
+            .slice(0, 25)
+            .map(([token, value]) => {
+              const detail = details[token];
+              return {
+                token,
+                value,
+                source: detail ? `${detail.sheet}!${detail.cell}` : "unknown",
+                note: detail?.note ?? "",
+              };
+            });
+          if (preview.length > 0 && typeof console.table === "function") {
+            console.table(preview);
+          }
+          console.log("[budget] detected", count, "tokens");
+        }
+
+        const denominator =
+          Array.isArray(templateTokens) && templateTokens.length > 0
+            ? templateTokens.length
+            : TOTAL_BUDGET_TOKENS;
+        console.info(`[budget] detected ${count}/${denominator} tokens`);
+        for (const line of debug) {
+          console.log(line);
+        }
+        const missingTokens = ALL_BUDGET_TOKENS.filter((token) => tokens[token] === undefined);
+        if (typeof console.groupCollapsed === "function") {
+          console.groupCollapsed("[budget] missing");
+          if (missingTokens.length === 0) {
+            console.log("None (all detected)");
+          } else {
+            for (const token of missingTokens) {
+              console.log(token);
+            }
+          }
+          console.groupEnd();
+        } else {
+          console.log("[budget] missing");
+          if (missingTokens.length === 0) {
+            console.log("None (all detected)");
+          } else {
+            for (const token of missingTokens) {
+              console.log(token);
+            }
+          }
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
         setBudgetError(message);
         setBudgetTokens({});
         setDetectedCount(0);
         setBudgetOverrides({});
+        setTemplateTokenCount(null);
       } finally {
         setBudgetLoading(false);
       }
@@ -361,10 +419,16 @@ export default function OwnerReportsPage() {
   const updateBudgetOverride = useCallback((token: string, value: string) => {
     setBudgetOverrides((prev) => {
       const next = { ...prev };
-      if (!value.trim()) {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        delete next[token];
+        return next;
+      }
+      const sanitized = token.endsWith("VARPER") ? trimmed.replace(/%/g, "").trim() : trimmed;
+      if (!sanitized) {
         delete next[token];
       } else {
-        next[token] = value;
+        next[token] = sanitized;
       }
       return next;
     });
@@ -404,7 +468,11 @@ export default function OwnerReportsPage() {
   }, [displayedBudgetPage, panelScroll]);
 
   const percentFormatter = useMemo(
-    () => new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }),
+    () =>
+      new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
     [],
   );
 
@@ -749,7 +817,7 @@ export default function OwnerReportsPage() {
                     <span>
                       Detected tokens:{" "}
                       <span className="font-semibold text-[color:var(--accent-strong)]">
-                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
+                        {detectedCount}/{templateTokenCount ?? TOTAL_BUDGET_TOKENS}
                       </span>
                     </span>
                     <span className="hidden opacity-50 text-[color:var(--text-muted)] sm:inline">|</span>
@@ -853,7 +921,7 @@ export default function OwnerReportsPage() {
                               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 {BUDGET_COLUMNS.map((column) => {
                                   const token = `${line.baseKey}${column.suffix}`;
-                                  const baselineValue = getBudgetInputValue(token);
+                                  const baselineRaw = getBudgetInputValue(token);
                                   const hasOverride = budgetOverrides[token] !== undefined;
                                   const detectedValue = budgetTokens[token];
 
@@ -862,11 +930,23 @@ export default function OwnerReportsPage() {
 
                                   const overrideNumeric =
                                     overrideRaw !== undefined ? toNumber(overrideRaw) : undefined;
+                                  const overrideNumber =
+                                    overrideNumeric !== undefined && Number.isFinite(overrideNumeric)
+                                      ? overrideNumeric
+                                      : undefined;
                                   const detectedNumeric =
                                     typeof detectedValue === "number" ? detectedValue : undefined;
+                                  const baselineNumeric =
+                                    baselineRaw && baselineRaw.trim().length > 0
+                                      ? toNumber(baselineRaw)
+                                      : undefined;
+                                  const baselineNumber =
+                                    baselineNumeric !== undefined && Number.isFinite(baselineNumeric)
+                                      ? baselineNumeric
+                                      : undefined;
 
                                   const effectiveNumeric =
-                                    overrideRaw !== undefined ? overrideNumeric : detectedNumeric;
+                                    overrideNumber !== undefined ? overrideNumber : detectedNumeric;
 
                                   const formattedDetected =
                                     isPercentToken && detectedNumeric !== undefined
@@ -875,11 +955,28 @@ export default function OwnerReportsPage() {
                                         ? String(detectedNumeric)
                                         : "";
 
+                                  const formattedBaseline =
+                                    isPercentToken && baselineNumber !== undefined
+                                      ? `${percentFormatter.format(baselineNumber)}%`
+                                      : baselineRaw;
+
+                                  const overrideDisplay =
+                                    overrideRaw !== undefined
+                                      ? isPercentToken
+                                        ? overrideNumber !== undefined
+                                          ? `${percentFormatter.format(overrideNumber)}%`
+                                          : `${overrideRaw}%`
+                                        : overrideRaw
+                                      : undefined;
+
                                   const displayValue =
-                                    overrideRaw !== undefined ? overrideRaw : formattedDetected || baselineValue;
+                                    overrideDisplay ??
+                                    (formattedDetected || formattedBaseline || "");
 
                                   const placeholderValue =
-                                    formattedDetected || baselineValue || "Enter value";
+                                    formattedDetected ||
+                                    formattedBaseline ||
+                                    (isPercentToken ? "0.0%" : "Enter value");
 
                                   const percentToneClass =
                                     isPercentToken &&
@@ -959,7 +1056,7 @@ export default function OwnerReportsPage() {
                     <p>
                       Detected tokens:{" "}
                       <span className="font-semibold text-[color:var(--accent-strong)]">
-                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
+                        {detectedCount}/{templateTokenCount ?? TOTAL_BUDGET_TOKENS}
                       </span>
                     </p>
                     <p>
@@ -1034,7 +1131,7 @@ export default function OwnerReportsPage() {
                     <p>
                       Detected tokens:{" "}
                       <span className="font-semibold text-[color:var(--accent-strong)]">
-                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
+                        {detectedCount}/{templateTokenCount ?? TOTAL_BUDGET_TOKENS}
                       </span>
                     </p>
                     <p>
@@ -1150,7 +1247,7 @@ export default function OwnerReportsPage() {
                     <p>
                       Detected tokens:{" "}
                       <span className="font-semibold text-[color:var(--accent-strong)]">
-                        {detectedCount}/{TOTAL_BUDGET_TOKENS}
+                        {detectedCount}/{templateTokenCount ?? TOTAL_BUDGET_TOKENS}
                       </span>
                     </p>
                     <p>

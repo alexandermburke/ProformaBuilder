@@ -101,7 +101,7 @@ const roadmap: RoadmapItem[] = [
 const planned: PlannedUpdate[] = [
   {
     id: "planned-owner-pdf-export",
-    title: "Owner PDF export",
+    title: "Validated owner PDF export",
     eta: "Targeting DEC 2025",
     summary: "Wire the approved PDF layout into the owner report flow alongside the PPTX option.",
   },

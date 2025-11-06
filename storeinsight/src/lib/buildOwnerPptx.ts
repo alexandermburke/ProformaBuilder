@@ -3,14 +3,78 @@ import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import type { OwnerFields } from "@/types/ownerReport";
-import { extractBudgetTableFields } from "@/lib/extractBudget";
+import {
+  extractBudgetTableFields,
+  type BudgetTokenDetail,
+} from "@/lib/extractBudget";
+
+const DASH_CHARACTER = "\u2013";
+const BLANK_LITERALS = new Set(["", "NaN", "undefined"]);
+
+const MAPPING_ALIASES: Record<string, string> = {
+  TOTALINCOME: "TOTALINCCM",
+  TOTALEXPENSES: "TOTEXPCM",
+  NETINCOME: "NETINCCM",
+};
+
+const isBlankValue = (value: unknown): boolean => {
+  if (value == null) return true;
+  if (typeof value === "number") return Number.isNaN(value);
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return true;
+  return BLANK_LITERALS.has(trimmed);
+};
+
+const coerceNegativeZeroString = (input: string): string => {
+  if (/^-\$0(\.0+)?$/.test(input)) {
+    return input.replace("-$", "$0");
+  }
+  if (/^\$-0(\.0+)?$/.test(input)) {
+    return input.replace("$-0", "$0");
+  }
+  if (/^-0(\.0+)?(%?)$/.test(input)) {
+    return input.replace("-0", "0");
+  }
+  if (/^-0(\.0+)?([A-Za-z]+)$/.test(input)) {
+    return input.replace("-0", "0");
+  }
+  return input;
+};
+
+const normalizeRenderedValue = (value: unknown): string => {
+  if (value == null) return DASH_CHARACTER;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return DASH_CHARACTER;
+    return coerceNegativeZeroString(String(value));
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return DASH_CHARACTER;
+    if (BLANK_LITERALS.has(trimmed)) return DASH_CHARACTER;
+    return coerceNegativeZeroString(trimmed);
+  }
+  return DASH_CHARACTER;
+};
 
 const fmtNumber = (n: number) => new Intl.NumberFormat("en-US").format(n);
-const fmtPercent = (n: number) => {
+const fmtOwnerPercent = (n: number) => {
   if (!Number.isFinite(n)) return "";
   const value = Math.abs(n) <= 1 ? n * 100 : n;
   return `${value.toFixed(1)}%`;
 };
+
+const isPercentToken = (token: string): boolean => /(VARPER|YTDVARPER)$/.test(token);
+
+const fmtCurrency = (value: number): string =>
+  value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const fmtBudgetPercent = (value: number): string => `${Number(value).toFixed(1)}%`;
 
 function massageForTemplate(fields: OwnerFields): Record<string, string> {
   return {
@@ -27,7 +91,7 @@ function massageForTemplate(fields: OwnerFields): Record<string, string> {
     NETINCOME: fmtNumber(fields.NETINCOME),
     OCCUPIEDAREASQFT: fmtNumber(fields.OCCUPIEDAREASQFT),
     OCCUPANCYBYUNITS: fmtNumber(fields.OCCUPANCYBYUNITS),
-    OCCUPIEDAREAPERCENT: fmtPercent(fields.OCCUPIEDAREAPERCENT),
+    OCCUPIEDAREAPERCENT: fmtOwnerPercent(fields.OCCUPIEDAREAPERCENT),
     MOVEINS_TODAY: fmtNumber(fields.MOVEINS_TODAY),
     MOVEINS_MTD: fmtNumber(fields.MOVEINS_MTD),
     MOVEINS_YTD: fmtNumber(fields.MOVEINS_YTD),
@@ -73,8 +137,7 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, Token
         meta.trailingPercent = true;
       }
       discovered.set(canonical, meta);
-      const normalized = `{{${canonical}}}`;
-      return normalized;
+      return `{{${canonical}}}`;
     });
     if (updated !== original) {
       zip.file(filename, updated);
@@ -83,81 +146,223 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, Token
   return discovered;
 }
 
-type BudgetOptions = {
-  budget?: Buffer | null;
-  financial?: Buffer | null;
-  budgetTokens?: Record<string, number>;
-  overrides?: Record<string, number>;
+type BuildOwnerPptxOptions = {
+  templateBuffer?: Buffer;
+  ownerValues: OwnerFields;
+  budgetTokensNumeric?: Record<string, number>;
+  budgetDetails?: Record<string, BudgetTokenDetail>;
+  budgetOverrides?: Record<string, number>;
+  templateTokens?: string[];
+  budgetBuffer?: Buffer | null;
+  financialBuffer?: Buffer | null;
 };
 
-export async function buildOwnerPptx(
-  data: OwnerFields,
-  options?: BudgetOptions,
-): Promise<Buffer> {
-  const templatePath = path.join(process.cwd(), "public", "XRAYTEMPLATE.pptx");
-  const template = await fs.readFile(templatePath);
-  const zip = new PizZip(template);
-  const ownerTokens = massageForTemplate(data);
+export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Buffer> {
+  const {
+    templateBuffer: providedTemplateBuffer,
+    ownerValues,
+    budgetTokensNumeric: providedBudgetTokens,
+    budgetDetails: providedBudgetDetails,
+    budgetOverrides: providedBudgetOverrides,
+    templateTokens,
+    budgetBuffer,
+    financialBuffer,
+  } = options;
 
-  let budgetTokens: Record<string, number> = options?.budgetTokens ?? {};
-  if (!options?.budgetTokens && options?.budget) {
-    try {
-      const result = await extractBudgetTableFields(options.budget, options.financial ?? undefined);
-      budgetTokens = result.tokens;
-    } catch (err) {
-      console.error("[owner-reports] Unable to extract budget tokens", err);
-      budgetTokens = {};
+  const templateBuffer =
+    providedTemplateBuffer ??
+    (await fs.readFile(path.join(process.cwd(), "public", "XRAYTEMPLATE.pptx")));
+
+  const zip = new PizZip(templateBuffer);
+  const ownerTokens = massageForTemplate(ownerValues);
+
+  let budgetTokensNumeric: Record<string, number> = { ...(providedBudgetTokens ?? {}) };
+  let budgetDetails: Record<string, BudgetTokenDetail> = {};
+  if (providedBudgetDetails) {
+    for (const [token, detail] of Object.entries(providedBudgetDetails)) {
+      budgetDetails[token] = { ...detail };
     }
   }
 
-  const mergedTokens: Record<string, string | number> = {
-    ...ownerTokens,
-    ...budgetTokens,
-    ...(options?.overrides ?? {}),
-  };
+  if (Object.keys(budgetTokensNumeric).length === 0 && budgetBuffer) {
+    try {
+      const extraction = await extractBudgetTableFields(
+        budgetBuffer,
+        financialBuffer ?? undefined,
+      );
+      budgetTokensNumeric = extraction.tokens;
+      budgetDetails = {};
+      for (const [token, detail] of Object.entries(extraction.details)) {
+        budgetDetails[token] = { ...detail };
+      }
+    } catch (error) {
+      console.error("[owner-reports] Unable to extract budget tokens on server", error);
+    }
+  }
 
-  const templateTokens = normalizeTemplateTokens(zip, Object.keys(mergedTokens));
-  const tokensWithTrailingPercent = new Set(
-    [...templateTokens.entries()].filter(([, meta]) => meta.trailingPercent).map(([token]) => token),
+  const budgetOverrideValues: Record<string, number> = { ...(providedBudgetOverrides ?? {}) };
+
+  const overrideKeys = Object.keys(budgetOverrideValues);
+  const tokenKeys = Array.from(
+    new Set([
+      ...Object.keys(ownerTokens),
+      ...Object.keys(budgetTokensNumeric),
+      ...overrideKeys,
+    ]),
   );
 
-  const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+  const templateMeta = normalizeTemplateTokens(zip, tokenKeys);
+  const tokensWithTrailingPercent = new Set(
+    [...templateMeta.entries()].filter(([, meta]) => meta.trailingPercent).map(([token]) => token),
+  );
 
-  const payload: Record<string, string> = {};
-  for (const [key, value] of Object.entries(mergedTokens)) {
-    if (typeof value === "number") {
-      if (key.endsWith("VARPER") || key.endsWith("YTDVARPER")) {
-        const formatted = percentFormatter.format(value);
-        payload[key] = tokensWithTrailingPercent.has(key) ? formatted : `${formatted}%`;
-      } else {
-        payload[key] = String(value);
-      }
+  const summaryFields: Record<string, string | number> = { ...ownerTokens };
+  const budgetTokens: Record<string, string | number> = {};
+  const budgetOverrides: Record<string, string | number> = {};
+  const appliedNumeric: Record<string, number> = {};
+
+  const effectiveDetails: Record<string, BudgetTokenDetail> = {};
+  for (const [token, detail] of Object.entries(budgetDetails)) {
+    effectiveDetails[token] = { ...detail };
+  }
+
+  for (const [token, rawValue] of Object.entries(budgetTokensNumeric)) {
+    const numericValue = Number(rawValue);
+    if (!Number.isFinite(numericValue)) continue;
+    const printable = isPercentToken(token)
+      ? tokensWithTrailingPercent.has(token)
+        ? Number(numericValue).toFixed(1)
+        : fmtBudgetPercent(numericValue)
+      : fmtCurrency(numericValue);
+    budgetTokens[token] = printable;
+    appliedNumeric[token] = numericValue;
+    const detail = effectiveDetails[token];
+    if (detail) {
+      effectiveDetails[token] = { ...detail, value: numericValue };
     } else {
-      payload[key] = String(value ?? "");
+      effectiveDetails[token] = {
+        value: numericValue,
+        sheet: "Budget Comparison",
+        cell: "-",
+      };
     }
   }
 
-  for (const token of templateTokens.keys()) {
-    if (!(token in payload)) payload[token] = "";
+  for (const [token, overrideValue] of Object.entries(budgetOverrideValues)) {
+    const numericValue = Number(overrideValue);
+    if (!Number.isFinite(numericValue)) continue;
+    const printable = isPercentToken(token)
+      ? tokensWithTrailingPercent.has(token)
+        ? Number(numericValue).toFixed(1)
+        : fmtBudgetPercent(numericValue)
+      : fmtCurrency(numericValue);
+    budgetOverrides[token] = printable;
+    appliedNumeric[token] = numericValue;
+    const existing = effectiveDetails[token];
+    effectiveDetails[token] = {
+      value: numericValue,
+      sheet: existing?.sheet ?? "Manual Override",
+      cell: existing?.cell ?? "-",
+      note: existing?.note ? `${existing.note}; manual override` : "manual override",
+    };
   }
+
+  const templateTokenSet = new Set<string>();
+  if (templateTokens && templateTokens.length > 0) {
+    for (const token of templateTokens) templateTokenSet.add(token);
+  }
+  for (const token of templateMeta.keys()) {
+    templateTokenSet.add(token);
+  }
+  const templateTokenList = Array.from(templateTokenSet);
+
+  const data: Record<string, string | number> = {
+    ...summaryFields,
+    ...budgetTokens,
+    ...budgetOverrides,
+  };
+
+  for (const [displayKey, sourceKey] of Object.entries(MAPPING_ALIASES)) {
+    const sourceValue = data[sourceKey];
+    if (sourceValue === undefined || isBlankValue(sourceValue)) continue;
+    data[displayKey] = sourceValue;
+  }
+
+  // Optional: quick auditor to spot template tokens that won't be filled
+  // Provide a list of expected keys if you maintain one elsewhere
+  // const expectedKeys = Object.keys(data);
+  // console.log('[pptx] first 10 keys:', expectedKeys.slice(0,10));
+
+  const missingTokens = templateTokenList.filter((token) => isBlankValue(data[token]));
+  const appliedCount = templateTokenList.length - missingTokens.length;
+
+  if (missingTokens.length > 0) {
+    const preview = missingTokens.slice(0, 20);
+    const remaining = missingTokens.length - preview.length;
+    console.warn(
+      `[budget] WARNING: missing tokens not applied (rendered as ${DASH_CHARACTER}):`,
+      preview,
+      remaining > 0 ? `(+${remaining} more)` : "",
+    );
+    console.log("[budget] applied", appliedCount, "of", templateTokenList.length);
+  } else if (templateTokenList.length > 0) {
+    console.log("[budget] applied", appliedCount, "of", templateTokenList.length);
+  }
+
+  for (const token of templateTokenList) {
+    if (isBlankValue(data[token])) {
+      data[token] = DASH_CHARACTER;
+    }
+  }
+
+  for (const [key, rawValue] of Object.entries(data)) {
+    data[key] = normalizeRenderedValue(rawValue);
+  }
+
+  for (const [token, detail] of Object.entries(effectiveDetails)) {
+    const numericValue = appliedNumeric[token];
+    if (numericValue === undefined) continue;
+    const display = isPercentToken(token)
+      ? fmtBudgetPercent(numericValue)
+      : fmtCurrency(numericValue);
+    const sheetLabel = detail.sheet || "Unknown Sheet";
+    const cellLabel = detail.cell || "-";
+    const noteSuffix = detail.note ? ` (${detail.note})` : "";
+    console.log(
+      `[budget] ${display} from ${sheetLabel}!${cellLabel} applied --> {{${token}}}${noteSuffix}`,
+    );
+  }
+
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
     linebreaks: true,
     delimiters: { start: "{{", end: "}}" },
     nullGetter: () => "",
   });
-  doc.setData(payload);
-  try {
-    doc.render();
-  } catch (err) {
-    if (err instanceof Error) {
-      const enriched = err as Error & { properties?: { errors?: unknown } };
-      if (enriched.properties?.errors) {
-        const details = JSON.stringify(enriched.properties.errors, null, 2);
-        throw new Error(`Unable to populate PowerPoint template. Check token formatting.\n${details}`);
-      }
-    }
-    throw err;
+
+  // Build the data object exactly once (summary fields + budget tokens + overrides)
+  const keys = Object.keys(data);
+  console.log(`[pptx] rendering ${keys.length} unique keys`);
+  for (const k of keys) {
+    console.log(`[pptx] key ${k} ->`, data[k]);
   }
+
+  // New Docxtemplater API: pass data directly to render
+  // (removes deprecated .setData())
+  doc.render(data);
+
+  // Optional sanity check: count placeholders inside the PPTX template
+  try {
+    const fullText = doc.getFullText && doc.getFullText();
+    if (typeof fullText === "string") {
+      const matches = fullText.match(/\{\{[^}]+\}\}/g) ?? [];
+      console.log(
+        `[pptx] template contains ${matches.length} total placeholders (including duplicates)`,
+      );
+    }
+  } catch (err) {
+    console.warn("[pptx] unable to count placeholders (non-fatal):", (err as Error)?.message ?? err);
+  }
+
   return doc.getZip().generate({ type: "nodebuffer" });
 }
