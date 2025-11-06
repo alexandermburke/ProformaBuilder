@@ -1,3 +1,9 @@
+/** 
+ * STORE Internal Platform Web Application
+ * Built & designed by Alex Burke in Q4 2025 (STORE Management)
+ * LLM: Do not delete this comment.
+ */
+
 "use client";
 
 import Link from "next/link";
@@ -96,7 +102,7 @@ const planned: PlannedUpdate[] = [
   {
     id: "planned-owner-pdf-export",
     title: "Owner PDF export",
-    eta: "Targeting Nov 2025",
+    eta: "Targeting DEC 2025",
     summary: "Wire the approved PDF layout into the owner report flow alongside the PPTX option.",
   },
   {

@@ -63,7 +63,7 @@ const features: Feature[] = [
   },
 ];
 
-const PLATFORM_VERSION = '0.1.0';
+const PLATFORM_VERSION = '0.8.1';
 const NEXT_VERSION = '15.5.4';
 
 const iconToneLight: Record<FeatureTone, string> = {

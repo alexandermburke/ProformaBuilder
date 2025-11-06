@@ -11,12 +11,15 @@ const norm = (value: unknown): string =>
     .trim();
 
 const toNum = (value: unknown): number => {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : Number.NaN;
   const str = String(value ?? "").trim();
-  if (!str) return 0;
+  if (!str) return Number.NaN;
+  const upper = str.toUpperCase();
+  if (upper === "N/A" || upper === "NA" || upper === "—" || upper === "–") return Number.NaN;
   const neg = /^\(.*\)$/.test(str);
-  const parsed = Number(str.replace(/[,$%()\s]/g, ""));
-  if (!Number.isFinite(parsed)) return 0;
+  const cleaned = str.replace(/[,$%\s]/g, "").replace(/[()]/g, "");
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return Number.NaN;
   return neg ? -parsed : parsed;
 };
 
@@ -180,13 +183,52 @@ export async function extractBudgetTableFields(
     const base = LABELS[labelKey];
     if (!base) continue;
 
+    const rowValues: Record<string, number> = {};
     for (const [colIndex, suffix] of columnMap.entries()) {
       const cell = grid[r]?.[colIndex];
       if (cell == null || cell === "") continue;
       const numeric = toNum(cell);
-      // Skip decorative rows that coerce to zero and have no textual value.
-      if (numeric === 0 && String(cell ?? "").trim() === "") continue;
-      tokens[buildToken(base, suffix)] = numeric;
+      const cellText = typeof cell === "string" ? cell.trim() : "";
+      if (!Number.isFinite(numeric)) continue;
+      if (numeric === 0 && cellText === "") continue;
+      const tokenName = buildToken(base, suffix);
+      tokens[tokenName] = numeric;
+      rowValues[suffix] = numeric;
+    }
+
+    const cm = rowValues.CM;
+    const ptd = rowValues.PTD;
+    const ytd = rowValues.YTD;
+    const ytdBudget = rowValues.YTDBUD;
+
+    if (cm !== undefined && ptd !== undefined) {
+      if (rowValues.VAR === undefined) {
+        const variance = cm - ptd;
+        const tokenName = buildToken(base, "VAR");
+        tokens[tokenName] = variance;
+        rowValues.VAR = variance;
+      }
+      const varianceValue = rowValues.VAR ?? cm - ptd;
+      const denominator = ptd !== 0 ? ptd : 0;
+      const percentValue = denominator !== 0 ? (varianceValue / denominator) * 100 : 0;
+      const tokenName = buildToken(base, "VARPER");
+      tokens[tokenName] = percentValue;
+      rowValues.VARPER = percentValue;
+    }
+
+    if (ytd !== undefined && ytdBudget !== undefined) {
+      if (rowValues.YTDVAR === undefined) {
+        const ytdVar = ytd - ytdBudget;
+        const tokenName = buildToken(base, "YTDVAR");
+        tokens[tokenName] = ytdVar;
+        rowValues.YTDVAR = ytdVar;
+      }
+      const ytdVarValue = rowValues.YTDVAR ?? ytd - ytdBudget;
+      const denom = ytdBudget !== 0 ? ytdBudget : 0;
+      const ytdPercent = denom !== 0 ? (ytdVarValue / denom) * 100 : 0;
+      const tokenName = buildToken(base, "YTDVARPER");
+      tokens[tokenName] = ytdPercent;
+      rowValues.YTDVARPER = ytdPercent;
     }
   }
 
@@ -208,6 +250,7 @@ export async function extractBudgetTableFields(
               const cell = fgrid[r]?.[c];
               if (cell == null || cell === "") continue;
               const numeric = toNum(cell);
+              if (!Number.isFinite(numeric)) continue;
               if (numeric === 0) continue;
               tokens[token] = numeric;
               break;

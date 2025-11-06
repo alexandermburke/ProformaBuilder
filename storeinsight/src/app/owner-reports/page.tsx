@@ -2,11 +2,13 @@
 
 "use client";
 
+import { CircleCheck, Circle, Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
 import { extractBudgetTableFields } from "@/lib/extractBudget";
+import { toNumber } from "@/lib/compute";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -209,6 +211,8 @@ export default function OwnerReportsPage() {
   const [budgetTokens, setBudgetTokens] = useState<Record<string, number>>({});
   const [detectedCount, setDetectedCount] = useState(0);
   const [budgetOverrides, setBudgetOverrides] = useState<Record<string, string>>({});
+  const [panelScroll, setPanelScroll] = useState(true);
+
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [budgetPage, setBudgetPage] = useState(0);
@@ -390,6 +394,19 @@ export default function OwnerReportsPage() {
   const budgetPageMeta = BUDGET_PAGES[displayedBudgetPage] ?? BUDGET_PAGES[0];
   const budgetPageTitle = budgetPageMeta.title.replace("{{CURRENTMONTH}}", currentMonthLabel);
   const budgetLinesForPage = budgetLinesByPage[displayedBudgetPage] ?? [];
+  const mapperScrollClass = panelScroll ? 'max-h-[calc(100vh-260px)] overflow-y-auto overflow-x-clip pr-2 scroll-smooth' : '';
+
+  useEffect(() => {
+    const el = typeof window !== "undefined" ? document.getElementById("budget-mapper-scroll") : null;
+    if (el && panelScroll) {
+      el.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [displayedBudgetPage, panelScroll]);
+
+  const percentFormatter = useMemo(
+    () => new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }),
+    [],
+  );
 
   async function onUpload(f: File) {
     setFile(f);
@@ -740,6 +757,13 @@ export default function OwnerReportsPage() {
                       Manual overrides:{" "}
                       <span className="font-semibold text-[color:var(--accent-strong)]">{budgetOverrideCount}</span>
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setPanelScroll((prev) => !prev)}
+                      className="ml-auto rounded-md border border-[rgba(148,163,255,0.32)] px-2 py-1 text-xs font-semibold text-[color:var(--text-secondary)] transition hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      {panelScroll ? "Disable panel scroll" : "Enable panel scroll"}
+                    </button>
                   </div>
                   {budgetLoading && (
                     <div className="mt-4 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3 text-sm text-[color:var(--accent-strong)]">
@@ -752,7 +776,7 @@ export default function OwnerReportsPage() {
                     </div>
                   )}
                   {!budgetLoading && !budgetError && !hasBudgetData && budgetOverrideCount === 0 && (
-                    <div className="mt-4 rounded-lg border border-dashed border-[#CBD5F5] bg-[#F9FAFF] px-4 py-3 text-sm text-[color:var(--text-primary)]">
+                    <div className="mt-4 owner-info-bar text-sm" data-variant="dashed">
                       No budget values were detected yet. You can still enter amounts manually in the table below.
                     </div>
                   )}
@@ -769,7 +793,7 @@ export default function OwnerReportsPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
+                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[#9CA3AF] hover:bg-blue-50"
                           onClick={() => setBudgetPage((prev) => Math.max(0, prev - 1))}
                           disabled={displayedBudgetPage === 0 || budgetLoading}
                         >
@@ -780,7 +804,7 @@ export default function OwnerReportsPage() {
                         </span>
                         <button
                           type="button"
-                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[#9CA3AF]"
+                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] disabled:cursor-not-allowed disabled:text-[#9CA3AF] hover:bg-blue-50"
                           onClick={() => setBudgetPage((prev) => Math.min(totalBudgetPages - 1, prev + 1))}
                           disabled={displayedBudgetPage >= totalBudgetPages - 1 || budgetLoading}
                         >
@@ -788,76 +812,148 @@ export default function OwnerReportsPage() {
                         </button>
                       </div>
                     </div>
-                    {budgetLinesForPage.length === 0 ? (
-                      <div className="owner-info-bar text-sm" data-variant="dashed">
-                        No budget rows are configured for this page.
-                      </div>
-                    ) : (
-                      budgetLinesForPage.map((line) => {
-                        const rowHasOverride = BUDGET_COLUMNS.some(
-                          (column) => budgetOverrides[`${line.baseKey}${column.suffix}`] !== undefined,
-                        );
-                        return (
-                          <div
-                            key={line.baseKey}
-                            className="owner-card owner-card--surface rounded-xl p-4 shadow-sm"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <p className="text-sm font-semibold text-[color:var(--accent-strong)]">{line.label}</p>
-                                <p className="text-xs text-[color:var(--text-secondary)]">Token prefix: {line.baseKey}</p>
+                    <div
+                      id="budget-mapper-scroll"
+                      className={`space-y-6 ${mapperScrollClass}`}
+                    >
+                      {budgetLinesForPage.length === 0 ? (
+                        <div className="owner-info-bar text-sm" data-variant="dashed">
+                          No budget rows are configured for this page.
+                        </div>
+                      ) : (
+                        budgetLinesForPage.map((line) => {
+                          const rowHasOverride = BUDGET_COLUMNS.some(
+                            (column) => budgetOverrides[`${line.baseKey}${column.suffix}`] !== undefined
+                          );
+
+                          return (
+                            <div
+                              key={line.baseKey}
+                              className="owner-card owner-card--surface rounded-xl p-4 shadow-sm"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                                    {line.label}
+                                  </p>
+                                  <p className="text-xs text-[color:var(--text-secondary)]">
+                                    Token prefix: {line.baseKey}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline disabled:text-[#9CA3AF]"
+                                  onClick={() => resetBudgetRow(line.baseKey)}
+                                  disabled={!rowHasOverride}
+                                >
+                                  Reset row
+                                </button>
                               </div>
-                              <button
-                                type="button"
-                                className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline disabled:text-[#9CA3AF]"
-                                onClick={() => resetBudgetRow(line.baseKey)}
-                                disabled={!rowHasOverride}
-                              >
-                                Reset row
-                              </button>
-                            </div>
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                              {BUDGET_COLUMNS.map((column) => {
-                                const token = `${line.baseKey}${column.suffix}`;
-                                const inputValue = getBudgetInputValue(token);
-                                const hasOverride = budgetOverrides[token] !== undefined;
-                                const detectedValue = budgetTokens[token];
-                                const statusLabel = hasOverride
-                                  ? "Manual"
-                                  : detectedValue !== undefined
-                                  ? "Detected"
-                                  : "Blank";
-                                const statusClass =
-                                  hasOverride ? "text-[#1D4ED8]" : detectedValue !== undefined ? "text-[#047857]" : "text-[color:var(--text-secondary)]";
-                                return (
-                                  <label
-                                    key={token}
-                                    className="owner-input-tile flex flex-col gap-2 p-3"
-                                  >
-                                    <span className="text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
-                                      {column.label}
-                                      <span className="ml-1 text-[11px] font-normal text-[color:var(--text-secondary)]">
-                                        {column.description}
+
+                              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                {BUDGET_COLUMNS.map((column) => {
+                                  const token = `${line.baseKey}${column.suffix}`;
+                                  const baselineValue = getBudgetInputValue(token);
+                                  const hasOverride = budgetOverrides[token] !== undefined;
+                                  const detectedValue = budgetTokens[token];
+
+                                  const isPercentToken = token.endsWith("VARPER");
+                                  const overrideRaw = budgetOverrides[token];
+
+                                  const overrideNumeric =
+                                    overrideRaw !== undefined ? toNumber(overrideRaw) : undefined;
+                                  const detectedNumeric =
+                                    typeof detectedValue === "number" ? detectedValue : undefined;
+
+                                  const effectiveNumeric =
+                                    overrideRaw !== undefined ? overrideNumeric : detectedNumeric;
+
+                                  const formattedDetected =
+                                    isPercentToken && detectedNumeric !== undefined
+                                      ? `${percentFormatter.format(detectedNumeric)}%`
+                                      : detectedNumeric !== undefined
+                                        ? String(detectedNumeric)
+                                        : "";
+
+                                  const displayValue =
+                                    overrideRaw !== undefined ? overrideRaw : formattedDetected || baselineValue;
+
+                                  const placeholderValue =
+                                    formattedDetected || baselineValue || "Enter value";
+
+                                  const percentToneClass =
+                                    isPercentToken &&
+                                      effectiveNumeric !== undefined &&
+                                      Number.isFinite(effectiveNumeric)
+                                      ? effectiveNumeric > 0
+                                        ? "text-[#16a34a]"
+                                        : effectiveNumeric < 0
+                                          ? "text-[#dc2626]"
+                                          : ""
+                                      : "";
+
+                                  const { statusIcon, statusClass, statusTitle } = (() => {
+                                    if (hasOverride) {
+                                      return {
+                                        statusIcon: <Pencil size={14} />,
+                                        statusClass: "text-[#1D4ED8]",
+                                        statusTitle: "Manual override",
+                                      };
+                                    }
+                                    if (detectedValue !== undefined) {
+                                      return {
+                                        statusIcon: <CircleCheck size={14} />,
+                                        statusClass: "text-[#047857]",
+                                        statusTitle: "Detected",
+                                      };
+                                    }
+                                    return {
+                                      statusIcon: <Circle size={14} />,
+                                      statusClass: "text-[color:var(--text-secondary)]",
+                                      statusTitle: "Blank",
+                                    };
+                                  })();
+
+
+
+                                  return (
+                                    <label
+                                      key={token}
+                                      className="owner-input-tile flex flex-col gap-2 p-3"
+                                    >
+                                      <span className="text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
+                                        {column.label}
+                                        <span className="ml-1 text-[11px] font-normal text-[color:var(--text-secondary)]">
+                                          {column.description}
+                                        </span>
                                       </span>
-                                    </span>
-                                    <input
-                                      className="rounded-md border border-[#CBD5F5] px-2 py-1 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30"
-                                      value={inputValue}
-                                      onChange={(event) => updateBudgetOverride(token, event.target.value)}
-                                      placeholder={detectedValue !== undefined ? String(detectedValue) : "Enter value"}
-                                    />
-                                    <div className="flex items-center justify-between text-[11px] text-[color:var(--text-secondary)]">
-                                      <span>{`{{${token}}}`}</span>
-                                      <span className={`font-semibold ${statusClass}`}>{statusLabel}</span>
-                                    </div>
-                                  </label>
-                                );
-                              })}
+
+                                      <input
+                                        className={`rounded-md border border-[#CBD5F5] px-2 py-1 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 ${percentToneClass}`}
+                                        value={displayValue}
+                                        onChange={(event) => updateBudgetOverride(token, event.target.value)}
+                                        placeholder={placeholderValue}
+                                      />
+
+                                      <div className="flex items-center justify-between text-[11px] text-[color:var(--text-secondary)]">
+                                        <span
+                                          className={`inline-flex items-center ${statusClass}`}
+                                          aria-label={statusTitle}
+                                          title={statusTitle}
+                                        >
+                                          {statusIcon}
+                                        </span>
+
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })
-                    )}
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                   <div className="owner-info-bar mt-4 text-sm" data-variant="dashed">
                     <p>
@@ -914,8 +1010,8 @@ export default function OwnerReportsPage() {
                         ? REQUIRED_NUMERIC_FIELDS.has(key) && (!Number.isFinite(numericValue) || numericValue <= 0)
                           ? ""
                           : rawValue == null
-                          ? ""
-                          : String(rawValue)
+                            ? ""
+                            : String(rawValue)
                         : String(rawValue ?? "");
                       return (
                         <div key={key} className="grid gap-4 py-3 md:grid-cols-[200px_minmax(0,1fr)]">
@@ -1102,40 +1198,3 @@ export default function OwnerReportsPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

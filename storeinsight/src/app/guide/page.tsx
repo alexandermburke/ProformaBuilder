@@ -187,15 +187,12 @@ export default function GuidePage(): JSX.Element {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className="ios-pill text-[10px]" data-tone="neutral">
+                      <span className="ios-pill text-[10px] " data-tone="neutral">
                         Step {index + 1}
                       </span>
                       <h3 className="mt-2 text-base font-semibold text-[color:var(--text-primary)]">{step.title}</h3>
                     </div>
-                    <span className="hidden rounded-full bg-[rgba(37,99,235,0.12)] px-3 py-1 text-xs font-semibold text-[color:var(--accent-strong)] md:inline">
-                      {step.proTips.length} pro tips
-                    </span>
-                  </div>
+                </div>
                   <p className="text-sm text-[color:var(--text-secondary)]">{step.body}</p>
                   <div className="rounded-[16px] border border-dashed border-[rgba(148,163,255,0.35)] bg-white/80 p-6 text-center text-sm text-[color:var(--text-muted)] ">
                     {step.placeholderLabel}
@@ -237,18 +234,6 @@ export default function GuidePage(): JSX.Element {
                   </li>
                 ))}
               </ul>
-            </section>
-
-            <section className="ios-card ios-animate-up space-y-4 p-6">
-              <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">FAQ</h2>
-              <div className="space-y-4">
-                {faqs.map((item) => (
-                  <article key={item.id} className="ios-list-card space-y-2 p-4">
-                    <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{item.question}</h3>
-                    <p className="text-sm text-[color:var(--text-secondary)]">{item.answer}</p>
-                  </article>
-                ))}
-              </div>
             </section>
           </aside>
         </main>

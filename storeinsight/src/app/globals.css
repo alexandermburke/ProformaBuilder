@@ -739,8 +739,8 @@ html.dark .owner-step-chip[data-state='complete'] {
   min-width: 2.1rem;
   padding: 0.15rem 0.65rem;
   border-radius: 999px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
+  font-weight: 300;
+  letter-spacing: 0.15em;
   background: color-mix(in srgb, var(--surface), transparent 30%);
   color: var(--text-muted);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
@@ -762,8 +762,8 @@ html.dark .owner-step-number[data-state='complete'] {
 }
 
 .owner-step-label {
-  letter-spacing: 0.18em;
-  font-weight: 600;
+  letter-spacing: 0.15em;
+  font-weight: 200;
 }
 
 .owner-status-badge {
@@ -822,34 +822,6 @@ html.dark .owner-card--surface {
 html.dark .owner-input-tile {
   background: color-mix(in srgb, var(--surface), transparent 40%);
   border-color: color-mix(in srgb, var(--border-soft) 58%, transparent);
-}
-
-.owner-input-drop {
-  display: inline-flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 0.6rem;
-  border-radius: 16px;
-  border: 1.5px dashed color-mix(in srgb, var(--border-soft) 60%, transparent);
-  background: color-mix(in srgb, var(--surface), transparent 30%);
-  padding: 0.9rem 1.1rem;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  transition:
-    border-color 0.35s var(--ease-smooth),
-    background 0.35s var(--ease-smooth),
-    color 0.35s var(--ease-smooth);
-}
-
-.owner-input-drop:hover {
-  border-color: rgba(37, 99, 235, 0.45);
-  color: var(--accent-strong);
-  background: color-mix(in srgb, var(--surface), transparent 22%);
-}
-
-html.dark .owner-input-drop {
-  background: color-mix(in srgb, var(--surface), transparent 50%);
-  border-color: color-mix(in srgb, var(--border-soft) 48%, transparent);
 }
 
 .owner-info-bar {

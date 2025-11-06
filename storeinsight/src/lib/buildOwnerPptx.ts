@@ -43,8 +43,12 @@ function massageForTemplate(fields: OwnerFields): Record<string, string> {
   };
 }
 
-function normalizeTemplateTokens(zip: PizZip, keys: string[]): Set<string> {
-  const discovered = new Set<string>();
+type TokenMeta = {
+  trailingPercent: boolean;
+};
+
+function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, TokenMeta> {
+  const discovered = new Map<string, TokenMeta>();
   const keyLookup = new Map(keys.map((key) => [key.toUpperCase(), key]));
   const xmlPaths = Object.keys(zip.files).filter(
     (filename) => filename.startsWith("ppt/") && filename.endsWith(".xml"),
@@ -53,7 +57,7 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Set<string> {
     const file = zip.file(filename);
     if (!file) continue;
     const original = file.asText();
-    const updated = original.replace(/\{\{([\s\S]*?)\}\}/g, (match, rawToken) => {
+    const updated = original.replace(/\{\{([\s\S]*?)\}\}/g, (match, rawToken, offset) => {
       const cleaned = rawToken
         .replace(/<\/?[^>]+>/g, "")
         .replace(/&[a-z0-9#]+;/gi, "")
@@ -63,7 +67,12 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Set<string> {
       if (!cleaned) return match;
       const lookupKey = cleaned.toUpperCase();
       const canonical = keyLookup.get(lookupKey) ?? lookupKey;
-      discovered.add(canonical);
+      const meta = discovered.get(canonical) ?? { trailingPercent: false };
+      const nextChar = original[offset + match.length];
+      if (nextChar === "%") {
+        meta.trailingPercent = true;
+      }
+      discovered.set(canonical, meta);
       const normalized = `{{${canonical}}}`;
       return normalized;
     });
@@ -107,13 +116,28 @@ export async function buildOwnerPptx(
     ...(options?.overrides ?? {}),
   };
 
+  const templateTokens = normalizeTemplateTokens(zip, Object.keys(mergedTokens));
+  const tokensWithTrailingPercent = new Set(
+    [...templateTokens.entries()].filter(([, meta]) => meta.trailingPercent).map(([token]) => token),
+  );
+
+  const percentFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
+
   const payload: Record<string, string> = {};
   for (const [key, value] of Object.entries(mergedTokens)) {
-    payload[key] = typeof value === "number" ? String(value) : String(value ?? "");
+    if (typeof value === "number") {
+      if (key.endsWith("VARPER") || key.endsWith("YTDVARPER")) {
+        const formatted = percentFormatter.format(value);
+        payload[key] = tokensWithTrailingPercent.has(key) ? formatted : `${formatted}%`;
+      } else {
+        payload[key] = String(value);
+      }
+    } else {
+      payload[key] = String(value ?? "");
+    }
   }
 
-  const templateTokens = normalizeTemplateTokens(zip, Object.keys(payload));
-  for (const token of templateTokens) {
+  for (const token of templateTokens.keys()) {
     if (!(token in payload)) payload[token] = "";
   }
   const doc = new Docxtemplater(zip, {
