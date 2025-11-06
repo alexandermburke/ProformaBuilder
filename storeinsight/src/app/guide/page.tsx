@@ -82,12 +82,6 @@ const references: ReferenceCard[] = [
       { label: "Download sample PPTX", href: "/owner-reports" },
     ],
   },
-  {
-    id: "ref-playbook",
-    title: "Operations playbook",
-    summary: "Process checklist for analysts covering intake, QA, and delivery expectations.",
-    actions: [{ label: "Open playbook", href: "/updatelog" }],
-  },
 ];
 
 const faqs: FAQ[] = [
