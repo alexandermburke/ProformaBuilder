@@ -1277,6 +1277,9 @@ export default function OwnerReportsPage() {
                       Last uploaded: <span className="font-medium text-[color:var(--text-primary)]">{file.name}</span>
                     </p>
                   )}
+                  <p className="mt-3 text-[11px] text-[color:var(--text-muted)]">
+                    Preview is available on Step 4 in the Summary mapper.
+                  </p>
                 </section>
               )}
 
@@ -1319,6 +1322,9 @@ export default function OwnerReportsPage() {
                           Selected: <span className="font-medium text-[color:var(--text-primary)]">{budgetFile.name}</span>
                         </p>
                       )}
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Preview is available on Step 3 in the Budget mapper.
+                      </p>
                     </div>
 
                     <div className="owner-input-tile space-y-3">
@@ -1352,6 +1358,9 @@ export default function OwnerReportsPage() {
                           Selected: <span className="font-medium text-[color:var(--text-primary)]">{financialsFile.name}</span>
                         </p>
                       )}
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Preview is available on Step 3 in the Budget mapper.
+                      </p>
                     </div>
 
                     <div className="owner-input-tile space-y-3">
