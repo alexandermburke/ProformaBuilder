@@ -25,6 +25,11 @@ import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
 import { extractBudgetTableFields } from "@/lib/extractBudget";
 import { toNumber } from "@/lib/compute";
+import {
+  computeInventoryPerformance,
+  type InventoryPreviewRow,
+  type InventoryTokenValues,
+} from "@/lib/inventoryPerformance";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -88,6 +93,88 @@ const FIELD_TITLES: Record<FieldKey, string> = {
   MOVEOUTS_SQFT_MTD: "Move-Outs SqFt MTD",
   NET_SQFT_MTD: "Net SqFt MTD",
 };
+
+type SummaryFieldConfig = {
+  key: FieldKey;
+  span?: "full";
+};
+
+type SummarySection = {
+  id: string;
+  title: string;
+  description?: string;
+  columns?: 1 | 2 | 3;
+  fields: SummaryFieldConfig[];
+};
+
+const SUMMARY_SECTIONS: SummarySection[] = [
+  {
+    id: "context",
+    title: "Report Overview",
+    description: "Basics that drive the cover slide and hero stats.",
+    columns: 2,
+    fields: [
+      { key: "CURRENTDATE" },
+      { key: "CURRENTMONTH" },
+      { key: "OWNERGROUP" },
+      { key: "ACQUIREDDATE" },
+      { key: "ADDRESS", span: "full" },
+    ],
+  },
+  {
+    id: "financials",
+    title: "Financial Highlights",
+    description: "Totals merged into the NOI summary.",
+    columns: 2,
+    fields: [
+      { key: "TOTALRENTALINCOME" },
+      { key: "TOTALINCOME" },
+      { key: "TOTALEXPENSES" },
+      { key: "NETINCOME" },
+    ],
+  },
+  {
+    id: "property",
+    title: "Property Snapshot",
+    description: "Units, rentable area, and occupancy.",
+    columns: 3,
+    fields: [
+      { key: "TOTALUNITS" },
+      { key: "RENTABLESQFT" },
+      { key: "OCCUPIEDAREASQFT" },
+      { key: "OCCUPANCYBYUNITS" },
+      { key: "OCCUPIEDAREAPERCENT" },
+    ],
+  },
+  {
+    id: "move-activity",
+    title: "Move Activity",
+    description: "Counts shown on the performance slide.",
+    columns: 3,
+    fields: [
+      { key: "MOVEINS_TODAY" },
+      { key: "MOVEINS_MTD" },
+      { key: "MOVEINS_YTD" },
+      { key: "MOVEOUTS_TODAY" },
+      { key: "MOVEOUTS_MTD" },
+      { key: "MOVEOUTS_YTD" },
+      { key: "NET_TODAY" },
+      { key: "NET_MTD" },
+      { key: "NET_YTD" },
+    ],
+  },
+  {
+    id: "sqft-moves",
+    title: "Square Foot Moves",
+    description: "Optional supporting stats for appendix slides.",
+    columns: 3,
+    fields: [
+      { key: "MOVEINS_SQFT_MTD" },
+      { key: "MOVEOUTS_SQFT_MTD" },
+      { key: "NET_SQFT_MTD" },
+    ],
+  },
+];
 
 const NUMERIC_FIELDS = new Set<FieldKey>([
   "TOTALUNITS",
@@ -255,6 +342,30 @@ function formatBudgetTokenForLog(token: string, value: number): string {
   return normalizeLogValue(budgetLogCurrency.format(value));
 }
 
+type InventoryPreviewTableProps = {
+  rows: InventoryPreviewRow[];
+  dense?: boolean;
+};
+
+function InventoryPreviewTable({ rows, dense = false }: InventoryPreviewTableProps) {
+  if (!rows || rows.length === 0) return null;
+  const tableClasses = dense ? "text-xs" : "text-sm";
+  return (
+    <div className={`overflow-hidden rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)] ${tableClasses}`}>
+      <table className="min-w-full divide-y divide-[rgba(148,163,255,0.25)]">
+        <tbody className="divide-y divide-[rgba(148,163,255,0.2)]">
+          {rows.map((row) => (
+            <tr key={row.token}>
+              <td className="px-3 py-2 font-medium text-[color:var(--text-secondary)]">{row.label}</td>
+              <td className="px-3 py-2 text-right font-semibold text-[color:var(--accent-strong)]">{row.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function downloadFromUrl(url: string, fileName: string) {
   const link = document.createElement("a");
   link.href = url;
@@ -287,6 +398,11 @@ export default function OwnerReportsPage() {
   } | null>(null);
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
   const [financialsFile, setFinancialsFile] = useState<File | null>(null);
+  const [inventoryFile, setInventoryFile] = useState<File | null>(null);
+  const [inventoryTokens, setInventoryTokens] = useState<InventoryTokenValues | null>(null);
+  const [inventoryPreview, setInventoryPreview] = useState<InventoryPreviewRow[]>([]);
+  const [inventoryStatus, setInventoryStatus] = useState<{ variant: "error" | "warning"; text: string } | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
   const [budgetTokens, setBudgetTokens] = useState<Record<string, number>>({});
   const [detectedCount, setDetectedCount] = useState(0);
   const [templateTokenCount, setTemplateTokenCount] = useState<number | null>(null);
@@ -301,11 +417,18 @@ export default function OwnerReportsPage() {
   const viewLogButtonRef = useRef<HTMLButtonElement | null>(null);
   const logModalRef = useRef<HTMLDivElement | null>(null);
   const wasLogModalOpen = useRef(false);
+  const inventoryRequestRef = useRef(0);
 
   const resetReportLog = useCallback(() => {
     reportLogRef.current = "";
     setReportLog("");
   }, [setReportLog]);
+
+  const resetInventoryUpload = useCallback(() => {
+    setInventoryTokens(null);
+    setInventoryPreview([]);
+    setInventoryStatus(null);
+  }, []);
 
   const appendReportLog = useCallback(
     (input: string | string[]) => {
@@ -559,6 +682,70 @@ export default function OwnerReportsPage() {
     [budgetFile, runBudgetExtract],
   );
 
+  const handleInventoryFileChange = useCallback(
+    async (next: File | null) => {
+      inventoryRequestRef.current += 1;
+      const requestId = inventoryRequestRef.current;
+      if (!next) {
+        setInventoryFile(null);
+        resetInventoryUpload();
+        setInventoryLoading(false);
+        return;
+      }
+
+      const name = next.name?.toLowerCase() ?? "";
+      const mime = next.type?.toLowerCase() ?? "";
+      const isCsv =
+        name.endsWith(".csv") ||
+        mime === "text/csv" ||
+        mime === "application/vnd.ms-excel";
+      if (!isCsv) {
+        setInventoryFile(null);
+        resetInventoryUpload();
+        if (inventoryRequestRef.current === requestId) {
+          setInventoryStatus({
+            variant: "error",
+            text: "File must be CSV.",
+          });
+          setInventoryLoading(false);
+        }
+        return;
+      }
+
+      resetInventoryUpload();
+      setInventoryFile(next);
+      setInventoryLoading(true);
+      try {
+        const text = await next.text();
+        if (inventoryRequestRef.current !== requestId) return;
+        const result = computeInventoryPerformance(text);
+        if (result.ok) {
+          setInventoryTokens(result.tokens);
+          setInventoryPreview(result.preview);
+          setInventoryStatus(null);
+        } else {
+          resetInventoryUpload();
+          setInventoryStatus({
+            variant: result.code === "insufficient_history" ? "warning" : "error",
+            text: result.message,
+          });
+        }
+      } catch (err) {
+        if (inventoryRequestRef.current !== requestId) return;
+        resetInventoryUpload();
+        setInventoryStatus({
+          variant: "error",
+          text: err instanceof Error ? err.message : "Unable to parse CSV.",
+        });
+      } finally {
+        if (inventoryRequestRef.current === requestId) {
+          setInventoryLoading(false);
+        }
+      }
+    },
+    [resetInventoryUpload],
+  );
+
   const updateBudgetOverride = useCallback((token: string, value: string) => {
     setBudgetOverrides((prev) => {
       const next = { ...prev };
@@ -677,6 +864,42 @@ export default function OwnerReportsPage() {
     });
   }
 
+  function renderSummaryFieldInput(key: FieldKey, span?: "full") {
+    const rawValue = fieldValue(key);
+    const isNumeric = NUMERIC_FIELDS.has(key);
+    const numericValue = Number(rawValue ?? 0);
+    const displayValue = isNumeric
+      ? REQUIRED_NUMERIC_FIELDS.has(key) && (!Number.isFinite(numericValue) || numericValue <= 0)
+        ? ""
+        : rawValue == null
+          ? ""
+          : String(rawValue)
+      : String(rawValue ?? "");
+    const placeholder = isNumeric ? "Enter a positive number" : "Enter a value";
+    const spanClass =
+      span === "full"
+        ? "md:col-span-2"
+        : "";
+    return (
+      <label
+        key={key}
+        className={`flex flex-col gap-2 rounded-xl border border-[color:var(--border-soft)] bg-white/60 p-3 shadow-sm transition focus-within:border-[#2563EB] focus-within:ring-2 focus-within:ring-[#2563EB]/30 ${spanClass}`}
+      >
+        <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+          {FIELD_TITLES[key]}
+        </span>
+        <input
+          className="owner-field-input w-full rounded-lg border border-transparent bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none"
+          type={isNumeric ? "number" : "text"}
+          inputMode={isNumeric ? "decimal" : undefined}
+          value={displayValue}
+          onChange={(event) => onOverride(key, event.target.value)}
+          placeholder={placeholder}
+        />
+      </label>
+    );
+  }
+
   function isValid(): boolean {
     if (!mergedFields) return false;
     return mergedFields.TOTALUNITS > 0 && mergedFields.RENTABLESQFT > 0;
@@ -696,6 +919,9 @@ export default function OwnerReportsPage() {
       if (financialsFile) {
         form.append("financial", financialsFile);
       }
+      if (inventoryFile) {
+        form.append("inventory", inventoryFile);
+      }
       const overridesPayload: OwnerFieldOverrides = {};
       for (const key of FIELD_ORDER) {
         if (overrides[key] !== undefined) {
@@ -710,6 +936,9 @@ export default function OwnerReportsPage() {
       }
       if (Object.keys(budgetOverrides).length > 0) {
         form.append("budgetOverrides", JSON.stringify(budgetOverrides));
+      }
+      if (inventoryTokens) {
+        form.append("inventoryTokens", JSON.stringify(inventoryTokens));
       }
       const res = await fetch("/api/owner-reports/generate", { method: "POST", body: form });
       if (!res.ok) {
@@ -732,6 +961,16 @@ export default function OwnerReportsPage() {
           mergedFields[key],
         );
       }
+      const performanceLogValues: Record<string, string> = {};
+      if (inventoryTokens) {
+        for (const [token, rawValue] of Object.entries(inventoryTokens)) {
+          if (typeof rawValue === "number") {
+            performanceLogValues[token] = normalizeLogValue(ownerLogNumber.format(rawValue));
+          } else {
+            performanceLogValues[token] = normalizeLogValue(String(rawValue ?? ""));
+          }
+        }
+      }
       const budgetLogValues: Record<string, string> = {};
       for (const [token, value] of Object.entries(budgetTokens)) {
         budgetLogValues[token] = formatBudgetTokenForLog(token, value);
@@ -741,6 +980,7 @@ export default function OwnerReportsPage() {
       }
       const combinedLogData: Record<string, string> = {
         ...ownerLogValues,
+        ...performanceLogValues,
         ...budgetLogValues,
       };
       for (const [alias, source] of Object.entries(LOG_MAPPING_ALIASES)) {
@@ -1113,6 +1353,62 @@ export default function OwnerReportsPage() {
                         </p>
                       )}
                     </div>
+
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Inventory Over Time (.csv)</p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Optional. Used to auto-fill Performance tokens (Move-ins/outs, Net, trailing 3/6/12). CSV requires columns: dtDate, occ, n.
+                          </p>
+                        </div>
+                        {inventoryFile && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => {
+                              void handleInventoryFileChange(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".csv,text/csv,application/vnd.ms-excel"
+                        className="text-sm text-[color:var(--text-primary)]"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          void handleInventoryFileChange(nextFile);
+                          event.target.value = "";
+                        }}
+                      />
+                      {inventoryFile && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{inventoryFile.name}</span>
+                        </p>
+                      )}
+                      {inventoryLoading && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">Parsing CSV...</p>
+                      )}
+                      {inventoryStatus && (
+                        <div
+                          className={`rounded-md border px-3 py-2 text-xs ${
+                            inventoryStatus.variant === "error"
+                              ? "border-[#FEE2E2] bg-[#FEF2F2] text-[#B91C1C]"
+                              : "border-[#FEF3C7] bg-[#FFFBEB] text-[#92400E]"
+                          }`}
+                        >
+                          {inventoryStatus.text}
+                        </div>
+                      )}
+                      {!inventoryLoading && inventoryPreview.length > 0 && !inventoryStatus && (
+                        <p className="text-[11px] text-[color:var(--text-muted)]">
+                          Preview is available on Step 4 in the Performance tokens panel.
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
@@ -1423,35 +1719,54 @@ export default function OwnerReportsPage() {
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Review the detected summary values and override anything that needs to be adjusted before validation.
                   </p>
-                  <div className="mt-6 divide-y divide-[rgba(148,163,255,0.35)]">
-                    {FIELD_ORDER.map((key) => {
-                      const rawValue = fieldValue(key);
-                      const isNumeric = NUMERIC_FIELDS.has(key);
-                      const numericValue = Number(rawValue ?? 0);
-                      const displayValue = isNumeric
-                        ? REQUIRED_NUMERIC_FIELDS.has(key) && (!Number.isFinite(numericValue) || numericValue <= 0)
-                          ? ""
-                          : rawValue == null
-                            ? ""
-                            : String(rawValue)
-                        : String(rawValue ?? "");
+                  <div className="mt-6 space-y-6">
+                    {SUMMARY_SECTIONS.map((section) => {
+                      const gridClass =
+                        section.columns === 3
+                          ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+                          : section.columns === 1
+                            ? "grid gap-4"
+                            : "grid gap-4 md:grid-cols-2";
                       return (
-                        <div key={key} className="grid gap-4 py-3 md:grid-cols-[200px_minmax(0,1fr)]">
-                          <div className="text-sm font-medium uppercase tracking-wide text-[color:var(--accent-strong)]">
-                            {FIELD_TITLES[key]}
+                        <div
+                          key={section.id}
+                          className="rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-5 shadow-sm"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-[color:var(--accent-strong)]">{section.title}</p>
+                              {section.description && (
+                                <p className="text-xs text-[color:var(--text-secondary)]">{section.description}</p>
+                              )}
+                            </div>
                           </div>
-                          <input
-                            className="owner-field-input w-full px-3 py-2 text-sm"
-                            type={isNumeric ? "number" : "text"}
-                            inputMode={isNumeric ? "decimal" : undefined}
-                            value={displayValue}
-                            onChange={(event) => onOverride(key, event.target.value)}
-                            placeholder={isNumeric ? "Enter a positive number" : "Enter a value"}
-                          />
+                          <div className={`mt-4 ${gridClass}`}>
+                            {section.fields.map((field) => renderSummaryFieldInput(field.key, field.span))}
+                          </div>
                         </div>
                       );
                     })}
                   </div>
+                  {inventoryPreview.length > 0 && (
+                    <div className="mt-6 rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]">
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Performance tokens</p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Auto-filled from the Inventory Over Time CSV upload
+                          </p>
+                        </div>
+                        {inventoryFile && (
+                          <p className="truncate text-[11px] text-[color:var(--text-muted)]">
+                            Source: {inventoryFile.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="px-4 pb-4">
+                        <InventoryPreviewTable rows={inventoryPreview} />
+                      </div>
+                    </div>
+                  )}
                   <div className="owner-info-bar mt-4 text-sm" data-variant="dashed">
                     <p>
                       Detected tokens:{" "}

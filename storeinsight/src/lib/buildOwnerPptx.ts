@@ -7,6 +7,7 @@ import {
   extractBudgetTableFields,
   type BudgetTokenDetail,
 } from "@/lib/extractBudget";
+import type { InventoryTokenValues } from "@/lib/inventoryPerformance";
 
 const DASH_CHARACTER = "\u2013";
 const BLANK_LITERALS = new Set(["", "NaN", "undefined"]);
@@ -155,6 +156,7 @@ type BuildOwnerPptxOptions = {
   templateTokens?: string[];
   budgetBuffer?: Buffer | null;
   financialBuffer?: Buffer | null;
+  performanceTokens?: (InventoryTokenValues | Record<string, string | number>) | null;
 };
 
 export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Buffer> {
@@ -167,11 +169,12 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     templateTokens,
     budgetBuffer,
     financialBuffer,
+    performanceTokens,
   } = options;
 
   const templateBuffer =
     providedTemplateBuffer ??
-    (await fs.readFile(path.join(process.cwd(), "public", "XRAYTEMPLATE.pptx")));
+    (await fs.readFile(path.join(process.cwd(), "public", "INFAREDTEMPLATE.pptx")));
 
   const zip = new PizZip(templateBuffer);
   const ownerTokens = massageForTemplate(ownerValues);
@@ -208,6 +211,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
       ...Object.keys(ownerTokens),
       ...Object.keys(budgetTokensNumeric),
       ...overrideKeys,
+      ...(performanceTokens ? Object.keys(performanceTokens) : []),
     ]),
   );
 
@@ -278,6 +282,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
 
   const data: Record<string, string | number> = {
     ...summaryFields,
+    ...(performanceTokens ?? {}),
     ...budgetTokens,
     ...budgetOverrides,
   };

@@ -8,6 +8,7 @@ import { buildOwnerPptx } from "@/lib/buildOwnerPptx";
 import { extractOwnerFields } from "@/lib/extractOwnerFields";
 import { toNumber } from "@/lib/compute";
 import { extractBudgetTableFields, type BudgetTokenDetail } from "@/lib/extractBudget";
+import { computeInventoryPerformance } from "@/lib/inventoryPerformance";
 import type { OwnerFields } from "@/types/ownerReport";
 
 function listPptxTokens(buf: Buffer): string[] {
@@ -37,6 +38,8 @@ export async function POST(req: NextRequest) {
   const financial = form.get("financial");
   const budgetTokensRaw = form.get("budgetTokens");
   const budgetOverridesRaw = form.get("budgetOverrides");
+  const inventory = form.get("inventory");
+  const inventoryTokensRaw = form.get("inventoryTokens");
 
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
@@ -59,6 +62,10 @@ export async function POST(req: NextRequest) {
   let financialBuffer: Buffer | undefined;
   if (financial instanceof Blob) {
     financialBuffer = Buffer.from(await financial.arrayBuffer());
+  }
+  let inventoryBuffer: Buffer | undefined;
+  if (inventory instanceof Blob) {
+    inventoryBuffer = Buffer.from(await inventory.arrayBuffer());
   }
 
   let budgetTokens: Record<string, number> | undefined;
@@ -101,7 +108,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const templatePath = path.join(process.cwd(), "public", "UVTEMPLATE.pptx");
+  let performanceTokens: Record<string, string | number> | undefined;
+  if (typeof inventoryTokensRaw === "string" && inventoryTokensRaw.trim()) {
+    try {
+      const parsed = JSON.parse(inventoryTokensRaw) as Record<string, unknown>;
+      const normalized: Record<string, string | number> = {};
+      for (const [token, value] of Object.entries(parsed ?? {})) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          normalized[token] = value;
+        } else if (typeof value === "string" && value.trim().length > 0) {
+          normalized[token] = value;
+        }
+      }
+      if (Object.keys(normalized).length > 0) {
+        performanceTokens = normalized;
+      }
+    } catch (err) {
+      console.error("[inventory] Unable to parse performance tokens", err);
+    }
+  }
+
+  const templatePath = path.join(process.cwd(), "public", "INFAREDTEMPLATE.pptx");
   const templateBuffer = await fs.readFile(templatePath);
   const templateTokens = listPptxTokens(templateBuffer);
 
@@ -119,6 +146,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (inventoryBuffer) {
+    try {
+      const csvText = inventoryBuffer.toString("utf-8");
+      const result = computeInventoryPerformance(csvText);
+      if (result.ok) {
+        performanceTokens = result.tokens;
+      } else {
+        console.warn("[inventory] Unable to re-parse CSV on server:", result.message);
+      }
+    } catch (err) {
+      console.error("[inventory] Unable to parse inventory CSV on server", err);
+    }
+  }
+
   const budgetTokensNumeric = budgetTokens ?? {};
   console.log("[budget] detected", Object.keys(budgetTokensNumeric).length, "numeric tokens");
 
@@ -131,6 +172,7 @@ export async function POST(req: NextRequest) {
     templateTokens,
     budgetBuffer: budgetBuffer ?? null,
     financialBuffer: financialBuffer ?? null,
+    performanceTokens,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 
