@@ -8,7 +8,7 @@ import { buildOwnerPptx } from "@/lib/buildOwnerPptx";
 import { extractOwnerFields } from "@/lib/extractOwnerFields";
 import { toNumber } from "@/lib/compute";
 import { extractBudgetTableFields, type BudgetTokenDetail } from "@/lib/extractBudget";
-import { computeInventoryPerformance } from "@/lib/inventoryPerformance";
+import { computeHummingbirdPerformance } from "@/lib/hummingbirdPerformance";
 import type { OwnerFields } from "@/types/ownerReport";
 
 function listPptxTokens(buf: Buffer): string[] {
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const templatePath = path.join(process.cwd(), "public", "INFAREDTEMPLATE.pptx");
+  const templatePath = path.join(process.cwd(), "public", "ALPHATEMPLATE.pptx");
   const templateBuffer = await fs.readFile(templatePath);
   const templateTokens = listPptxTokens(templateBuffer);
 
@@ -148,15 +148,14 @@ export async function POST(req: NextRequest) {
 
   if (inventoryBuffer) {
     try {
-      const csvText = inventoryBuffer.toString("utf-8");
-      const result = computeInventoryPerformance(csvText);
+      const result = computeHummingbirdPerformance(inventoryBuffer);
       if (result.ok) {
         performanceTokens = result.tokens;
       } else {
-        console.warn("[inventory] Unable to re-parse CSV on server:", result.message);
+        console.warn("[inventory] Unable to re-parse Hummingbird workbook on server:", result.message);
       }
     } catch (err) {
-      console.error("[inventory] Unable to parse inventory CSV on server", err);
+      console.error("[inventory] Unable to parse Hummingbird workbook on server", err);
     }
   }
 

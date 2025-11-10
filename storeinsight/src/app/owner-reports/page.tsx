@@ -26,10 +26,10 @@ import { useTheme } from "@/components/ThemeProvider";
 import { extractBudgetTableFields } from "@/lib/extractBudget";
 import { toNumber } from "@/lib/compute";
 import {
-  computeInventoryPerformance,
   type InventoryPreviewRow,
   type InventoryTokenValues,
 } from "@/lib/inventoryPerformance";
+import { computeHummingbirdPerformance } from "@/lib/hummingbirdPerformance";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -695,17 +695,17 @@ export default function OwnerReportsPage() {
 
       const name = next.name?.toLowerCase() ?? "";
       const mime = next.type?.toLowerCase() ?? "";
-      const isCsv =
-        name.endsWith(".csv") ||
-        mime === "text/csv" ||
-        mime === "application/vnd.ms-excel";
-      if (!isCsv) {
+      const isWorkbook =
+        name.endsWith(".xlsx") ||
+        name.endsWith(".xls") ||
+        mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      if (!isWorkbook) {
         setInventoryFile(null);
         resetInventoryUpload();
         if (inventoryRequestRef.current === requestId) {
           setInventoryStatus({
             variant: "error",
-            text: "File must be CSV.",
+            text: "Upload a Hummingbird Move-In/Move-Out Activity report (.xlsx).",
           });
           setInventoryLoading(false);
         }
@@ -716,9 +716,9 @@ export default function OwnerReportsPage() {
       setInventoryFile(next);
       setInventoryLoading(true);
       try {
-        const text = await next.text();
+        const buffer = await next.arrayBuffer();
         if (inventoryRequestRef.current !== requestId) return;
-        const result = computeInventoryPerformance(text);
+        const result = computeHummingbirdPerformance(buffer);
         if (result.ok) {
           setInventoryTokens(result.tokens);
           setInventoryPreview(result.preview);
@@ -735,7 +735,7 @@ export default function OwnerReportsPage() {
         resetInventoryUpload();
         setInventoryStatus({
           variant: "error",
-          text: err instanceof Error ? err.message : "Unable to parse CSV.",
+          text: err instanceof Error ? err.message : "Unable to parse Hummingbird workbook.",
         });
       } finally {
         if (inventoryRequestRef.current === requestId) {
@@ -1366,9 +1366,9 @@ export default function OwnerReportsPage() {
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Inventory Over Time (.csv)</p>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Move-In/Move-Out Activity (.xlsx)</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Optional. Used to auto-fill Performance tokens (Move-ins/outs, Net, trailing 3/6/12). CSV requires columns: dtDate, occ, n.
+                            Optional. Upload the Hummingbird Move-In/Move-Out Activity report (.xlsx) to auto-fill Performance tokens (Move-ins/outs, Net, trailing 3/6/12).
                           </p>
                         </div>
                         {inventoryFile && (
@@ -1385,7 +1385,7 @@ export default function OwnerReportsPage() {
                       </div>
                       <input
                         type="file"
-                        accept=".csv,text/csv,application/vnd.ms-excel"
+                        accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         className="text-sm text-[color:var(--text-primary)]"
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
@@ -1762,12 +1762,12 @@ export default function OwnerReportsPage() {
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Performance tokens</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Auto-filled from the Inventory Over Time CSV upload
+                            Auto-filled from the Move-In/Move-Out Activity report upload
                           </p>
                         </div>
                         {inventoryFile && (
                           <p className="truncate text-[11px] text-[color:var(--text-muted)]">
-                            Source: {inventoryFile.name}
+                            Source: {inventoryFile.name} (Hummingbird export)
                           </p>
                         )}
                       </div>

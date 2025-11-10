@@ -2,7 +2,7 @@ type CsvRow = string[];
 
 const REQUIRED_HEADERS = ["dtdate", "occ", "n"] as const;
 
-const PREVIEW_FIELDS = [
+export const PERFORMANCE_PREVIEW_FIELDS = [
   { token: "CURRENTMONTH", label: "Current Month", kind: "string" },
   { token: "MOVEINS", label: "Move-Ins (Current Month)", kind: "integer" },
   { token: "MOVEOUTS", label: "Move-Outs (Current Month)", kind: "integer" },
@@ -52,6 +52,7 @@ export type InventoryPreviewRow = {
 
 export type InventoryPerformanceErrorCode =
   | "missing_columns"
+  | "missing_sheet"
   | "insufficient_history"
   | "no_rows"
   | "parse_error";
@@ -98,6 +99,26 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
+
+export function buildPerformancePreview(tokens: InventoryTokenValues): InventoryPreviewRow[] {
+  return PERFORMANCE_PREVIEW_FIELDS.map(({ token, label, kind }) => {
+    const rawValue = tokens[token];
+    if (kind === "string") {
+      return { token, label, value: String(rawValue ?? "") };
+    }
+    if (kind === "percent") {
+      return { token, label, value: String(rawValue ?? "—") };
+    }
+    return {
+      token,
+      label,
+      value:
+        typeof rawValue === "number" && Number.isFinite(rawValue)
+          ? integerFormatter.format(rawValue)
+          : "0",
+    };
+  });
+}
 
 export function computeInventoryPerformance(csvText: string): InventoryPerformanceResult {
   const sanitized = csvText.replace(/^\uFEFF/, "");
@@ -246,23 +267,7 @@ export function computeInventoryPerformance(csvText: string): InventoryPerforman
     MOVN: formatPercent(pctChange(currentMonthAgg.net, previousMonthAgg.net)),
   };
 
-  const preview: InventoryPreviewRow[] = PREVIEW_FIELDS.map(({ token, label, kind }) => {
-    const rawValue = tokens[token];
-    if (kind === "string") {
-      return { token, label, value: String(rawValue ?? "") };
-    }
-    if (kind === "percent") {
-      return { token, label, value: String(rawValue ?? "—") };
-    }
-    return {
-      token,
-      label,
-      value:
-        typeof rawValue === "number" && Number.isFinite(rawValue)
-          ? integerFormatter.format(rawValue)
-          : "0",
-    };
-  });
+  const preview = buildPerformancePreview(tokens);
 
   return {
     ok: true,
@@ -395,13 +400,13 @@ function roundInteger(value: number): number {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
-function pctChange(curr: number, prev: number): number | null {
+export function pctChange(curr: number, prev: number): number | null {
   if (!Number.isFinite(prev) || prev === 0) return null;
   if (!Number.isFinite(curr)) return null;
   return (curr - prev) / prev;
 }
 
-function formatPercent(value: number | null): string {
+export function formatPercent(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return `${percentFormatter.format(value * 100)}%`;
 }

@@ -174,7 +174,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
 
   const templateBuffer =
     providedTemplateBuffer ??
-    (await fs.readFile(path.join(process.cwd(), "public", "INFAREDTEMPLATE.pptx")));
+    (await fs.readFile(path.join(process.cwd(), "public", "ALPHATEMPLATE.pptx")));
 
   const zip = new PizZip(templateBuffer);
   const ownerTokens = massageForTemplate(ownerValues);
