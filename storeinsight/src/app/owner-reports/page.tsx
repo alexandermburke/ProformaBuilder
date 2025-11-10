@@ -26,10 +26,10 @@ import { useTheme } from "@/components/ThemeProvider";
 import { extractBudgetTableFields } from "@/lib/extractBudget";
 import { toNumber } from "@/lib/compute";
 import {
-  type InventoryPreviewRow,
-  type InventoryTokenValues,
-} from "@/lib/inventoryPerformance";
-import { computeHummingbirdPerformance } from "@/lib/hummingbirdPerformance";
+  computeOwnerPerformance,
+  type OwnerPerformancePreviewRow,
+  type OwnerPerformanceTokenValues,
+} from "@/lib/ownerPerformance";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -343,25 +343,45 @@ function formatBudgetTokenForLog(token: string, value: number): string {
 }
 
 type InventoryPreviewTableProps = {
-  rows: InventoryPreviewRow[];
+  rows: OwnerPerformancePreviewRow[];
   dense?: boolean;
 };
 
 function InventoryPreviewTable({ rows, dense = false }: InventoryPreviewTableProps) {
   if (!rows || rows.length === 0) return null;
   const tableClasses = dense ? "text-xs" : "text-sm";
+  const sections = rows.reduce<Map<OwnerPerformancePreviewRow["section"], OwnerPerformancePreviewRow[]>>(
+    (map, row) => {
+      const existing = map.get(row.section) ?? [];
+      existing.push(row);
+      map.set(row.section, existing);
+      return map;
+    },
+    new Map(),
+  );
+
   return (
-    <div className={`overflow-hidden rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)] ${tableClasses}`}>
-      <table className="min-w-full divide-y divide-[rgba(148,163,255,0.25)]">
-        <tbody className="divide-y divide-[rgba(148,163,255,0.2)]">
-          {rows.map((row) => (
-            <tr key={row.token}>
-              <td className="px-3 py-2 font-medium text-[color:var(--text-secondary)]">{row.label}</td>
-              <td className="px-3 py-2 text-right font-semibold text-[color:var(--accent-strong)]">{row.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className={`space-y-4 ${tableClasses}`}>
+      {Array.from(sections.entries()).map(([section, sectionRows]) => (
+        <div
+          key={section}
+          className="overflow-hidden rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]"
+        >
+          <div className="border-b border-[color:var(--border-soft)]/60 bg-[color:var(--surface)]/70 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)]">
+            {section}
+          </div>
+          <table className="min-w-full divide-y divide-[rgba(148,163,255,0.25)]">
+            <tbody className="divide-y divide-[rgba(148,163,255,0.2)]">
+              {sectionRows.map((row) => (
+                <tr key={`${section}-${row.token}`}>
+                  <td className="px-3 py-2 font-medium text-[color:var(--text-secondary)]">{row.label}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-[color:var(--accent-strong)]">{row.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
@@ -397,11 +417,14 @@ export default function OwnerReportsPage() {
     data: OwnerFields;
   } | null>(null);
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
-  const [inventoryFile, setInventoryFile] = useState<File | null>(null);
-  const [inventoryTokens, setInventoryTokens] = useState<InventoryTokenValues | null>(null);
-  const [inventoryPreview, setInventoryPreview] = useState<InventoryPreviewRow[]>([]);
-  const [inventoryStatus, setInventoryStatus] = useState<{ variant: "error" | "warning"; text: string } | null>(null);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
+  const [iprcFile, setIprcFile] = useState<File | null>(null);
+  const [currentMonthOverride, setCurrentMonthOverride] = useState("");
+  const [includeCurrentMonth, setIncludeCurrentMonth] = useState(true);
+  const [performanceTokens, setPerformanceTokens] = useState<OwnerPerformanceTokenValues | null>(null);
+  const [performancePreview, setPerformancePreview] = useState<OwnerPerformancePreviewRow[]>([]);
+  const [performanceStatus, setPerformanceStatus] = useState<{ variant: "error" | "warning"; text: string } | null>(null);
+  const [performanceLoading, setPerformanceLoading] = useState(false);
   const [budgetTokens, setBudgetTokens] = useState<Record<string, number>>({});
   const [detectedCount, setDetectedCount] = useState(0);
   const [templateTokenCount, setTemplateTokenCount] = useState<number | null>(null);
@@ -417,7 +440,7 @@ export default function OwnerReportsPage() {
   const viewLogButtonRef = useRef<HTMLButtonElement | null>(null);
   const logModalRef = useRef<HTMLDivElement | null>(null);
   const wasLogModalOpen = useRef(false);
-  const inventoryRequestRef = useRef(0);
+  const performanceRequestRef = useRef(0);
 
   const resetReportLog = useCallback(() => {
     reportLogRef.current = "";
@@ -428,11 +451,74 @@ export default function OwnerReportsPage() {
     fieldsRef.current = fields;
   }, [fields]);
 
-  const resetInventoryUpload = useCallback(() => {
-    setInventoryTokens(null);
-    setInventoryPreview([]);
-    setInventoryStatus(null);
+  const resetPerformanceUpload = useCallback(() => {
+    setPerformanceTokens(null);
+    setPerformancePreview([]);
+    setPerformanceStatus(null);
   }, []);
+
+  const runPerformanceExtract = useCallback(
+    async (hb: File | null, iprc: File | null) => {
+      performanceRequestRef.current += 1;
+      const requestId = performanceRequestRef.current;
+      if (!hb || !iprc) {
+        if (requestId === performanceRequestRef.current) {
+          resetPerformanceUpload();
+          setPerformanceLoading(false);
+          if (!hb && !iprc) {
+            setPerformanceStatus(null);
+          } else {
+            setPerformanceStatus({
+              variant: "warning",
+              text: "Upload both the Hummingbird workbook (.xlsx) and the IPRC Change History CSV.",
+            });
+          }
+        }
+        return;
+      }
+
+      setPerformanceLoading(true);
+      setPerformanceStatus(null);
+      try {
+        const [hbBuffer, iprcText] = await Promise.all([hb.arrayBuffer(), iprc.text()]);
+        if (performanceRequestRef.current !== requestId) return;
+        const result = computeOwnerPerformance({
+          hummingbirdWorkbook: hbBuffer,
+          iprcCsvText: iprcText,
+          options: {
+            currentMonthOverride: currentMonthOverride.trim() || undefined,
+            includeCurrentMonthInTrailing: includeCurrentMonth,
+          },
+        });
+        if (result.ok) {
+          setPerformanceTokens(result.tokens);
+          setPerformancePreview(result.preview);
+          setPerformanceStatus(null);
+        } else {
+          resetPerformanceUpload();
+          setPerformanceStatus({
+            variant: result.code === "no_rows" ? "warning" : "error",
+            text: result.message,
+          });
+        }
+      } catch (err) {
+        if (performanceRequestRef.current !== requestId) return;
+        resetPerformanceUpload();
+        setPerformanceStatus({
+          variant: "error",
+          text:
+            err instanceof Error
+              ? err.message
+              : "Unable to parse performance inputs. Confirm both files are valid.",
+        });
+      } finally {
+        if (performanceRequestRef.current === requestId) {
+          setPerformanceLoading(false);
+        }
+      }
+    },
+    [currentMonthOverride, includeCurrentMonth, resetPerformanceUpload],
+  );
 
   const appendReportLog = useCallback(
     (input: string | string[]) => {
@@ -685,18 +771,23 @@ export default function OwnerReportsPage() {
     [runBudgetExtract],
   );
 
+  useEffect(() => {
+    if (!hummingbirdFile && !iprcFile) {
+      resetPerformanceUpload();
+      setPerformanceStatus(null);
+      setPerformanceLoading(false);
+      return;
+    }
+    void runPerformanceExtract(hummingbirdFile, iprcFile);
+  }, [hummingbirdFile, iprcFile, resetPerformanceUpload, runPerformanceExtract]);
 
-  const handleInventoryFileChange = useCallback(
-    async (next: File | null) => {
-      inventoryRequestRef.current += 1;
-      const requestId = inventoryRequestRef.current;
+
+  const handleHummingbirdFileChange = useCallback(
+    (next: File | null) => {
       if (!next) {
-        setInventoryFile(null);
-        resetInventoryUpload();
-        setInventoryLoading(false);
+        setHummingbirdFile(null);
         return;
       }
-
       const name = next.name?.toLowerCase() ?? "";
       const mime = next.type?.toLowerCase() ?? "";
       const isWorkbook =
@@ -704,50 +795,42 @@ export default function OwnerReportsPage() {
         name.endsWith(".xls") ||
         mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
       if (!isWorkbook) {
-        setInventoryFile(null);
-        resetInventoryUpload();
-        if (inventoryRequestRef.current === requestId) {
-          setInventoryStatus({
-            variant: "error",
-            text: "Upload a Hummingbird Move-In/Move-Out Activity report (.xlsx).",
-          });
-          setInventoryLoading(false);
-        }
+        setHummingbirdFile(null);
+        resetPerformanceUpload();
+        setPerformanceStatus({
+          variant: "error",
+          text: "Upload a Hummingbird Move-In/Move-Out Activity report (.xlsx).",
+        });
+        setPerformanceLoading(false);
         return;
       }
-
-      resetInventoryUpload();
-      setInventoryFile(next);
-      setInventoryLoading(true);
-      try {
-        const buffer = await next.arrayBuffer();
-        if (inventoryRequestRef.current !== requestId) return;
-        const result = computeHummingbirdPerformance(buffer);
-        if (result.ok) {
-          setInventoryTokens(result.tokens);
-          setInventoryPreview(result.preview);
-          setInventoryStatus(null);
-        } else {
-          resetInventoryUpload();
-          setInventoryStatus({
-            variant: result.code === "insufficient_history" ? "warning" : "error",
-            text: result.message,
-          });
-        }
-      } catch (err) {
-        if (inventoryRequestRef.current !== requestId) return;
-        resetInventoryUpload();
-        setInventoryStatus({
-          variant: "error",
-          text: err instanceof Error ? err.message : "Unable to parse Hummingbird workbook.",
-        });
-      } finally {
-        if (inventoryRequestRef.current === requestId) {
-          setInventoryLoading(false);
-        }
-      }
+      setHummingbirdFile(next);
     },
-    [resetInventoryUpload],
+    [resetPerformanceUpload],
+  );
+
+  const handleIprcFileChange = useCallback(
+    (next: File | null) => {
+      if (!next) {
+        setIprcFile(null);
+        return;
+      }
+      const name = next.name?.toLowerCase() ?? "";
+      const mime = next.type?.toLowerCase() ?? "";
+      const isCsv = name.endsWith(".csv") || mime === "text/csv" || mime === "application/vnd.ms-excel";
+      if (!isCsv) {
+        setIprcFile(null);
+        resetPerformanceUpload();
+        setPerformanceStatus({
+          variant: "error",
+          text: "Upload the IPRC Change History export (.csv).",
+        });
+        setPerformanceLoading(false);
+        return;
+      }
+      setIprcFile(next);
+    },
+    [resetPerformanceUpload],
   );
 
   const updateBudgetOverride = useCallback((token: string, value: string) => {
@@ -920,9 +1003,17 @@ export default function OwnerReportsPage() {
       if (budgetFile) {
         form.append("budget", budgetFile);
       }
-      if (inventoryFile) {
-        form.append("inventory", inventoryFile);
+      if (hummingbirdFile) {
+        form.append("inventory", hummingbirdFile);
       }
+      if (iprcFile) {
+        form.append("iprc", iprcFile);
+      }
+      const performanceOptionsPayload = {
+        currentMonthOverride: currentMonthOverride.trim() || undefined,
+        includeCurrentMonthInTrailing: includeCurrentMonth,
+      };
+      form.append("performanceOptions", JSON.stringify(performanceOptionsPayload));
       const overridesPayload: OwnerFieldOverrides = {};
       for (const key of FIELD_ORDER) {
         if (overrides[key] !== undefined) {
@@ -938,8 +1029,8 @@ export default function OwnerReportsPage() {
       if (Object.keys(budgetOverrides).length > 0) {
         form.append("budgetOverrides", JSON.stringify(budgetOverrides));
       }
-      if (inventoryTokens) {
-        form.append("inventoryTokens", JSON.stringify(inventoryTokens));
+      if (performanceTokens) {
+        form.append("inventoryTokens", JSON.stringify(performanceTokens));
       }
       const res = await fetch("/api/owner-reports/generate", { method: "POST", body: form });
       if (!res.ok) {
@@ -963,8 +1054,8 @@ export default function OwnerReportsPage() {
         );
       }
       const performanceLogValues: Record<string, string> = {};
-      if (inventoryTokens) {
-        for (const [token, rawValue] of Object.entries(inventoryTokens)) {
+      if (performanceTokens) {
+        for (const [token, rawValue] of Object.entries(performanceTokens)) {
           if (typeof rawValue === "number") {
             performanceLogValues[token] = normalizeLogValue(ownerLogNumber.format(rawValue));
           } else {
@@ -1331,15 +1422,15 @@ export default function OwnerReportsPage() {
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Move-In/Move-Out Activity (.xlsx)</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Optional. Upload the Hummingbird Move-In/Move-Out Activity report (.xlsx) to auto-fill Performance tokens (Move-ins/outs, Net, trailing 3/6/12).
+                            Upload the Hummingbird Move-In/Move-Out Activity report (.xlsx) to capture move counts, promo %, and $/SqFt metrics.
                           </p>
                         </div>
-                        {inventoryFile && (
+                        {hummingbirdFile && (
                           <button
                             type="button"
                             className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
                             onClick={() => {
-                              void handleInventoryFileChange(null);
+                              void handleHummingbirdFileChange(null);
                             }}
                           >
                             Remove file
@@ -1352,35 +1443,107 @@ export default function OwnerReportsPage() {
                         className="text-sm text-[color:var(--text-primary)]"
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
-                          void handleInventoryFileChange(nextFile);
+                          void handleHummingbirdFileChange(nextFile);
                           event.target.value = "";
                         }}
                       />
-                      {inventoryFile && (
+                      {hummingbirdFile && (
                         <p className="text-xs text-[color:var(--text-secondary)]">
-                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{inventoryFile.name}</span>
-                        </p>
-                      )}
-                      {inventoryLoading && (
-                        <p className="text-xs text-[color:var(--text-secondary)]">Parsing CSV...</p>
-                      )}
-                      {inventoryStatus && (
-                        <div
-                          className={`rounded-md border px-3 py-2 text-xs ${
-                            inventoryStatus.variant === "error"
-                              ? "border-[#FEE2E2] bg-[#FEF2F2] text-[#B91C1C]"
-                              : "border-[#FEF3C7] bg-[#FFFBEB] text-[#92400E]"
-                          }`}
-                        >
-                          {inventoryStatus.text}
-                        </div>
-                      )}
-                      {!inventoryLoading && inventoryPreview.length > 0 && !inventoryStatus && (
-                        <p className="text-[11px] text-[color:var(--text-muted)]">
-                          Preview is available on Step 4 in the Performance tokens panel.
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{hummingbirdFile.name}</span>
                         </p>
                       )}
                     </div>
+
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">IPRC Change History (.csv)</p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Upload the Shows In Place Rate Changes export (.csv) to populate Rate Management (letters, sqft, revenue, avg % increase).
+                          </p>
+                        </div>
+                        {iprcFile && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => {
+                              handleIprcFileChange(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".csv,text/csv,application/vnd.ms-excel"
+                        className="text-sm text-[color:var(--text-primary)]"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          handleIprcFileChange(nextFile);
+                          event.target.value = "";
+                        }}
+                      />
+                      {iprcFile && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{iprcFile.name}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="owner-input-tile space-y-4">
+                      <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Performance Options</p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="flex flex-col gap-2 text-sm text-[color:var(--text-secondary)]">
+                          <span className="font-semibold text-[color:var(--accent-strong)]">Current month override</span>
+                          <input
+                            type="month"
+                            className="rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]/50"
+                            value={currentMonthOverride}
+                            onChange={(event) => setCurrentMonthOverride(event.target.value)}
+                          />
+                          <span className="text-[11px] text-[color:var(--text-muted)]">
+                            Leave blank to auto-detect using the latest move date.
+                          </span>
+                        </label>
+                        <label className="flex items-start gap-3 text-sm text-[color:var(--text-secondary)]">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 rounded border-[color:var(--border-soft)] text-[#2563EB] focus:ring-[#2563EB]/50"
+                            checked={includeCurrentMonth}
+                            onChange={(event) => setIncludeCurrentMonth(event.target.checked)}
+                          />
+                          <span>
+                            <span className="block font-semibold text-[color:var(--accent-strong)]">
+                              Include current month in trailing windows
+                            </span>
+                            <span className="text-[11px] text-[color:var(--text-muted)]">
+                              Uncheck to compare only completed months.
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {performanceLoading && (
+                      <p className="text-xs text-[color:var(--text-secondary)]">Parsing performance inputs...</p>
+                    )}
+                    {performanceStatus && (
+                      <div
+                        className={`rounded-md border px-3 py-2 text-xs ${
+                          performanceStatus.variant === "error"
+                            ? "border-[#FEE2E2] bg-[#FEF2F2] text-[#B91C1C]"
+                            : "border-[#FEF3C7] bg-[#FFFBEB] text-[#92400E]"
+                        }`}
+                      >
+                        {performanceStatus.text}
+                      </div>
+                    )}
+                    {!performanceLoading && performancePreview.length > 0 && !performanceStatus && (
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Preview is available on Step 4 in the Performance tokens panel.
+                      </p>
+                    )}
                   </div>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
@@ -1719,23 +1882,32 @@ export default function OwnerReportsPage() {
                       );
                     })}
                   </div>
-                  {inventoryPreview.length > 0 && (
+                  {performancePreview.length > 0 && (
                     <div className="mt-6 rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]">
                       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Performance tokens</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Auto-filled from the Move-In/Move-Out Activity report upload
+                            Auto-filled from the Hummingbird Move-In/Move-Out Activity + IPRC Change History uploads
                           </p>
                         </div>
-                        {inventoryFile && (
-                          <p className="truncate text-[11px] text-[color:var(--text-muted)]">
-                            Source: {inventoryFile.name} (Hummingbird export)
-                          </p>
+                        {(hummingbirdFile || iprcFile) && (
+                          <div className="text-[11px] text-[color:var(--text-muted)]">
+                            {hummingbirdFile && (
+                              <p className="truncate">
+                                HB: {hummingbirdFile.name}
+                              </p>
+                            )}
+                            {iprcFile && (
+                              <p className="truncate">
+                                IPRC: {iprcFile.name}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div className="px-4 pb-4">
-                        <InventoryPreviewTable rows={inventoryPreview} />
+                        <InventoryPreviewTable rows={performancePreview} />
                       </div>
                     </div>
                   )}
@@ -1837,7 +2009,7 @@ export default function OwnerReportsPage() {
                 <section className="owner-card owner-card--surface rounded-xl px-6 py-8 shadow-sm">
                   <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 7 - Export complete</h2>
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                    Your PowerPoint has been downloaded. Review the values below or download the file again.
+                    Your PowerPoint/Canva has been downloaded. Review the values below or download the file again.
                   </p>
                   <div className="mt-4 flex justify-end">
                     <button

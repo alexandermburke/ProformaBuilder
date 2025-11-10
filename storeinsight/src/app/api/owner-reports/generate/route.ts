@@ -1,5 +1,3 @@
-export const runtime = "nodejs";
-
 import fs from "node:fs/promises";
 import path from "node:path";
 import PizZip from "pizzip";
@@ -8,8 +6,25 @@ import { buildOwnerPptx } from "@/lib/buildOwnerPptx";
 import { extractOwnerFields } from "@/lib/extractOwnerFields";
 import { toNumber } from "@/lib/compute";
 import { extractBudgetTableFields, type BudgetTokenDetail } from "@/lib/extractBudget";
-import { computeHummingbirdPerformance } from "@/lib/hummingbirdPerformance";
+import { extractDelinquencyMetrics, type DelinquencyTokens } from "@/lib/extractDelinquency";
+import { computeOwnerPerformance, type OwnerPerformanceOptions } from "@/lib/ownerPerformance";
+import { REQUIRED_DELINQUENCY_TOKENS } from "@/lib/pptTokens";
 import type { OwnerFields } from "@/types/ownerReport";
+
+export const runtime = "nodejs";
+
+const shouldLogDelinquencyTokens =
+  process.env.NODE_ENV !== "production" || Boolean(process.env.DEBUG);
+
+const logDelinquencyTokens = (tokens: DelinquencyTokens): void => {
+  if (!shouldLogDelinquencyTokens) return;
+  const payload: Record<string, string> = {};
+  for (const token of REQUIRED_DELINQUENCY_TOKENS) {
+    const key = token as keyof DelinquencyTokens;
+    payload[token] = tokens[key];
+  }
+  console.debug("[delinq]", payload);
+};
 
 function listPptxTokens(buf: Buffer): string[] {
   try {
@@ -38,7 +53,9 @@ export async function POST(req: NextRequest) {
   const budgetTokensRaw = form.get("budgetTokens");
   const budgetOverridesRaw = form.get("budgetOverrides");
   const inventory = form.get("inventory");
+  const iprc = form.get("iprc");
   const inventoryTokensRaw = form.get("inventoryTokens");
+  const performanceOptionsRaw = form.get("performanceOptions");
 
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
@@ -61,6 +78,11 @@ export async function POST(req: NextRequest) {
   let inventoryBuffer: Buffer | undefined;
   if (inventory instanceof Blob) {
     inventoryBuffer = Buffer.from(await inventory.arrayBuffer());
+  }
+  let iprcText: string | undefined;
+  if (iprc instanceof Blob) {
+    const buffer = Buffer.from(await iprc.arrayBuffer());
+    iprcText = buffer.toString("utf8");
   }
 
   let budgetTokens: Record<string, number> | undefined;
@@ -104,6 +126,14 @@ export async function POST(req: NextRequest) {
   }
 
   let performanceTokens: Record<string, string | number> | undefined;
+  let performanceOptions: OwnerPerformanceOptions | undefined;
+  if (typeof performanceOptionsRaw === "string" && performanceOptionsRaw.trim()) {
+    try {
+      performanceOptions = JSON.parse(performanceOptionsRaw) as OwnerPerformanceOptions;
+    } catch (err) {
+      console.warn("[inventory] Unable to parse performance options", err);
+    }
+  }
   if (typeof inventoryTokensRaw === "string" && inventoryTokensRaw.trim()) {
     try {
       const parsed = JSON.parse(inventoryTokensRaw) as Record<string, unknown>;
@@ -123,7 +153,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const templatePath = path.join(process.cwd(), "public", "ALPHATEMPLATE.pptx");
+  const templatePath = path.join(process.cwd(), "public", "MICROTEMPLATE.pptx");
   const templateBuffer = await fs.readFile(templatePath);
   const templateTokens = listPptxTokens(templateBuffer);
 
@@ -138,17 +168,33 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (inventoryBuffer) {
+  if (inventoryBuffer && iprcText) {
     try {
-      const result = computeHummingbirdPerformance(inventoryBuffer);
+      const result = computeOwnerPerformance({
+        hummingbirdWorkbook: inventoryBuffer,
+        iprcCsvText: iprcText,
+        options: performanceOptions,
+      });
       if (result.ok) {
         performanceTokens = result.tokens;
       } else {
-        console.warn("[inventory] Unable to re-parse Hummingbird workbook on server:", result.message);
+        console.warn("[inventory] Unable to re-parse performance inputs on server:", result.message);
       }
     } catch (err) {
-      console.error("[inventory] Unable to parse Hummingbird workbook on server", err);
+      console.error("[inventory] Unable to parse performance inputs on server", err);
     }
+  }
+
+  try {
+    const delinquency = extractDelinquencyMetrics(buffer);
+    if (delinquency.ok) {
+      performanceTokens = { ...(performanceTokens ?? {}), ...delinquency.tokens };
+      logDelinquencyTokens(delinquency.tokens);
+    } else {
+      console.warn("[delinquency]", delinquency.message);
+    }
+  } catch (err) {
+    console.error("[delinquency] Unable to parse delinquency metrics", err);
   }
 
   const budgetTokensNumeric = budgetTokens ?? {};

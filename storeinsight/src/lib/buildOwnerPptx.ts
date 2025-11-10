@@ -7,7 +7,13 @@ import {
   extractBudgetTableFields,
   type BudgetTokenDetail,
 } from "@/lib/extractBudget";
-import type { InventoryTokenValues } from "@/lib/inventoryPerformance";
+import type { OwnerPerformanceTokenValues } from "@/lib/ownerPerformance";
+import {
+  normalizeTokenKey,
+  REQUIRED_DELINQUENCY_TOKENS,
+  scanPptTokens,
+  stripHiddenTokenCharacters,
+} from "@/lib/pptTokens";
 
 const DASH_CHARACTER = "\u2013";
 const BLANK_LITERALS = new Set(["", "NaN", "undefined"]);
@@ -16,6 +22,49 @@ const MAPPING_ALIASES: Record<string, string> = {
   TOTALINCOME: "TOTALINCCM",
   TOTALEXPENSES: "TOTEXPCM",
   NETINCOME: "NETINCCM",
+  SFTOC: "OCCUPIEDAREAPERCENT",
+};
+
+const PPT_XML_FILE_PATTERN = /^ppt\/(slides|slideLayouts|slideMasters)\/.*\.xml$/;
+
+type TemplateValue = string | number;
+
+const scrubHiddenCharactersFromZip = (zip: PizZip): void => {
+  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
+  for (const filename of xmlPaths) {
+    const file = zip.file(filename);
+    if (!file) continue;
+    const original = file.asText();
+    const sanitized = stripHiddenTokenCharacters(original);
+    if (sanitized !== original) {
+      zip.file(filename, sanitized);
+    }
+  }
+};
+
+const normalizeNumberRecord = (record?: Record<string, number> | null): Record<string, number> => {
+  const normalized: Record<string, number> = {};
+  if (!record) return normalized;
+  for (const [key, value] of Object.entries(record)) {
+    const canonical = normalizeTokenKey(key);
+    const numericValue = Number(value);
+    if (!canonical || !Number.isFinite(numericValue)) continue;
+    normalized[canonical] = numericValue;
+  }
+  return normalized;
+};
+
+const normalizeValueRecord = (
+  record?: Record<string, TemplateValue> | null,
+): Record<string, TemplateValue> => {
+  const normalized: Record<string, TemplateValue> = {};
+  if (!record) return normalized;
+  for (const [key, value] of Object.entries(record)) {
+    const canonical = normalizeTokenKey(key);
+    if (!canonical) continue;
+    normalized[canonical] = value;
+  }
+  return normalized;
 };
 
 const isBlankValue = (value: unknown): boolean => {
@@ -155,7 +204,7 @@ type BuildOwnerPptxOptions = {
   budgetOverrides?: Record<string, number>;
   templateTokens?: string[];
   budgetBuffer?: Buffer | null;
-  performanceTokens?: (InventoryTokenValues | Record<string, string | number>) | null;
+  performanceTokens?: (OwnerPerformanceTokenValues | Record<string, string | number>) | null;
 };
 
 export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Buffer> {
@@ -172,47 +221,72 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
 
   const templateBuffer =
     providedTemplateBuffer ??
-    (await fs.readFile(path.join(process.cwd(), "public", "ALPHATEMPLATE.pptx")));
+    (await fs.readFile(path.join(process.cwd(), "public", "MICROTEMPLATE.pptx")));
+
+  const tokenScan = await scanPptTokens({ templateBuffer });
+  console.log(`[pptx] template sha256 ${tokenScan.sha256}`);
+  console.log(`[pptx] template tokens (${tokenScan.tokens.length}): ${tokenScan.tokens.join(", ")}`);
+  const scannedTokenSet = new Set(tokenScan.tokens);
+  const missingDelinquencyTokens = REQUIRED_DELINQUENCY_TOKENS.filter(
+    (token) => !scannedTokenSet.has(token),
+  );
+  if (missingDelinquencyTokens.length > 0) {
+    const message = [
+      `public/MICROTEMPLATE.pptx is missing delinquency placeholders: ${missingDelinquencyTokens.join(", ")}`,
+      "The desktop PPTX may differ from public/MICROTEMPLATE.pptx. Replace the file with the version that contains all 9 {{DELIN…}} placeholders and re-run.",
+    ].join("\n");
+    throw new Error(message);
+  }
 
   const zip = new PizZip(templateBuffer);
-  const ownerTokens = massageForTemplate(ownerValues);
+  scrubHiddenCharactersFromZip(zip);
+  const ownerTokens = normalizeValueRecord(massageForTemplate(ownerValues));
 
-  let budgetTokensNumeric: Record<string, number> = { ...(providedBudgetTokens ?? {}) };
+  let budgetTokensNumeric = normalizeNumberRecord(providedBudgetTokens);
   let budgetDetails: Record<string, BudgetTokenDetail> = {};
   if (providedBudgetDetails) {
     for (const [token, detail] of Object.entries(providedBudgetDetails)) {
-      budgetDetails[token] = { ...detail };
+      const canonicalToken = normalizeTokenKey(token);
+      if (!canonicalToken) continue;
+      budgetDetails[canonicalToken] = { ...detail };
     }
   }
 
   if (Object.keys(budgetTokensNumeric).length === 0 && budgetBuffer) {
     try {
       const extraction = await extractBudgetTableFields(budgetBuffer, undefined);
-      budgetTokensNumeric = extraction.tokens;
+      budgetTokensNumeric = normalizeNumberRecord(extraction.tokens);
       budgetDetails = {};
       for (const [token, detail] of Object.entries(extraction.details)) {
-        budgetDetails[token] = { ...detail };
+        const canonicalToken = normalizeTokenKey(token);
+        if (!canonicalToken) continue;
+        budgetDetails[canonicalToken] = { ...detail };
       }
     } catch (error) {
       console.error("[owner-reports] Unable to extract budget tokens on server", error);
     }
   }
 
-  const budgetOverrideValues: Record<string, number> = { ...(providedBudgetOverrides ?? {}) };
+  const budgetOverrideValues = normalizeNumberRecord(providedBudgetOverrides);
+  const performanceTokenValues =
+    performanceTokens && Object.keys(performanceTokens).length > 0
+      ? normalizeValueRecord(performanceTokens as Record<string, TemplateValue>)
+      : undefined;
 
-  const overrideKeys = Object.keys(budgetOverrideValues);
   const tokenKeys = Array.from(
     new Set([
       ...Object.keys(ownerTokens),
       ...Object.keys(budgetTokensNumeric),
-      ...overrideKeys,
-      ...(performanceTokens ? Object.keys(performanceTokens) : []),
+      ...Object.keys(budgetOverrideValues),
+      ...(performanceTokenValues ? Object.keys(performanceTokenValues) : []),
     ]),
   );
 
   const templateMeta = normalizeTemplateTokens(zip, tokenKeys);
   const tokensWithTrailingPercent = new Set(
-    [...templateMeta.entries()].filter(([, meta]) => meta.trailingPercent).map(([token]) => token),
+    [...templateMeta.entries()]
+      .filter(([, meta]) => meta.trailingPercent)
+      .map(([token]) => normalizeTokenKey(token) ?? token.toUpperCase()),
   );
 
   const summaryFields: Record<string, string | number> = { ...ownerTokens };
@@ -266,26 +340,33 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     };
   }
 
-  const templateTokenSet = new Set<string>();
+  const templateTokenSet = new Set<string>(scannedTokenSet);
   if (templateTokens && templateTokens.length > 0) {
-    for (const token of templateTokens) templateTokenSet.add(token);
+    for (const token of templateTokens) {
+      const canonicalToken = normalizeTokenKey(token);
+      if (!canonicalToken) continue;
+      templateTokenSet.add(canonicalToken);
+    }
   }
   for (const token of templateMeta.keys()) {
-    templateTokenSet.add(token);
+    const canonicalToken = normalizeTokenKey(token);
+    if (!canonicalToken) continue;
+    templateTokenSet.add(canonicalToken);
   }
   const templateTokenList = Array.from(templateTokenSet);
 
-  const data: Record<string, string | number> = {
+  const data: Record<string, TemplateValue> = {
     ...summaryFields,
-    ...(performanceTokens ?? {}),
+    ...(performanceTokenValues ?? {}),
     ...budgetTokens,
     ...budgetOverrides,
   };
+  const templateData = normalizeValueRecord(data);
 
   for (const [displayKey, sourceKey] of Object.entries(MAPPING_ALIASES)) {
-    const sourceValue = data[sourceKey];
+    const sourceValue = templateData[sourceKey];
     if (sourceValue === undefined || isBlankValue(sourceValue)) continue;
-    data[displayKey] = sourceValue;
+    templateData[displayKey] = sourceValue;
   }
 
   // Optional: quick auditor to spot template tokens that won't be filled
@@ -293,7 +374,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   // const expectedKeys = Object.keys(data);
   // console.log('[pptx] first 10 keys:', expectedKeys.slice(0,10));
 
-  const missingTokens = templateTokenList.filter((token) => isBlankValue(data[token]));
+  const missingTokens = templateTokenList.filter((token) => isBlankValue(templateData[token]));
   const appliedCount = templateTokenList.length - missingTokens.length;
 
   if (missingTokens.length > 0) {
@@ -310,13 +391,13 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   }
 
   for (const token of templateTokenList) {
-    if (isBlankValue(data[token])) {
-      data[token] = DASH_CHARACTER;
+    if (isBlankValue(templateData[token])) {
+      templateData[token] = DASH_CHARACTER;
     }
   }
 
-  for (const [key, rawValue] of Object.entries(data)) {
-    data[key] = normalizeRenderedValue(rawValue);
+  for (const [key, rawValue] of Object.entries(templateData)) {
+    templateData[key] = normalizeRenderedValue(rawValue);
   }
 
   for (const [token, detail] of Object.entries(effectiveDetails)) {
@@ -341,15 +422,15 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   });
 
   // Build the data object exactly once (summary fields + budget tokens + overrides)
-  const keys = Object.keys(data);
+  const keys = Object.keys(templateData);
   console.log(`[pptx] rendering ${keys.length} unique keys`);
   for (const k of keys) {
-    console.log(`[pptx] key ${k} ->`, data[k]);
+    console.log(`[pptx] key ${k} ->`, templateData[k]);
   }
 
   // New Docxtemplater API: pass data directly to render
   // (removes deprecated .setData())
-  doc.render(data);
+  doc.render(templateData);
 
   // Optional sanity check: count placeholders inside the PPTX template
   try {
