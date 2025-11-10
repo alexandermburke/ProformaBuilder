@@ -10,13 +10,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'budget'." }, { status: 400 });
   }
 
-  const financial = form.get("financial");
   const budgetBuffer = Buffer.from(await budget.arrayBuffer());
-  const financialBuffer =
-    financial instanceof Blob ? Buffer.from(await financial.arrayBuffer()) : undefined;
 
   try {
-    const result = await extractBudgetTableFields(budgetBuffer, financialBuffer);
+    const result = await extractBudgetTableFields(budgetBuffer, undefined);
     return NextResponse.json({
       tokens: result.tokens,
       count: result.count,

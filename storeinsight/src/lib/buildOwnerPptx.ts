@@ -155,7 +155,6 @@ type BuildOwnerPptxOptions = {
   budgetOverrides?: Record<string, number>;
   templateTokens?: string[];
   budgetBuffer?: Buffer | null;
-  financialBuffer?: Buffer | null;
   performanceTokens?: (InventoryTokenValues | Record<string, string | number>) | null;
 };
 
@@ -168,7 +167,6 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     budgetOverrides: providedBudgetOverrides,
     templateTokens,
     budgetBuffer,
-    financialBuffer,
     performanceTokens,
   } = options;
 
@@ -189,10 +187,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
 
   if (Object.keys(budgetTokensNumeric).length === 0 && budgetBuffer) {
     try {
-      const extraction = await extractBudgetTableFields(
-        budgetBuffer,
-        financialBuffer ?? undefined,
-      );
+      const extraction = await extractBudgetTableFields(budgetBuffer, undefined);
       budgetTokensNumeric = extraction.tokens;
       budgetDetails = {};
       for (const [token, detail] of Object.entries(extraction.details)) {

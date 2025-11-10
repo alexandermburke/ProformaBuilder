@@ -25,6 +25,7 @@ export type BudgetExtraction = {
   count: number;
   debug: string[];
   templateTokens?: string[];
+  ownerGroup?: string | null;
 };
 
 type BudgetSuffix = "CM" | "PTD" | "VAR" | "VARPER" | "YTD" | "YTDBUD" | "YTDVAR" | "YTDVARPER";
@@ -56,6 +57,31 @@ type RowState = {
   rowIndex: number;
   sheetName: string;
   meta: Record<BudgetSuffix, RowValueMeta>;
+};
+
+const OWNER_PREFIX_REGEX = /^\s*owner\s*=/i;
+
+const stripOwnerParenthetical = (input: string): string => {
+  const withoutParens = input.replace(/\([^)]*\)/g, "").replace(/\s{2,}/g, " ");
+  return withoutParens.trim();
+};
+
+const extractOwnerGroupFromGrid = (grid: Grid): string | null => {
+  const maxRows = Math.min(grid.length, 10);
+  for (let r = 0; r < maxRows; r += 1) {
+    const row = grid[r];
+    if (!row) continue;
+    const maxCols = Math.min(row.length, 8);
+    for (let c = 0; c < maxCols; c += 1) {
+      const cell = row[c];
+      if (typeof cell !== "string") continue;
+      if (OWNER_PREFIX_REGEX.test(cell)) {
+        const normalized = stripOwnerParenthetical(cell.replace(OWNER_PREFIX_REGEX, "").trim());
+        if (normalized.length > 0) return normalized;
+      }
+    }
+  }
+  return null;
 };
 
 const HEADER_SEQUENCE: Array<{ suffix: BudgetSuffix; variants: string[] }> = [
@@ -510,16 +536,17 @@ export async function extractBudgetTableFields(
     workbook = readWorkbook(budgetBuffer);
   } catch (error) {
     console.warn("[budget] unable to read budget workbook", error);
-    return { tokens: {}, details: {}, count: 0, debug: [] };
+    return { tokens: {}, details: {}, count: 0, debug: [], ownerGroup: null };
   }
 
   const located = locateBudgetSheet(workbook);
   if (!located) {
     console.warn("[budget] header not found: check PTD/YTD columns in sheet");
-    return { tokens: {}, details: {}, count: 0, debug: [] };
+    return { tokens: {}, details: {}, count: 0, debug: [], ownerGroup: null };
   }
 
   const { grid, header, sheetName } = located;
+  const ownerGroup = extractOwnerGroupFromGrid(grid);
   const rows = buildRowStates(grid, header, sheetName);
 
   if (financialsBuffer) {
@@ -549,5 +576,5 @@ export async function extractBudgetTableFields(
   }
 
   const count = Object.keys(tokens).length;
-  return { tokens, details, count, debug };
+  return { tokens, details, count, debug, ownerGroup };
 }

@@ -397,7 +397,6 @@ export default function OwnerReportsPage() {
     data: OwnerFields;
   } | null>(null);
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
-  const [financialsFile, setFinancialsFile] = useState<File | null>(null);
   const [inventoryFile, setInventoryFile] = useState<File | null>(null);
   const [inventoryTokens, setInventoryTokens] = useState<InventoryTokenValues | null>(null);
   const [inventoryPreview, setInventoryPreview] = useState<InventoryPreviewRow[]>([]);
@@ -410,6 +409,7 @@ export default function OwnerReportsPage() {
   const [panelScroll, setPanelScroll] = useState(true);
   const [budgetDebugLog, setBudgetDebugLog] = useState<string[]>([]);
   const reportLogRef = useRef<string>("");
+  const fieldsRef = useRef<OwnerFields | null>(null);
   const [reportLog, setReportLog] = useState<string>("");
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [logFilter, setLogFilter] = useState<string>("");
@@ -423,6 +423,10 @@ export default function OwnerReportsPage() {
     reportLogRef.current = "";
     setReportLog("");
   }, [setReportLog]);
+
+  useEffect(() => {
+    fieldsRef.current = fields;
+  }, [fields]);
 
   const resetInventoryUpload = useCallback(() => {
     setInventoryTokens(null);
@@ -459,7 +463,7 @@ export default function OwnerReportsPage() {
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [budgetPage, setBudgetPage] = useState(0);
-  const lastProcessedFiles = useRef<{ budget: File | null; financial: File | null }>({ budget: null, financial: null });
+  const lastProcessedFiles = useRef<{ budget: File | null }>({ budget: null });
   const budgetLinesByPage = useMemo(
     () => [
       BUDGET_LINES.filter((line) => line.page === 0),
@@ -552,11 +556,10 @@ export default function OwnerReportsPage() {
     : "No console output recorded yet.";
   const isInformationalLog = !hasFilteredLog;
   const runBudgetExtract = useCallback(
-    async (nextBudget: File | null, nextFinancial: File | null) => {
+    async (nextBudget: File | null) => {
       if (!nextBudget) {
         lastProcessedFiles.current = {
           budget: null,
-          financial: nextFinancial ?? null,
         };
         setBudgetTokens({});
         setDetectedCount(0);
@@ -570,16 +573,14 @@ export default function OwnerReportsPage() {
       }
       lastProcessedFiles.current = {
         budget: nextBudget,
-        financial: nextFinancial ?? null,
       };
       setBudgetLoading(true);
       setBudgetError(null);
       try {
         const budgetBuffer = await nextBudget.arrayBuffer();
-        const financialBuffer = nextFinancial ? await nextFinancial.arrayBuffer() : undefined;
-        const { tokens, details, count, debug, templateTokens } = await extractBudgetTableFields(
+        const { tokens, details, count, debug, templateTokens, ownerGroup } = await extractBudgetTableFields(
           budgetBuffer,
-          financialBuffer,
+          undefined,
         );
         setBudgetTokens(tokens);
         setDetectedCount(count);
@@ -589,6 +590,19 @@ export default function OwnerReportsPage() {
           Array.isArray(templateTokens) && templateTokens.length > 0 ? templateTokens.length : null,
         );
         setBudgetDebugLog(debug);
+        if (ownerGroup && ownerGroup.trim().length > 0) {
+          setOverrides((prev) => {
+            const existingOverride = prev.OWNERGROUP;
+            if (typeof existingOverride === "string" && existingOverride.trim().length > 0) {
+              return prev;
+            }
+            const existingField = fieldsRef.current?.OWNERGROUP;
+            if (typeof existingField === "string" && existingField.trim().length > 0) {
+              return prev;
+            }
+            return { ...prev, OWNERGROUP: ownerGroup };
+          });
+        }
 
         if (typeof window !== "undefined" && "console" in window) {
           const preview = Object.entries(tokens)
@@ -653,14 +667,11 @@ export default function OwnerReportsPage() {
   );
 
   useEffect(() => {
-    if (
-      budgetFile === lastProcessedFiles.current.budget &&
-      financialsFile === lastProcessedFiles.current.financial
-    ) {
+    if (budgetFile === lastProcessedFiles.current.budget) {
       return;
     }
-    void runBudgetExtract(budgetFile, financialsFile);
-  }, [budgetFile, financialsFile, runBudgetExtract]);
+    void runBudgetExtract(budgetFile);
+  }, [budgetFile, runBudgetExtract]);
 
   useEffect(() => {
     if (step === 3) setBudgetPage(0);
@@ -669,18 +680,11 @@ export default function OwnerReportsPage() {
   const handleBudgetFileChange = useCallback(
     (next: File | null) => {
       setBudgetFile(next);
-      void runBudgetExtract(next, financialsFile);
+      void runBudgetExtract(next);
     },
-    [financialsFile, runBudgetExtract],
+    [runBudgetExtract],
   );
 
-  const handleFinancialFileChange = useCallback(
-    (next: File | null) => {
-      setFinancialsFile(next);
-      void runBudgetExtract(budgetFile, next);
-    },
-    [budgetFile, runBudgetExtract],
-  );
 
   const handleInventoryFileChange = useCallback(
     async (next: File | null) => {
@@ -915,9 +919,6 @@ export default function OwnerReportsPage() {
       form.append("file", file);
       if (budgetFile) {
         form.append("budget", budgetFile);
-      }
-      if (financialsFile) {
-        form.append("financial", financialsFile);
       }
       if (inventoryFile) {
         form.append("inventory", inventoryFile);
@@ -1166,8 +1167,7 @@ export default function OwnerReportsPage() {
     setFields(null);
     setOverrides({});
     setBudgetFile(null);
-    setFinancialsFile(null);
-    lastProcessedFiles.current = { budget: null, financial: null };
+    lastProcessedFiles.current = { budget: null };
     setBudgetTokens({});
     setDetectedCount(0);
     setBudgetOverrides({});
@@ -1287,8 +1287,7 @@ export default function OwnerReportsPage() {
                 <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
                   <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 2 - Budget Inputs</h2>
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                    Upload an optional Budget Comparison workbook and Financial Statements file. They are kept in memory
-                    during this session so you can reuse them when generating the presentation.
+                    Upload an optional Budget Comparison workbook. It is kept in memory during this session so you can reuse it when generating the presentation.
                   </p>
                   <div className="mt-6 space-y-6">
                     <div className="owner-input-tile space-y-3">
@@ -1320,42 +1319,6 @@ export default function OwnerReportsPage() {
                       {budgetFile && (
                         <p className="text-xs text-[color:var(--text-secondary)]">
                           Selected: <span className="font-medium text-[color:var(--text-primary)]">{budgetFile.name}</span>
-                        </p>
-                      )}
-                      <p className="text-[11px] text-[color:var(--text-muted)]">
-                        Preview is available on Step 3 in the Budget mapper.
-                      </p>
-                    </div>
-
-                    <div className="owner-input-tile space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Financial Statements (.xlsx)</p>
-                          <p className="text-xs text-[color:var(--text-secondary)]">Optional fallback file for budget values</p>
-                        </div>
-                        {financialsFile && (
-                          <button
-                            type="button"
-                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
-                            onClick={() => handleFinancialFileChange(null)}
-                          >
-                            Remove file
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        type="file"
-                        accept=".xlsx,.xls"
-                        className="text-sm text-[color:var(--text-primary)]"
-                        onChange={(event) => {
-                          const nextFile = event.target.files?.[0] ?? null;
-                          handleFinancialFileChange(nextFile);
-                          event.target.value = "";
-                        }}
-                      />
-                      {financialsFile && (
-                        <p className="text-xs text-[color:var(--text-secondary)]">
-                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{financialsFile.name}</span>
                         </p>
                       )}
                       <p className="text-[11px] text-[color:var(--text-muted)]">

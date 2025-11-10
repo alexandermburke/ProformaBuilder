@@ -57,7 +57,7 @@ const guides: GuideContent[] = [
         id: "owner-inputs",
         tone: "blue",
         title: "Inputs needed",
-        items: ["Executive Summary (xlsx)", "Budget Comparison (xlsx)", "Financial Statements (optional)"],
+        items: ["Executive Summary (xlsx)", "Budget Comparison (xlsx)", "Move-In/Move-Out Activity (optional)"],
       },
       {
         id: "owner-prep",
@@ -90,12 +90,12 @@ const guides: GuideContent[] = [
       },
       {
         id: "step-budget",
-        title: "Add Budget Comparison and Financial Statements",
+        title: "Add the Budget Comparison workbook",
         body:
-          "Drop in the Budget Comparison workbook to unlock automatic token mapping. Include the Financial Statements export when you need backup Current Month values for rows that are blank in Budget Comparison.",
+          "Drop in the Budget Comparison workbook to unlock automatic token mapping. The wizard holds it in memory so you can reuse it across mapping and export steps.",
         proTips: [
           "Confirm the header row includes PTD/YTD columns in positions B-I. Hidden columns are safely ignored.",
-          "If Current Month values are missing for a line, the Financial Statements file supplies the fallback.",
+          "If Current Month values are missing for a line, supply an override in the mapper or update the source workbook before uploading.",
         ],
         placeholderLabel: "Placeholder image: Budget upload cards",
       },
@@ -139,12 +139,6 @@ const guides: GuideContent[] = [
         question: "Why are some tokens blank even after uploading both workbooks?",
         answer:
           "Token detection relies on the source labels matching our expected wording. If a vendor renamed a line, supply an override in the mapper or edit the source label before uploading.",
-      },
-      {
-        id: "faq-financials",
-        question: "Do I always need the Financial Statements file?",
-        answer:
-          "No. Use it only when the Budget Comparison does not include the Current Month actual for a line item. The wizard reads the column labeled \"Current Month\" and ignores the rest.",
       },
       {
         id: "faq-overrides",

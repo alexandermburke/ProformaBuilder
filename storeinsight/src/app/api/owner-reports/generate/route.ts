@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
   const file = form.get("file");
   const overrides = form.get("overrides");
   const budget = form.get("budget");
-  const financial = form.get("financial");
   const budgetTokensRaw = form.get("budgetTokens");
   const budgetOverridesRaw = form.get("budgetOverrides");
   const inventory = form.get("inventory");
@@ -58,10 +57,6 @@ export async function POST(req: NextRequest) {
   let budgetBuffer: Buffer | undefined;
   if (budget instanceof Blob) {
     budgetBuffer = Buffer.from(await budget.arrayBuffer());
-  }
-  let financialBuffer: Buffer | undefined;
-  if (financial instanceof Blob) {
-    financialBuffer = Buffer.from(await financial.arrayBuffer());
   }
   let inventoryBuffer: Buffer | undefined;
   if (inventory instanceof Blob) {
@@ -135,10 +130,7 @@ export async function POST(req: NextRequest) {
   let budgetDetails: Record<string, BudgetTokenDetail> | undefined;
   if (budgetBuffer) {
     try {
-      const extraction = await extractBudgetTableFields(
-        budgetBuffer,
-        financialBuffer ?? undefined,
-      );
+      const extraction = await extractBudgetTableFields(budgetBuffer, undefined);
       budgetTokens = extraction.tokens;
       budgetDetails = extraction.details;
     } catch (err) {
@@ -170,7 +162,6 @@ export async function POST(req: NextRequest) {
     budgetOverrides,
     templateTokens,
     budgetBuffer: budgetBuffer ?? null,
-    financialBuffer: financialBuffer ?? null,
     performanceTokens,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
