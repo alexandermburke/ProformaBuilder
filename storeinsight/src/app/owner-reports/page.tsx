@@ -23,6 +23,7 @@ import {
 import Link from "next/link";
 import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
+import { usePreferences } from "@/components/PreferencesProvider";
 import { extractBudgetTableFields } from "@/lib/extractBudget";
 import { toNumber } from "@/lib/compute";
 import {
@@ -398,6 +399,7 @@ function downloadFromUrl(url: string, fileName: string) {
 
 export default function OwnerReportsPage() {
   const { theme } = useTheme();
+  const { delinquencyAudit } = usePreferences();
   const isDark = theme === "dark";
   const overlayTop = isDark
     ? "bg-[radial-gradient(circle_at_12%_12%,rgba(59,130,246,0.26),transparent_60%)]"
@@ -636,10 +638,10 @@ export default function OwnerReportsPage() {
   const logDisplayText = hasFilteredLog
     ? filteredLogText
     : filterActive && hasAnyLog
-    ? "No lines match this filter."
-    : hasAnyLog
-    ? "Console log is empty."
-    : "No console output recorded yet.";
+      ? "No lines match this filter."
+      : hasAnyLog
+        ? "Console log is empty."
+        : "No console output recorded yet.";
   const isInformationalLog = !hasFilteredLog;
   const runBudgetExtract = useCallback(
     async (nextBudget: File | null) => {
@@ -1032,6 +1034,7 @@ export default function OwnerReportsPage() {
       if (performanceTokens) {
         form.append("inventoryTokens", JSON.stringify(performanceTokens));
       }
+      form.append("auditDelinquency", delinquencyAudit ? "true" : "false");
       const res = await fetch("/api/owner-reports/generate", { method: "POST", body: form });
       if (!res.ok) {
         const message = await res.text();
@@ -1099,8 +1102,7 @@ export default function OwnerReportsPage() {
       );
       if (missingForLog.length > 0) {
         consoleLines.push(
-          `[budget] WARNING: missing tokens not applied: ${
-            missingForLog.length > 50 ? `${missingForLog.length} tokens` : missingForLog.join(", ")
+          `[budget] WARNING: missing tokens not applied: ${missingForLog.length > 50 ? `${missingForLog.length} tokens` : missingForLog.join(", ")
           }`,
         );
       }
@@ -1491,50 +1493,15 @@ export default function OwnerReportsPage() {
                       )}
                     </div>
 
-                    <div className="owner-input-tile space-y-4">
-                      <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Performance Options</p>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="flex flex-col gap-2 text-sm text-[color:var(--text-secondary)]">
-                          <span className="font-semibold text-[color:var(--accent-strong)]">Current month override</span>
-                          <input
-                            type="month"
-                            className="rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none focus:ring-1 focus:ring-[#2563EB]/50"
-                            value={currentMonthOverride}
-                            onChange={(event) => setCurrentMonthOverride(event.target.value)}
-                          />
-                          <span className="text-[11px] text-[color:var(--text-muted)]">
-                            Leave blank to auto-detect using the latest move date.
-                          </span>
-                        </label>
-                        <label className="flex items-start gap-3 text-sm text-[color:var(--text-secondary)]">
-                          <input
-                            type="checkbox"
-                            className="mt-1 h-4 w-4 rounded border-[color:var(--border-soft)] text-[#2563EB] focus:ring-[#2563EB]/50"
-                            checked={includeCurrentMonth}
-                            onChange={(event) => setIncludeCurrentMonth(event.target.checked)}
-                          />
-                          <span>
-                            <span className="block font-semibold text-[color:var(--accent-strong)]">
-                              Include current month in trailing windows
-                            </span>
-                            <span className="text-[11px] text-[color:var(--text-muted)]">
-                              Uncheck to compare only completed months.
-                            </span>
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-
                     {performanceLoading && (
                       <p className="text-xs text-[color:var(--text-secondary)]">Parsing performance inputs...</p>
                     )}
                     {performanceStatus && (
                       <div
-                        className={`rounded-md border px-3 py-2 text-xs ${
-                          performanceStatus.variant === "error"
+                        className={`rounded-md border px-3 py-2 text-xs ${performanceStatus.variant === "error"
                             ? "border-[#FEE2E2] bg-[#FEF2F2] text-[#B91C1C]"
                             : "border-[#FEF3C7] bg-[#FFFBEB] text-[#92400E]"
-                        }`}
+                          }`}
                       >
                         {performanceStatus.text}
                       </div>
@@ -2133,11 +2100,10 @@ export default function OwnerReportsPage() {
                   <button
                     type="button"
                     onClick={toggleWrap}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 ${
-                      logWrap
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 ${logWrap
                         ? "border-[#2563EB] bg-[#2563EB]/10 text-[#1E3A8A]"
                         : "border-slate-200 bg-white text-slate-600 hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)]"
-                    }`}
+                      }`}
                     aria-pressed={logWrap}
                     title="Toggle soft wrapping for log lines"
                   >
@@ -2169,9 +2135,8 @@ export default function OwnerReportsPage() {
                 className="relative max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-slate-950/95 p-4 text-sm shadow-inner"
               >
                 <pre
-                  className={`font-mono text-xs leading-relaxed text-slate-100 ${
-                    logWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
-                  } ${isInformationalLog ? "text-slate-400" : ""}`}
+                  className={`font-mono text-xs leading-relaxed text-slate-100 ${logWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+                    } ${isInformationalLog ? "text-slate-400" : ""}`}
                 >
                   {logDisplayText}
                 </pre>

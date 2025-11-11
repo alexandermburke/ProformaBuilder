@@ -34,6 +34,17 @@ type PlannedUpdate = {
 
 const updates: UpdateItem[] = [
   {
+    id: "2025-11-11",
+    date: "Nov 11, 2025",
+    title: "Delinquency audit toggle & ESR hard mapping",
+    highlights: [
+      "Swapped delinquency parsing to an explicit ESR L/M/N cell map with per-token provenance, removing brittle table detection.",
+      "PPTX generator now injects the new Delinquency Audit slide with token/value/sheet/cell references whenever the preference is enabled.",
+      "Preferences modal gained a persisted audit toggle; the owner-report flow, API route, and builder respect the user-selected setting instead of an env flag.",
+    ],
+    tags: ["Owner report", "Data quality"],
+  },
+  {
     id: "2025-11-07",
     date: "Nov 07, 2025",
     title: "Owner reports gain audit trail + log viewer",

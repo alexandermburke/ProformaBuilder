@@ -8,6 +8,7 @@ import {
   type BudgetTokenDetail,
 } from "@/lib/extractBudget";
 import type { OwnerPerformanceTokenValues } from "@/lib/ownerPerformance";
+import type { DelinquencyTokenProvenance, DelinquencyTokens } from "@/lib/extractDelinquency";
 import {
   normalizeTokenKey,
   REQUIRED_DELINQUENCY_TOKENS,
@@ -205,6 +206,13 @@ type BuildOwnerPptxOptions = {
   templateTokens?: string[];
   budgetBuffer?: Buffer | null;
   performanceTokens?: (OwnerPerformanceTokenValues | Record<string, string | number>) | null;
+  delinquencyAudit?:
+    | {
+        tokens: DelinquencyTokens;
+        provenance: DelinquencyTokenProvenance;
+      }
+    | null;
+  enableDelinquencyAudit?: boolean;
 };
 
 export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Buffer> {
@@ -217,6 +225,8 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     templateTokens,
     budgetBuffer,
     performanceTokens,
+    delinquencyAudit,
+    enableDelinquencyAudit,
   } = options;
 
   const templateBuffer =
@@ -445,5 +455,365 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     console.warn("[pptx] unable to count placeholders (non-fatal):", (err as Error)?.message ?? err);
   }
 
+  const shouldAppendDelinquencyAudit = Boolean(enableDelinquencyAudit && delinquencyAudit);
+  if (shouldAppendDelinquencyAudit && delinquencyAudit) {
+    try {
+      const rows = buildDelinquencyAuditRows(delinquencyAudit);
+      if (rows.length > 0) {
+        appendDelinquencyAuditSlide(zip, rows);
+        console.log("[pptx] appended Delinquency Audit slide");
+      }
+    } catch (error) {
+      console.warn("[pptx] unable to append Delinquency Audit slide:", (error as Error)?.message ?? error);
+    }
+  }
+
   return doc.getZip().generate({ type: "nodebuffer" });
+}
+
+type DelinquencyAuditRow = {
+  token: string;
+  value: string;
+  sheet: string;
+  cells: string[];
+};
+
+function buildDelinquencyAuditRows(input: {
+  tokens: DelinquencyTokens;
+  provenance: DelinquencyTokenProvenance;
+}): DelinquencyAuditRow[] {
+  return REQUIRED_DELINQUENCY_TOKENS.map((token) => {
+    const key = token as keyof DelinquencyTokens;
+    const provenance = input.provenance[key];
+    const uniqueCells = Array.from(new Set((provenance?.cells ?? []).filter(Boolean)));
+    return {
+      token,
+      value: String(input.tokens[key] ?? ""),
+      sheet: provenance?.sheet ?? DASH_CHARACTER,
+      cells: uniqueCells,
+    };
+  });
+}
+
+function appendDelinquencyAuditSlide(zip: PizZip, rows: DelinquencyAuditRow[]): void {
+  if (rows.length === 0) return;
+  const delinquentSlidePath = findDelinquentSlidePath(zip);
+  if (!delinquentSlidePath) {
+    console.warn("[pptx] unable to locate Delinquent Rent slide; audit slide skipped");
+    return;
+  }
+  const layoutTarget =
+    readSlideLayoutTarget(zip, delinquentSlidePath) ?? "../slideLayouts/slideLayout7.xml";
+  const presentationRelsPath = "ppt/_rels/presentation.xml.rels";
+  const presentationPath = "ppt/presentation.xml";
+  const contentTypesPath = "[Content_Types].xml";
+
+  const presentationRelsXml = zip.file(presentationRelsPath)?.asText();
+  const presentationXml = zip.file(presentationPath)?.asText();
+  const contentTypesXml = zip.file(contentTypesPath)?.asText();
+  if (!presentationRelsXml || !presentationXml || !contentTypesXml) {
+    console.warn("[pptx] missing core presentation documents; audit slide skipped");
+    return;
+  }
+
+  const relationshipId = extractRelationshipIdForSlide(presentationRelsXml, delinquentSlidePath);
+  if (!relationshipId) {
+    console.warn("[pptx] unable to map Delinquent Rent slide relationship; audit slide skipped");
+    return;
+  }
+
+  const nextSlideIndex = getNextSlideIndex(zip);
+  const slideFile = `ppt/slides/slide${nextSlideIndex}.xml`;
+  const slideRelFile = `ppt/slides/_rels/slide${nextSlideIndex}.xml.rels`;
+
+  const newRelationshipId = generateNextRelationshipId(presentationRelsXml);
+  const newSlideId = generateNextSlideId(presentationXml);
+
+  const slideXml = buildAuditSlideXml(rows);
+  const slideRelXml = buildSlideRelationshipXml(layoutTarget);
+
+  zip.file(slideFile, slideXml);
+  zip.file(slideRelFile, slideRelXml);
+
+  const updatedPresentationRels = insertSlideRelationshipEntry(
+    presentationRelsXml,
+    relationshipId,
+    newRelationshipId,
+    `slides/slide${nextSlideIndex}.xml`,
+  );
+  zip.file(presentationRelsPath, updatedPresentationRels);
+
+  const updatedPresentationXml = insertSlideIdEntry(
+    presentationXml,
+    relationshipId,
+    newRelationshipId,
+    newSlideId,
+  );
+  zip.file(presentationPath, updatedPresentationXml);
+
+  const updatedContentTypes = insertContentTypeOverride(
+    contentTypesXml,
+    `/ppt/slides/slide${nextSlideIndex}.xml`,
+  );
+  zip.file(contentTypesPath, updatedContentTypes);
+}
+
+function findDelinquentSlidePath(zip: PizZip): string | null {
+  const slidePattern = /^ppt\/slides\/slide\d+\.xml$/;
+  for (const name of Object.keys(zip.files)) {
+    if (!slidePattern.test(name)) continue;
+    const xml = zip.file(name)?.asText();
+    if (xml && xml.includes("Delinquent Rent")) {
+      return name;
+    }
+  }
+  return null;
+}
+
+function readSlideLayoutTarget(zip: PizZip, slidePath: string): string | null {
+  const relPath = slidePath
+    .replace("ppt/slides/", "ppt/slides/_rels/")
+    .replace(".xml", ".xml.rels");
+  const relContent = zip.file(relPath)?.asText();
+  if (!relContent) return null;
+  const match = relContent.match(
+    /<Relationship[^>]+Type="http:\/\/schemas\.openxmlformats\.org\/officeDocument\/2006\/relationships\/slideLayout"[^>]+Target="([^"]+)"/,
+  );
+  return match?.[1] ?? null;
+}
+
+function getNextSlideIndex(zip: PizZip): number {
+  const slidePattern = /^ppt\/slides\/slide(\d+)\.xml$/;
+  const indices = Object.keys(zip.files)
+    .map((name) => {
+      const match = slidePattern.exec(name);
+      return match ? Number(match[1]) : null;
+    })
+    .filter((value): value is number => Number.isFinite(value));
+  const max = indices.length ? Math.max(...indices) : 0;
+  return max + 1;
+}
+
+function extractRelationshipIdForSlide(xml: string, slidePath: string): string | null {
+  const relative = slidePath.replace("ppt/", "");
+  const regex = new RegExp(
+    `<Relationship[^>]+Id="(rId\\d+)"[^>]+Target="${relative.replace(
+      /[-\/\\^$*+?.()|[\]{}]/g,
+      "\\$&",
+    )}"[^>]*/>`,
+  );
+  const match = xml.match(regex);
+  return match?.[1] ?? null;
+}
+
+function generateNextRelationshipId(xml: string): string {
+  const matches = Array.from(xml.matchAll(/Id="rId(\d+)"/g)).map((match) => Number(match[1]));
+  const next = (matches.length ? Math.max(...matches) : 0) + 1;
+  return `rId${next}`;
+}
+
+function generateNextSlideId(xml: string): number {
+  const matches = Array.from(xml.matchAll(/<p:sldId[^>]+id="(\d+)"/g)).map((match) =>
+    Number(match[1]),
+  );
+  return (matches.length ? Math.max(...matches) : 256) + 1;
+}
+
+function insertSlideRelationshipEntry(
+  xml: string,
+  afterRelationshipId: string,
+  newRelationshipId: string,
+  target: string,
+): string {
+  const newEntry = `\n<Relationship Id="${newRelationshipId}" Target="${target}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"/>`;
+  const pattern = new RegExp(
+    `<Relationship[^>]+Id="${afterRelationshipId.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}"[^>]*/>`,
+  );
+  const match = xml.match(pattern);
+  if (match && match.index != null) {
+    const insertAt = match.index + match[0].length;
+    return xml.slice(0, insertAt) + newEntry + xml.slice(insertAt);
+  }
+  const closingIndex = xml.lastIndexOf("</Relationships>");
+  if (closingIndex === -1) return xml + newEntry;
+  return xml.slice(0, closingIndex) + newEntry + xml.slice(closingIndex);
+}
+
+function insertSlideIdEntry(
+  xml: string,
+  afterRelationshipId: string,
+  newRelationshipId: string,
+  newSlideId: number,
+): string {
+  const newEntry = `\n<p:sldId id="${newSlideId}" r:id="${newRelationshipId}"/>`;
+  const pattern = new RegExp(
+    `<p:sldId[^>]+r:id="${afterRelationshipId.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}"[^>]*/>`,
+  );
+  const match = xml.match(pattern);
+  if (match && match.index != null) {
+    const insertAt = match.index + match[0].length;
+    return xml.slice(0, insertAt) + newEntry + xml.slice(insertAt);
+  }
+  const closingIndex = xml.lastIndexOf("</p:sldIdLst>");
+  if (closingIndex === -1) return xml + newEntry;
+  return xml.slice(0, closingIndex) + newEntry + xml.slice(closingIndex);
+}
+
+function insertContentTypeOverride(xml: string, partName: string): string {
+  if (xml.includes(`PartName="${partName}"`)) return xml;
+  const override = `\n<Override PartName="${partName}" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`;
+  const closingIndex = xml.lastIndexOf("</Types>");
+  if (closingIndex === -1) return xml + override;
+  return xml.slice(0, closingIndex) + override + xml.slice(closingIndex);
+}
+
+function buildAuditSlideXml(rows: DelinquencyAuditRow[]): string {
+  const displayRows = rows.map((row) => [
+    row.token,
+    row.value || DASH_CHARACTER,
+    row.sheet || DASH_CHARACTER,
+    row.cells.length > 0 ? row.cells.join(" + ") : DASH_CHARACTER,
+  ]);
+  const tableRows = [["Token", "Value", "Sheet", "Cell(s)"], ...displayRows];
+  const tableXml = buildAuditTableXml(tableRows);
+  const title = escapeXml("Delinquency Audit");
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld>
+    <p:spTree>
+      <p:nvGrpSpPr>
+        <p:cNvPr id="1" name=""/>
+        <p:cNvGrpSpPr/>
+        <p:nvPr/>
+      </p:nvGrpSpPr>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
+      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="2" name="Delinquency Audit Title"/>
+          <p:cNvSpPr txBox="1"/>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm>
+            <a:off x="685800" y="457200"/>
+            <a:ext cx="16764000" cy="762000"/>
+          </a:xfrm>
+          <a:prstGeom prst="rect">
+            <a:avLst/>
+          </a:prstGeom>
+        </p:spPr>
+        <p:txBody>
+          <a:bodyPr anchor="ctr"/>
+          <a:lstStyle/>
+          <a:p>
+            <a:pPr algn="l"/>
+            <a:r>
+              <a:rPr lang="en-US" sz="3200" b="true">
+                <a:solidFill>
+                  <a:srgbClr val="0B1120"/>
+                </a:solidFill>
+                <a:latin typeface="Avenir"/>
+              </a:rPr>
+              <a:t>${title}</a:t>
+            </a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+      <p:graphicFrame>
+        <p:nvGraphicFramePr>
+          <p:cNvPr id="3" name="Delinquency Audit Table"/>
+          <p:cNvGraphicFramePr>
+            <a:graphicFrameLocks noGrp="true"/>
+          </p:cNvGraphicFramePr>
+          <p:nvPr/>
+        </p:nvGraphicFramePr>
+        <p:xfrm>
+          <a:off x="685800" y="1524000"/>
+          <a:ext cx="16764000" cy="6400800"/>
+        </p:xfrm>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">
+            ${tableXml}
+          </a:graphicData>
+        </a:graphic>
+      </p:graphicFrame>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr>
+    <a:masterClrMapping/>
+  </p:clrMapOvr>
+</p:sld>`;
+}
+
+function buildSlideRelationshipXml(layoutTarget: string): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Target="${layoutTarget}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"/>
+</Relationships>`;
+}
+
+function buildAuditTableXml(rows: string[][]): string {
+  const columnWidths = [2200000, 5200000, 2800000, 6560000];
+  const gridCols = columnWidths.map((width) => `<a:gridCol w="${width}"/>`).join("");
+  const rowXml = rows
+    .map((cells, index) => buildAuditTableRow(cells, index === 0))
+    .join("");
+  return `<a:tbl>
+  <a:tblPr/>
+  <a:tblGrid>${gridCols}</a:tblGrid>
+  ${rowXml}
+</a:tbl>`;
+}
+
+function buildAuditTableRow(cells: string[], isHeader: boolean): string {
+  const height = isHeader ? 650000 : 520000;
+  const cellXml = cells
+    .map((text) => buildAuditTableCell(text, isHeader))
+    .join("");
+  return `<a:tr h="${height}">${cellXml}</a:tr>`;
+}
+
+function buildAuditTableCell(text: string, isHeader: boolean): string {
+  const color = isHeader ? "FFFFFF" : "2D2D2D";
+  const fill = isHeader ? '<a:solidFill><a:srgbClr val="3B52A1"/></a:solidFill>' : "";
+  const bold = isHeader ? ' b="true"' : "";
+  const fontSize = isHeader ? "2000" : "1600";
+  const align = isHeader ? "ctr" : "l";
+  const escaped = escapeXml(text);
+  return `<a:tc>
+  <a:txBody>
+    <a:bodyPr anchor="t"/>
+    <a:lstStyle/>
+    <a:p>
+      <a:pPr algn="${align}"/>
+      <a:r>
+        <a:rPr lang="en-US" sz="${fontSize}"${bold}>
+          <a:solidFill><a:srgbClr val="${color}"/></a:solidFill>
+          <a:latin typeface="Avenir"/>
+        </a:rPr>
+        <a:t>${escaped}</a:t>
+      </a:r>
+    </a:p>
+  </a:txBody>
+  <a:tcPr marL="45720" marR="45720" marT="45720" marB="45720">
+    ${fill}
+  </a:tcPr>
+</a:tc>`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
+import { usePreferences } from '@/components/PreferencesProvider';
 
 type FeatureTone = 'blue' | 'purple' | 'green';
 type FeatureIconKey = 'document' | 'layers' | 'globe';
@@ -139,6 +140,7 @@ function FeatureIcon({ name, tone }: { name: FeatureIconKey; tone: FeatureTone }
 export default function DirectoryPage(): JSX.Element {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
+  const { delinquencyAudit, toggleDelinquencyAudit } = usePreferences();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | null>(null);
 
@@ -153,6 +155,17 @@ export default function DirectoryPage(): JSX.Element {
   const closeModal = () => {
     setModalFeature(null);
   };
+
+  const toggleButtonClass = (active: boolean): string =>
+    [
+      'relative inline-flex h-8 w-16 shrink-0 items-center rounded-full border border-[rgba(148,163,255,0.28)] p-1 transition-all duration-500',
+      active
+        ? 'justify-end bg-[rgba(37,99,235,0.75)] shadow-[0_10px_25px_rgba(37,99,235,0.25)]'
+        : 'justify-start bg-[rgba(148,163,255,0.3)]',
+    ].join(' ');
+
+  const togglePillClass =
+    'inline-block h-6 w-6 rounded-full bg-white shadow-[0_8px_18px_rgba(15,23,42,0.22)] transition-transform duration-500';
 
   const overlayTop = isDark
     ? 'bg-[radial-gradient(circle_at_15%_10%,rgba(59,130,246,0.25),transparent_60%)]'
@@ -347,11 +360,27 @@ export default function DirectoryPage(): JSX.Element {
                   type="button"
                   onClick={toggleDarkMode}
                   aria-pressed={isDark}
-                  className={`relative inline-flex h-7 w-14 items-center rounded-full bg-[rgba(148,163,255,0.35)] p-1 transition-colors duration-500 ${
-                    isDark ? 'justify-end bg-[rgba(37,99,235,0.65)]' : 'justify-start'
-                  }`}
+                  className={toggleButtonClass(isDark)}
                 >
-                  <span className="inline-block h-5 w-5 rounded-full bg-white shadow-[0_6px_12px_rgba(15,23,42,0.18)] transition-transform duration-500" />
+                  <span className={togglePillClass} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-[color:var(--text-primary)]">
+                    Delinquency audit slide
+                  </div>
+                  <p className="text-xs text-[color:var(--text-secondary)]">
+                    Append the audit table after the Delinquent Rent slide when exporting owner decks.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleDelinquencyAudit}
+                  aria-pressed={delinquencyAudit}
+                  className={toggleButtonClass(delinquencyAudit)}
+                >
+                  <span className={togglePillClass} />
                 </button>
               </div>
               <div className="rounded-[16px] border border-[rgba(148,163,255,0.28)] bg-white/60 p-4 text-xs text-[color:var(--text-secondary)]">

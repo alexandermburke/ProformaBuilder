@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { PreferencesProvider } from '@/components/PreferencesProvider';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -41,8 +42,10 @@ export default function RootLayout({
         ].join(' ')}
       >
         <ThemeProvider>
-          {children}
-          <div id="portal-root" />
+          <PreferencesProvider>
+            {children}
+            <div id="portal-root" />
+          </PreferencesProvider>
         </ThemeProvider>
       </body>
     </html>

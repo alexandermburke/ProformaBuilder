@@ -6,7 +6,11 @@ import { buildOwnerPptx } from "@/lib/buildOwnerPptx";
 import { extractOwnerFields } from "@/lib/extractOwnerFields";
 import { toNumber } from "@/lib/compute";
 import { extractBudgetTableFields, type BudgetTokenDetail } from "@/lib/extractBudget";
-import { extractDelinquencyMetrics, type DelinquencyTokens } from "@/lib/extractDelinquency";
+import {
+  extractDelinquencyMetrics,
+  type DelinquencyTokens,
+  type DelinquencyTokenProvenance,
+} from "@/lib/extractDelinquency";
 import { computeOwnerPerformance, type OwnerPerformanceOptions } from "@/lib/ownerPerformance";
 import { REQUIRED_DELINQUENCY_TOKENS } from "@/lib/pptTokens";
 import type { OwnerFields } from "@/types/ownerReport";
@@ -56,6 +60,7 @@ export async function POST(req: NextRequest) {
   const iprc = form.get("iprc");
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
+  const auditDelinquencyRaw = form.get("auditDelinquency");
 
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
@@ -185,10 +190,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let delinquencyAudit:
+    | {
+        tokens: DelinquencyTokens;
+        provenance: DelinquencyTokenProvenance;
+      }
+    | undefined;
+
   try {
     const delinquency = extractDelinquencyMetrics(buffer);
     if (delinquency.ok) {
       performanceTokens = { ...(performanceTokens ?? {}), ...delinquency.tokens };
+      delinquencyAudit = {
+        tokens: delinquency.tokens,
+        provenance: delinquency.provenance,
+      };
       logDelinquencyTokens(delinquency.tokens);
     } else {
       console.warn("[delinquency]", delinquency.message);
@@ -200,6 +216,11 @@ export async function POST(req: NextRequest) {
   const budgetTokensNumeric = budgetTokens ?? {};
   console.log("[budget] detected", Object.keys(budgetTokensNumeric).length, "numeric tokens");
 
+  const auditDelinquencyPref =
+    typeof auditDelinquencyRaw === "string"
+      ? auditDelinquencyRaw === "true" || auditDelinquencyRaw === "1"
+      : Boolean(process.env.AUDIT_DELINQ && process.env.AUDIT_DELINQ.toLowerCase() === "true");
+
   const pptx = await buildOwnerPptx({
     templateBuffer,
     ownerValues: data,
@@ -209,6 +230,8 @@ export async function POST(req: NextRequest) {
     templateTokens,
     budgetBuffer: budgetBuffer ?? null,
     performanceTokens,
+    delinquencyAudit,
+    enableDelinquencyAudit: auditDelinquencyPref,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 
