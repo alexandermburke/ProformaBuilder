@@ -14,14 +14,14 @@ export type DelinquencyBucketKey = (typeof DELINQUENCY_BUCKET_KEYS)[number];
 export type DelinquencyCellKind = "dollars" | "units" | "percent";
 
 const ROW_BY_BUCKET: Record<DelinquencyBucketKey, number> = {
-  "0_10": 31,
-  "11_30": 32,
-  "31_60": 33,
-  "61_90": 34,
-  "91_120": 35,
-  "121_180": 36,
-  "181_360": 37,
-  "361_PLUS": 38,
+  "0_10": 30,
+  "11_30": 31,
+  "31_60": 32,
+  "61_90": 33,
+  "91_120": 34,
+  "121_180": 35,
+  "181_360": 36,
+  "361_PLUS": 37,
 };
 
 const COLUMN_BY_KIND: Record<DelinquencyCellKind, string> = {
