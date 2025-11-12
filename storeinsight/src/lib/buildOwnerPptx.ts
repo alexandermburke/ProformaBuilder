@@ -10,6 +10,10 @@ import {
 import type { OwnerPerformanceTokenValues } from "@/lib/ownerPerformance";
 import type { DelinquencyTokenProvenance, DelinquencyTokens } from "@/lib/extractDelinquency";
 import {
+  buildDelinquencyAuditRows,
+  type DelinquencyAuditRow,
+} from "@/lib/delinquencyAudit";
+import {
   normalizeTokenKey,
   REQUIRED_DELINQUENCY_TOKENS,
   scanPptTokens,
@@ -469,30 +473,6 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   }
 
   return doc.getZip().generate({ type: "nodebuffer" });
-}
-
-type DelinquencyAuditRow = {
-  token: string;
-  value: string;
-  sheet: string;
-  cells: string[];
-};
-
-function buildDelinquencyAuditRows(input: {
-  tokens: DelinquencyTokens;
-  provenance: DelinquencyTokenProvenance;
-}): DelinquencyAuditRow[] {
-  return REQUIRED_DELINQUENCY_TOKENS.map((token) => {
-    const key = token as keyof DelinquencyTokens;
-    const provenance = input.provenance[key];
-    const uniqueCells = Array.from(new Set((provenance?.cells ?? []).filter(Boolean)));
-    return {
-      token,
-      value: String(input.tokens[key] ?? ""),
-      sheet: provenance?.sheet ?? DASH_CHARACTER,
-      cells: uniqueCells,
-    };
-  });
 }
 
 function appendDelinquencyAuditSlide(zip: PizZip, rows: DelinquencyAuditRow[]): void {

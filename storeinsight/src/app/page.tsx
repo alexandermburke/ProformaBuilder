@@ -197,8 +197,6 @@ export default function DirectoryPage(): JSX.Element {
                 to open the tools you rely on every day.
               </p>
             </div>
-            <div className="flex flex-col items-start gap-3 md:items-end">
-            </div>
           </div>
         </header>
 
@@ -368,10 +366,10 @@ export default function DirectoryPage(): JSX.Element {
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="text-sm font-semibold text-[color:var(--text-primary)]">
-                    Delinquency audit slide
+                    Audit Console
                   </div>
                   <p className="text-xs text-[color:var(--text-secondary)]">
-                    Append the audit table after the Delinquent Rent slide when exporting owner decks.
+                    Surface the ESR delinquency audit workspace in this app and append the PPT audit slide on export.
                   </p>
                 </div>
                 <button
