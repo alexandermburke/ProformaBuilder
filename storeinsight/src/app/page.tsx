@@ -64,6 +64,24 @@ const features: Feature[] = [
   },
 ];
 
+const HERO_STATS = [
+  {
+    label: 'Active workspaces',
+    value: '3',
+    detail: 'Owner, Accounting, Proforma',
+  },
+  {
+    label: 'Automations live',
+    value: '42',
+    detail: 'Token + validation routines',
+  },
+  {
+    label: 'Last release',
+    value: 'Nov 11, 2025',
+    detail: 'Audit surface refresh',
+  },
+];
+
 const PLATFORM_VERSION = '0.8.1';
 const NEXT_VERSION = '15.5.4';
 
@@ -196,6 +214,15 @@ export default function DirectoryPage(): JSX.Element {
                 Access the active workspaces used for underwriting, accounting, and owner reporting. Select a workspace
                 to open the tools you rely on every day.
               </p>
+              <div className="grid gap-4 pt-2 text-sm sm:grid-cols-3">
+                {HERO_STATS.map((stat) => (
+                  <div key={stat.label} className="stat-card hero-stat rounded-2xl p-4">
+                    <p className="hero-stat__label">{stat.label}</p>
+                    <p className="hero-stat__value">{stat.value}</p>
+                    <p className="hero-stat__detail">{stat.detail}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </header>
@@ -203,49 +230,61 @@ export default function DirectoryPage(): JSX.Element {
         <section className="grid gap-6 lg:grid-cols-3">
           {features.map((feature, index) => {
             const delayClass = index === 1 ? 'ios-animate-delay-sm' : index === 2 ? 'ios-animate-delay-md' : '';
-            const cardClass = `group ios-card ios-animate-up ${delayClass} flex flex-col gap-6 p-8 transition-all duration-500 hover:-translate-y-1`;
+            const cardClass = [
+              'group ios-card ios-animate-up feature-card',
+              delayClass,
+              'relative overflow-hidden flex flex-col gap-6 p-8 transition-all duration-500 hover:-translate-y-1',
+            ]
+              .filter(Boolean)
+              .join(' ');
             const sharedContent = (
               <>
-                <span className="ios-pill text-[11px]" data-tone={badgeTone[feature.tone]}>
-                  {feature.status}
-                </span>
-                <div className="flex items-center gap-4">
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-px rounded-[26px] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_70%)] opacity-0 transition duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.2),transparent_75%)]"
+                />
+                <div className="relative z-10 flex flex-col gap-6">
+                  <span className="ios-pill text-[11px]" data-tone={badgeTone[feature.tone]}>
+                    {feature.status}
+                  </span>
+                  <div className="flex items-center gap-4">
                   <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/40 shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${iconTone[feature.tone]}`}
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/40 shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${iconTone[feature.tone]} dark:border-white/15 dark:bg-white/10`}
                     aria-hidden
                   >
-                    <FeatureIcon name={feature.icon} tone={feature.tone} />
+                      <FeatureIcon name={feature.icon} tone={feature.tone} />
+                    </div>
+                    <div className="space-y-1">
+                      <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">
+                        {feature.title}
+                      </h2>
+                      <p className="text-sm text-[color:var(--text-secondary)]">
+                        {feature.description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">
-                      {feature.title}
-                    </h2>
-                    <p className="text-sm text-[color:var(--text-secondary)]">
-                      {feature.description}
-                    </p>
-                  </div>
+                  <ul className="space-y-2 text-sm text-[color:var(--text-muted)]">
+                    {feature.highlights.map((highlight) => (
+                      <li key={highlight} className="flex items-start gap-2 text-left">
+                        <span className="mt-1 inline-flex h-1.5 w-1.5 flex-none rounded-full bg-[rgba(37,99,235,0.7)]" />
+                        <span className="flex-1 leading-snug">{highlight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <span className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--accent-strong)]">
+                    {feature.disabled ? 'Request access' : 'Enter workspace'}
+                    <svg
+                      aria-hidden
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M13.172 12 8.586 7.414 10 6l6 6-6 6-1.414-1.414L13.172 12Z"
+                      />
+                    </svg>
+                  </span>
                 </div>
-                <ul className="space-y-2 text-sm text-[color:var(--text-muted)]">
-                  {feature.highlights.map((highlight) => (
-                    <li key={highlight} className="flex items-start gap-2 text-left">
-                      <span className="mt-1 inline-flex h-1.5 w-1.5 flex-none rounded-full bg-[rgba(37,99,235,0.7)]" />
-                      <span className="flex-1 leading-snug">{highlight}</span>
-                    </li>
-                  ))}
-                </ul>
-                <span className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--accent-strong)]">
-                  {feature.disabled ? 'Request access' : 'Enter workspace'}
-                  <svg
-                    aria-hidden
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1"
-                  >
-                    <path
-                      fill="currentColor"
-                      d="M13.172 12 8.586 7.414 10 6l6 6-6 6-1.414-1.414L13.172 12Z"
-                    />
-                  </svg>
-                </span>
               </>
             );
 

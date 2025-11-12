@@ -33,6 +33,7 @@ import {
 } from "@/lib/ownerPerformance";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+const TOTAL_STEPS = 7;
 
 const FIELD_ORDER = [
   "CURRENTDATE",
@@ -211,6 +212,10 @@ const STEP_LABELS: Record<Step, string> = {
   6: "Generate",
   7: "Export",
 };
+
+const STEP_SEQUENCE = (Object.keys(STEP_LABELS)
+  .map((key) => Number(key) as Step)
+  .sort((a, b) => a - b)) as Step[];
 
 type BudgetColumnMeta = {
   suffix: string;
@@ -408,6 +413,15 @@ export default function OwnerReportsPage() {
     ? "bg-[radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.22),transparent_62%)]"
     : "bg-[radial-gradient(circle_at_84%_88%,rgba(125,211,252,0.16),transparent_62%)]";
   const [step, setStep] = useState<Step>(1);
+  const currentStepIndex = Math.max(0, STEP_SEQUENCE.indexOf(step));
+  const progressPercent =
+    STEP_SEQUENCE.length > 1 ? (currentStepIndex / (STEP_SEQUENCE.length - 1)) * 100 : 100;
+  const progressSteps = STEP_SEQUENCE.map((keyStep) => ({
+    keyStep,
+    label: STEP_LABELS[keyStep],
+    state: keyStep === step ? "active" : keyStep < step ? "complete" : "upcoming",
+  }));
+  const activeStepLabel = STEP_LABELS[step];
   const [file, setFile] = useState<File | null>(null);
   const [fields, setFields] = useState<OwnerFields | null>(null);
   const [overrides, setOverrides] = useState<OwnerFieldOverrides>({});
@@ -1282,7 +1296,11 @@ export default function OwnerReportsPage() {
       <div className={`pointer-events-none absolute inset-0 ${overlayBottom}`} />
       <div className="relative mx-auto max-w-[1200px] px-6 py-10 lg:px-10 lg:py-16">
         <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="owner-card owner-card--accent ios-animate-up space-y-6 p-6" data-tone="blue">
+          <aside className="owner-card owner-card--accent ios-animate-up relative overflow-hidden space-y-6 p-6" data-tone="blue">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.18),transparent_70%)] dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.3),transparent_75%)]"
+            />
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.32em] text-[color:var(--accent-strong)]">Store</div>
               <div className="text-[22px] font-semibold tracking-tight text-[color:var(--text-primary)]">Insight Workbench</div>
@@ -1326,20 +1344,39 @@ export default function OwnerReportsPage() {
                 </Link>
               </header>
 
-              <ol className="owner-step-nav text-xs font-medium uppercase tracking-wide text-[color:var(--text-muted)]">
-                {(Object.keys(STEP_LABELS) as unknown as Step[]).map((keyStep) => (
-                  <li
-                    key={keyStep}
-                    data-state={keyStep === step ? "active" : keyStep < step ? "complete" : "upcoming"}
-                    className="owner-step-chip"
-                  >
-                    <span className="owner-step-number" data-state={keyStep === step ? "active" : keyStep < step ? "complete" : "upcoming"}>
-                      {String(keyStep).padStart(2, "0")}
-                    </span>
-                    <span className="owner-step-label">{STEP_LABELS[keyStep]}</span>
-                  </li>
-                ))}
-              </ol>
+              <div>
+                <div className="owner-progress" aria-label={`Step ${step} of ${TOTAL_STEPS}`}>
+                  <div className="owner-progress__header">
+                    <div className="owner-progress__stage-copy">
+                      <span className="owner-progress__stage-step">Step {String(step).padStart(2, "0")}</span>
+                      <span className="owner-progress__stage-label">{activeStepLabel}</span>
+                    </div>
+                    <div className="owner-progress__count" aria-label={`Step ${step} of ${TOTAL_STEPS}`}>
+                      {step} / {TOTAL_STEPS}
+                    </div>
+                  </div>
+                  <div className="owner-progress__body">
+                    <div className="owner-progress__meter">
+                      <span className="owner-progress__meter-fill" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                    <div className="owner-progress__steps">
+                      {progressSteps.map((progressStep) => (
+                        <div
+                          key={progressStep.keyStep}
+                          className="owner-progress__step"
+                          data-state={progressStep.state}
+                        >
+                          <span className="owner-progress__step-number">
+                            {String(progressStep.keyStep).padStart(2, "0")}
+                          </span>
+                          <span className="owner-progress__step-label">{progressStep.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <span className="sr-only">Step {step} of {TOTAL_STEPS}</span>
+              </div>
 
               {error && (
                 <div className="rounded-lg border border-[#FEE2E2] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C]">
@@ -1585,7 +1622,7 @@ export default function OwnerReportsPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] transition disabled:cursor-not-allowed disabled:text-[#9CA3AF] hover:bg-blue-50 dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:bg-white/10"
+                          className="owner-chip-button text-xs font-semibold uppercase tracking-wide"
                           onClick={() => setBudgetPage((prev) => Math.max(0, prev - 1))}
                           disabled={displayedBudgetPage === 0 || budgetLoading}
                         >
@@ -1596,7 +1633,7 @@ export default function OwnerReportsPage() {
                         </span>
                         <button
                           type="button"
-                          className="rounded-full border border-[#CBD5F5] bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--accent-strong)] transition disabled:cursor-not-allowed disabled:text-[#9CA3AF] hover:bg-blue-50 dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:bg-white/10"
+                          className="owner-chip-button text-xs font-semibold uppercase tracking-wide"
                           onClick={() => setBudgetPage((prev) => Math.min(totalBudgetPages - 1, prev + 1))}
                           disabled={displayedBudgetPage >= totalBudgetPages - 1 || budgetLoading}
                         >
@@ -1759,7 +1796,7 @@ export default function OwnerReportsPage() {
                                       </span>
 
                                       <input
-                                        className={`rounded-md border border-[#CBD5F5] px-2 py-1 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 dark:border-white/20 dark:bg-[rgba(15,23,42,0.4)] dark:text-white dark:placeholder-slate-400 dark:focus:border-white/45 ${percentToneClass}`}
+                                        className={`owner-budget-input text-base ${percentToneClass}`}
                                         value={displayValue}
                                         onChange={(event) => updateBudgetOverride(token, event.target.value)}
                                         placeholder={placeholderValue}
