@@ -1551,7 +1551,8 @@ export default function OwnerReportsPage() {
                   </div>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                      className="ios-button px-5 py-2 text-sm"
+                      data-variant="secondary"
                       type="button"
                       onClick={() => setStep(1)}
                     >
@@ -1658,7 +1659,7 @@ export default function OwnerReportsPage() {
                           return (
                             <div
                               key={line.baseKey}
-                              className="owner-card owner-card--surface rounded-xl p-4 shadow-sm"
+                              className="bg-transparent rounded-xl p-4 shadow-sm"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div>
@@ -1835,7 +1836,8 @@ export default function OwnerReportsPage() {
                   )}
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                      className="ios-button px-5 py-2 text-sm"
+                      data-variant="secondary"
                       type="button"
                       onClick={() => setStep(2)}
                     >
@@ -1938,7 +1940,8 @@ export default function OwnerReportsPage() {
                   )}
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                      className="ios-button px-5 py-2 text-sm"
+                      data-variant="secondary"
                       type="button"
                       onClick={() => setStep(3)}
                     >
@@ -1983,7 +1986,8 @@ export default function OwnerReportsPage() {
                   </ul>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                      className="ios-button px-5 py-2 text-sm"
+                      data-variant="secondary"
                       type="button"
                       onClick={() => setStep(4)}
                     >
@@ -2023,7 +2027,8 @@ export default function OwnerReportsPage() {
                         setLogModalOpen(true);
                         track("console_log_opened", { screen: "export_step7" });
                       }}
-                      className="inline-flex items-center gap-2 rounded-full border border-[#CBD5F5] bg-white px-4 py-2 text-sm font-medium text-[color:var(--accent-strong)] shadow-sm transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                      className="ios-button px-4 py-2 text-sm"
+                      data-variant="secondary"
                       title="Inspect the console output captured during the last export"
                     >
                       <TerminalSquare className="h-4 w-4" aria-hidden />
@@ -2076,7 +2081,8 @@ export default function OwnerReportsPage() {
                       Download again
                     </button>
                     <button
-                      className="rounded-full border border-[#CBD5F5] bg-white px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] transition hover:border-[#2563EB] hover:bg-[rgba(37,99,235,0.08)] dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                      className="ios-button px-5 py-2 text-sm"
+                      data-variant="secondary"
                       type="button"
                       onClick={startAnother}
                     >
@@ -2084,7 +2090,8 @@ export default function OwnerReportsPage() {
                     </button>
                     <Link
                       href="/"
-                      className="rounded-full border border-transparent bg-[rgba(255,255,255,0.9)] px-5 py-2 text-sm font-medium text-[color:var(--accent-strong)] shadow transition hover:border-[#CBD5F5] hover:bg-white dark:border-white/15 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/35 dark:hover:bg-white/10"
+                      className="ios-button px-5 py-2 text-sm"
+                      data-variant="secondary"
                     >
                       Return home
                     </Link>
@@ -2127,7 +2134,7 @@ export default function OwnerReportsPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <input
                   type="text"
-                  className="h-10 w-full rounded-full border border-slate-200 bg-white px-4 text-sm text-slate-700 shadow-sm transition focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/30 sm:max-w-sm dark:border-white/20 dark:bg-[rgba(15,23,42,0.65)] dark:text-white dark:placeholder-slate-400 dark:focus:border-white/40"
+                  className="log-input h-10 w-full px-4 text-sm sm:max-w-sm"
                   placeholder="Filter lines (e.g., pptx, key, error, warning)"
                   value={logFilter}
                   onChange={handleFilterChange}
@@ -2137,10 +2144,7 @@ export default function OwnerReportsPage() {
                   <button
                     type="button"
                     onClick={toggleWrap}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 ${logWrap
-                        ? "border-[#2563EB] bg-[#2563EB]/10 text-[#1E3A8A] dark:border-[#93C5FD] dark:bg-[#1E3A8A]/50 dark:text-white"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)] dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
-                      }`}
+                    className={`log-pill-button text-xs ${logWrap ? "is-active" : ""}`}
                     aria-pressed={logWrap}
                     title="Toggle soft wrapping for log lines"
                   >
@@ -2150,7 +2154,7 @@ export default function OwnerReportsPage() {
                   <button
                     type="button"
                     onClick={handleCopyLog}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                    className="log-pill-button text-xs"
                     title="Copy filtered log text to clipboard"
                   >
                     <Copy className="h-4 w-4" aria-hidden />
@@ -2159,7 +2163,7 @@ export default function OwnerReportsPage() {
                   <button
                     type="button"
                     onClick={handleDownloadLog}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-[#CBD5F5] hover:bg-[rgba(37,99,235,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 dark:border-white/20 dark:bg-[rgba(15,23,42,0.5)] dark:text-white dark:hover:border-white/45 dark:hover:bg-white/10"
+                    className="log-pill-button text-xs"
                     title="Download filtered log as .txt"
                   >
                     <Download className="h-4 w-4" aria-hidden />

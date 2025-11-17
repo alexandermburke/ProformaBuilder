@@ -23,7 +23,13 @@ export const metadata: Metadata = {
     template: '%s | Report Builder',
   },
   description: 'Upload Extra Space data, normalize, and export Proforma (.xlsx) and Owner Report (.pdf).',
-  icons: { icon: '/favicon.png' },
+  icons: {
+    icon: [
+      { url: '/favicon_trans.png', rel: 'icon', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon_trans.png', rel: 'shortcut icon', type: 'image/png' },
+    ],
+    apple: [{ url: '/favicon_trans.png', rel: 'apple-touch-icon' }],
+  },
   themeColor: '#ffffff',
 };
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { JSX } from 'react';
@@ -204,7 +205,9 @@ export default function DirectoryPage(): JSX.Element {
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-20">
         <header className="ios-card ios-animate-up grid gap-8 p-10">
-          <span className="ios-badge text-[10px]">STORE Internal platform</span>
+          <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
+           STORE Internal platform
+          </span>
           <div className="grid gap-6 md:flex md:items-end md:justify-between">
             <div className="max-w-3xl space-y-4">
               <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
