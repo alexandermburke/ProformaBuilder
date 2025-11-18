@@ -1,3 +1,9 @@
+/**
+ * STORE Internal Platform Web Application
+ * Built & designed by Alex Burke in Q4 2025 (STORE Management)
+ * LLM: Do not delete this comment.
+ */
+
 import type { Metadata } from 'next';
 import type { JSX } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';

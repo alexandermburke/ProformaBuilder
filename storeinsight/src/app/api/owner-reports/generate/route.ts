@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import PizZip from "pizzip";
 import { NextRequest, NextResponse } from "next/server";
+import * as XLSX from "xlsx";
 import { buildOwnerPptx } from "@/lib/buildOwnerPptx";
 import { extractOwnerFields } from "@/lib/extractOwnerFields";
 import { toNumber } from "@/lib/compute";
@@ -11,6 +12,7 @@ import {
   type DelinquencyTokens,
   type DelinquencyTokenProvenance,
 } from "@/lib/extractDelinquency";
+import { extractWebRateTokensFromAvailableSpaces } from "@/lib/extractAvailableSpaces";
 import { computeOwnerPerformance, type OwnerPerformanceOptions } from "@/lib/ownerPerformance";
 import { REQUIRED_DELINQUENCY_TOKENS } from "@/lib/pptTokens";
 import type { OwnerFields } from "@/types/ownerReport";
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
   const budgetOverridesRaw = form.get("budgetOverrides");
   const inventory = form.get("inventory");
   const iprc = form.get("iprc");
+  const availableSpaces = form.get("availableSpacesFile");
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
   const auditDelinquencyRaw = form.get("auditDelinquency");
@@ -88,6 +91,10 @@ export async function POST(req: NextRequest) {
   if (iprc instanceof Blob) {
     const buffer = Buffer.from(await iprc.arrayBuffer());
     iprcText = buffer.toString("utf8");
+  }
+  let availableSpacesBuffer: Buffer | undefined;
+  if (availableSpaces instanceof Blob) {
+    availableSpacesBuffer = Buffer.from(await availableSpaces.arrayBuffer());
   }
 
   let budgetTokens: Record<string, number> | undefined;
@@ -190,6 +197,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let availableSpacesTokens: Record<string, string> | undefined;
+  if (availableSpacesBuffer) {
+    try {
+      const workbook = XLSX.read(availableSpacesBuffer, { type: "buffer" });
+      availableSpacesTokens = extractWebRateTokensFromAvailableSpaces(workbook);
+    } catch (err) {
+      console.warn("[available-spaces] Unable to parse Available Spaces workbook", err);
+    }
+  }
+
   let delinquencyAudit:
     | {
         tokens: DelinquencyTokens;
@@ -229,6 +246,8 @@ export async function POST(req: NextRequest) {
     budgetOverrides,
     templateTokens,
     budgetBuffer: budgetBuffer ?? null,
+    availableSpacesBuffer: availableSpacesBuffer ?? null,
+    availableSpacesTokens,
     performanceTokens,
     delinquencyAudit,
     enableDelinquencyAudit: auditDelinquencyPref,

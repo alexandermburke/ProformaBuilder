@@ -889,6 +889,26 @@ html.dark .owner-progress__count {
   overflow: hidden;
 }
 
+.owner-progress__meter::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  width: 140%;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(125, 179, 255, 0.08) 22%,
+    rgba(37, 99, 235, 0.18) 38%,
+    rgba(125, 179, 255, 0.08) 54%,
+    transparent 70%
+  );
+  transform: translateX(-130%);
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  animation: owner-progress-gleam 32s ease-in-out infinite;
+}
+
 .owner-progress__meter-fill {
   position: absolute;
   inset: 0;
@@ -910,9 +930,9 @@ html.dark .owner-progress__count {
   height: 36px;
   border-radius: 999px;
   background: radial-gradient(circle, rgba(90, 200, 250, 0.3), transparent 60%);
-  opacity: 0.22;
+  opacity: 0;
   filter: blur(14px);
-  animation: ai-glide 4s var(--ease-smooth) infinite alternate;
+  animation: owner-progress-orb 32s ease-in-out infinite;
 }
 
 html.dark .owner-progress__meter {
@@ -1093,12 +1113,49 @@ html.dark .log-input::placeholder {
   color: color-mix(in srgb, var(--text-secondary) 80%, #e2e8f0);
 }
 
-@keyframes ai-glide {
+@keyframes owner-progress-gleam {
   0% {
-    left: 0%;
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+  6% {
+    transform: translateX(-10%);
+    opacity: 0.22;
+  }
+  10% {
+    transform: translateX(120%);
+    opacity: 0.12;
+  }
+  14% {
+    transform: translateX(130%);
+    opacity: 0;
   }
   100% {
+    transform: translateX(130%);
+    opacity: 0;
+  }
+}
+
+@keyframes owner-progress-orb {
+  0% {
+    left: -14%;
+    opacity: 0;
+  }
+  6% {
+    left: 8%;
+    opacity: 0.26;
+  }
+  10% {
     left: 92%;
+    opacity: 0.18;
+  }
+  14% {
+    left: 96%;
+    opacity: 0;
+  }
+  100% {
+    left: 96%;
+    opacity: 0;
   }
 }
 

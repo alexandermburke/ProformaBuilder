@@ -1,4 +1,10 @@
-﻿// Presentation on hero page via Javascript - think Apple like presentation to update David & Mark on changes like UI, Logic, etc. 
+/**
+ * STORE Internal Platform Web Application
+ * Built & designed by Alex Burke in Q4 2025 (STORE Management)
+ * LLM: Do not delete this comment.
+ */
+
+// Presentation on hero page via Javascript - think Apple like presentation to update David & Mark on changes like UI, Logic, etc. 
 
 "use client";
 
@@ -435,6 +441,7 @@ export default function OwnerReportsPage() {
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
   const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
   const [iprcFile, setIprcFile] = useState<File | null>(null);
+  const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
   const [currentMonthOverride, setCurrentMonthOverride] = useState("");
   const [includeCurrentMonth, setIncludeCurrentMonth] = useState(true);
   const [performanceTokens, setPerformanceTokens] = useState<OwnerPerformanceTokenValues | null>(null);
@@ -849,6 +856,23 @@ export default function OwnerReportsPage() {
     [resetPerformanceUpload],
   );
 
+  const handleAvailableSpacesFileChange = useCallback((next: File | null) => {
+    if (!next) {
+      setAvailableSpacesFile(null);
+      return;
+    }
+    const name = next.name?.toLowerCase() ?? "";
+    const mime = next.type?.toLowerCase() ?? "";
+    const isWorkbook =
+      name.endsWith(".xlsx") ||
+      mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (!isWorkbook) {
+      setAvailableSpacesFile(null);
+      return;
+    }
+    setAvailableSpacesFile(next);
+  }, []);
+
   const updateBudgetOverride = useCallback((token: string, value: string) => {
     setBudgetOverrides((prev) => {
       const next = { ...prev };
@@ -1024,6 +1048,9 @@ export default function OwnerReportsPage() {
       }
       if (iprcFile) {
         form.append("iprc", iprcFile);
+      }
+      if (availableSpacesFile) {
+        form.append("availableSpacesFile", availableSpacesFile);
       }
       const performanceOptionsPayload = {
         currentMonthOverride: currentMonthOverride.trim() || undefined,
@@ -1421,7 +1448,7 @@ export default function OwnerReportsPage() {
                   </p>
                   <div className="mt-6 space-y-6">
                     <div className="owner-input-tile space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Budget Comparison (.xlsx)</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">Recommended for Budget Variance autofill</p>
@@ -1429,7 +1456,7 @@ export default function OwnerReportsPage() {
                         {budgetFile && (
                           <button
                             type="button"
-                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
                             onClick={() => handleBudgetFileChange(null)}
                           >
                             Remove file
@@ -1457,7 +1484,7 @@ export default function OwnerReportsPage() {
                     </div>
 
                     <div className="owner-input-tile space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Move-In/Move-Out Activity (.xlsx)</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
@@ -1467,7 +1494,7 @@ export default function OwnerReportsPage() {
                         {hummingbirdFile && (
                           <button
                             type="button"
-                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
                             onClick={() => {
                               void handleHummingbirdFileChange(null);
                             }}
@@ -1494,7 +1521,7 @@ export default function OwnerReportsPage() {
                     </div>
 
                     <div className="owner-input-tile space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">IPRC Change History (.csv)</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
@@ -1504,7 +1531,7 @@ export default function OwnerReportsPage() {
                         {iprcFile && (
                           <button
                             type="button"
-                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
                             onClick={() => {
                               handleIprcFileChange(null);
                             }}
@@ -1528,6 +1555,49 @@ export default function OwnerReportsPage() {
                           Selected: <span className="font-medium text-[color:var(--text-primary)]">{iprcFile.name}</span>
                         </p>
                       )}
+                    </div>
+
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                            Available Spaces by Attribute (.xlsx)
+                          </p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Upload the SSM Available Spaces by Attribute export to fill Web rates on Rate Management.
+                          </p>
+                        </div>
+                        {availableSpacesFile && (
+                          <button
+                            type="button"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => {
+                              handleAvailableSpacesFileChange(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".xlsx"
+                        className="text-sm text-[color:var(--text-primary)]"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          handleAvailableSpacesFileChange(nextFile);
+                          event.target.value = "";
+                        }}
+                      />
+                      {availableSpacesFile && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected:{" "}
+                          <span className="font-medium text-[color:var(--text-primary)]">{availableSpacesFile.name}</span>
+                        </p>
+                      )}
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Optional: only used for the Web column on the Pricing slide.
+                      </p>
                     </div>
 
                     {performanceLoading && (

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import * as XLSX from "xlsx";
 import type { OwnerFields } from "@/types/ownerReport";
 import {
   extractBudgetTableFields,
@@ -19,6 +20,7 @@ import {
   scanPptTokens,
   stripHiddenTokenCharacters,
 } from "@/lib/pptTokens";
+import { extractWebRateTokensFromAvailableSpaces } from "@/lib/extractAvailableSpaces";
 
 const DASH_CHARACTER = "\u2013";
 const BLANK_LITERALS = new Set(["", "NaN", "undefined"]);
@@ -209,6 +211,8 @@ type BuildOwnerPptxOptions = {
   budgetOverrides?: Record<string, number>;
   templateTokens?: string[];
   budgetBuffer?: Buffer | null;
+  availableSpacesTokens?: Record<string, string> | null;
+  availableSpacesBuffer?: Buffer | null;
   performanceTokens?: (OwnerPerformanceTokenValues | Record<string, string | number>) | null;
   delinquencyAudit?:
     | {
@@ -228,6 +232,8 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     budgetOverrides: providedBudgetOverrides,
     templateTokens,
     budgetBuffer,
+    availableSpacesTokens,
+    availableSpacesBuffer,
     performanceTokens,
     delinquencyAudit,
     enableDelinquencyAudit,
@@ -286,6 +292,25 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     performanceTokens && Object.keys(performanceTokens).length > 0
       ? normalizeValueRecord(performanceTokens as Record<string, TemplateValue>)
       : undefined;
+  let availableSpacesTokenValues =
+    availableSpacesTokens && Object.keys(availableSpacesTokens).length > 0
+      ? normalizeValueRecord(availableSpacesTokens)
+      : undefined;
+
+  if ((!availableSpacesTokenValues || Object.keys(availableSpacesTokenValues).length === 0) && availableSpacesBuffer) {
+    try {
+      const workbook = XLSX.read(availableSpacesBuffer, { type: "buffer" });
+      const extracted = extractWebRateTokensFromAvailableSpaces(workbook);
+      if (extracted && Object.keys(extracted).length > 0) {
+        availableSpacesTokenValues = normalizeValueRecord(extracted);
+      }
+    } catch (err) {
+      console.warn(
+        "[available-spaces] Unable to parse Available Spaces workbook in builder:",
+        (err as Error)?.message ?? err,
+      );
+    }
+  }
 
   const tokenKeys = Array.from(
     new Set([
@@ -293,6 +318,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
       ...Object.keys(budgetTokensNumeric),
       ...Object.keys(budgetOverrideValues),
       ...(performanceTokenValues ? Object.keys(performanceTokenValues) : []),
+      ...(availableSpacesTokenValues ? Object.keys(availableSpacesTokenValues) : []),
     ]),
   );
 
@@ -372,6 +398,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   const data: Record<string, TemplateValue> = {
     ...summaryFields,
     ...(performanceTokenValues ?? {}),
+    ...(availableSpacesTokenValues ?? {}),
     ...budgetTokens,
     ...budgetOverrides,
   };

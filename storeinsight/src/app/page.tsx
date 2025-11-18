@@ -1,3 +1,9 @@
+/**
+ * STORE Internal Platform Web Application
+ * Built & designed by Alex Burke in Q4 2025 (STORE Management)
+ * LLM: Do not delete this comment.
+ */
+
 'use client';
 
 import Image from 'next/image';
@@ -23,18 +29,17 @@ type Feature = {
 
 const features: Feature[] = [
   {
-    title: 'Accounting',
-    description: 'Manage vendor statement ingestion and mapping for monthly closes.',
-    href: '/accounting',
+    title: 'Daily Summary Report',
+    description: 'Automate daily flash reports for STORE properties.',
+    href: '/daily-summary',
     status: 'WIP',
     tone: 'purple',
     icon: 'document',
     highlights: [
-      'Map income statement exports into STORE chart of accounts',
-      'Surface unmapped and mismatched ledger lines before month-end',
-      'Apply header suggestions learned from prior vendor imports',
+      'Pull daily metrics from Tenant management summary exports',
+      'Fill Excel flash templates with rentals, vacates, and occupancy',
+      'Schedule automatic email delivery to property owners',
     ],
-    disabled: true,
   },
   {
     title: 'Proforma',
@@ -77,8 +82,8 @@ const HERO_STATS = [
     detail: 'Token + validation routines',
   },
   {
-    label: 'Last release',
-    value: 'Nov 11, 2025',
+    label: 'Last update',
+    value: 'Nov, 18th',
     detail: 'Audit surface refresh',
   },
 ];
@@ -214,8 +219,8 @@ export default function DirectoryPage(): JSX.Element {
                 Workspace directory for STORE Management.
               </h1>
               <p className="text-base leading-relaxed text-[color:var(--text-secondary)] sm:text-lg">
-                Access the active workspaces used for underwriting, accounting, and owner reporting. Select a workspace
-                to open the tools you rely on every day.
+                Access the active workspaces used for underwriting, summaries, and owner reporting. Select a workspace
+                to open the tool you desire to use.
               </p>
               <div className="grid gap-4 pt-2 text-sm sm:grid-cols-3">
                 {HERO_STATS.map((stat) => (
