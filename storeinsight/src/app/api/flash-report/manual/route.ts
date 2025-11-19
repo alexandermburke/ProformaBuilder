@@ -3,12 +3,114 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import PizZip from "pizzip";
+import { createCanvas } from "canvas";
+import { Chart as ChartJS, registerables, type ChartConfiguration } from "chart.js";
 import { listProperties } from "@/app/api/daily-summary/store";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 
 export const runtime = "nodejs";
 
 type TokenMap = Record<string, string | number | unknown[]>;
+
+const chartWidth = 800;
+const chartHeight = 400;
+ChartJS.register(...registerables);
+ChartJS.defaults.responsive = false;
+ChartJS.defaults.animation = false;
+
+function renderChartBuffer(configuration: ChartConfiguration<"bar", number[], string>, mimeType: "image/png" | "image/jpeg"): Buffer {
+  const canvas = createCanvas(chartWidth, chartHeight);
+  const ctx = canvas.getContext("2d");
+  // Chart.js works with the node-canvas context; cast keeps TS happy.
+  new ChartJS(ctx as unknown as CanvasRenderingContext2D, configuration);
+  return mimeType === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg");
+}
+
+async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
+  const labels = ["0-10", "11-30", "31-60", "61-90", "91-120", "121-180", "181-360", "361+"];
+  const data = [
+    tokens.ARAGING_0_10,
+    tokens.ARAGING_11_30,
+    tokens.ARAGING_31_60,
+    tokens.ARAGING_61_90,
+    tokens.ARAGING_91_120,
+    tokens.ARAGING_121_180,
+    tokens.ARAGING_181_360,
+    tokens.ARAGING_361_PLUS,
+  ].map(Number);
+
+  const configuration: ChartConfiguration<"bar", number[], string> = {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "AR Dollars",
+          data,
+          backgroundColor: "#2D73D2",
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { display: false },
+        title: { display: false },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Dollars ($)" },
+        },
+        x: {
+          title: { display: true, text: "Days" },
+        },
+      },
+    },
+  };
+
+  return renderChartBuffer(configuration, "image/jpeg");
+}
+
+async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
+  const labels = ["Sqft", "Spaces", "Econ"];
+  const data = [tokens.OCCPCT_SQFT, tokens.OCCPCT_SPACES, tokens.OCCPCT_ECON].map(Number);
+
+  const configuration: ChartConfiguration<"bar", number[], string> = {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Percent Occupied",
+          data,
+          backgroundColor: "#1C9A6B",
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { display: false },
+        title: { display: false },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 100,
+          title: { display: true, text: "Percent" },
+        },
+        x: {
+          title: { display: true, text: "Type" },
+        },
+      },
+    },
+  };
+
+  return renderChartBuffer(configuration, "image/jpeg");
+}
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -57,7 +159,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const templatePath = path.join(process.cwd(), "public", "FLATEMPLATE.pptx");
+  const properties = await listProperties();
+  const property = properties.find((p) => p.id === propertyId);
+  if (!property) {
+    return NextResponse.json({ error: "Unknown propertyId" }, { status: 404 });
+  }
+  const facilityCodeToken = typeof tokens.FACILITYCODE === "string" ? tokens.FACILITYCODE : "";
+  let facilityOpenDate = property.facilityOpenDate;
+  if (!facilityOpenDate && facilityCodeToken) {
+    const byTenantProperty = properties.find((p) => p.tenantPropertyId === facilityCodeToken);
+    facilityOpenDate = byTenantProperty?.facilityOpenDate;
+  }
+  if (facilityOpenDate) {
+    tokens.FACILITYOPENDATE = facilityOpenDate;
+  }
+
+  const [arAgingChartJpeg, occupancyChartJpeg] = await Promise.all([renderArAgingChart(tokens), renderOccupancyChart(tokens)]);
+
+  const templatePath = path.join(process.cwd(), "public", "FLASHTEMPLATE.pptx");
 
   let templateBuffer: Buffer;
   try {
@@ -68,14 +187,11 @@ export async function POST(req: NextRequest) {
   }
 
   const zip = new PizZip(templateBuffer);
+  // Overwrite Canva placeholders for AR Aging and Occupancy charts with server-rendered JPEGs.
+  zip.file("ppt/media/image3.jpeg", arAgingChartJpeg);
+  zip.file("ppt/media/image4.jpeg", occupancyChartJpeg);
   scrubHiddenCharactersFromZip(zip);
-  const rendered = renderTokensIntoZip(zip, tokens);
-
-  const properties = await listProperties();
-  const property = properties.find((p) => p.id === propertyId);
-  if (!property) {
-    return NextResponse.json({ error: "Unknown propertyId" }, { status: 404 });
-  }
+  const rendered = await renderTokensIntoZip(zip, tokens);
 
   const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
@@ -311,10 +427,8 @@ function formatDate(date: Date): string {
   return `${month}/${day}/${year}`;
 }
 
-const PPT_XML_FILE_PATTERN = /^ppt\/(slides|slideLayouts|slideMasters)\/.*\.xml$/;
-
 function scrubHiddenCharactersFromZip(zip: PizZip): void {
-  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
+  const xmlPaths = Object.keys(zip.files).filter((filename) => filename.startsWith("ppt/") && filename.endsWith(".xml") && !filename.startsWith("ppt/embeddings/"));
   for (const filename of xmlPaths) {
     const file = zip.file(filename);
     if (!file) continue;
@@ -340,30 +454,97 @@ function normalizeTemplateXml(xml: string): string {
   });
 }
 
-function renderTokensIntoZip(zip: PizZip, tokens: TokenMap): Buffer {
-  const normalizedTokens: Record<string, string | number> = {};
+async function renderTokensIntoZip(zip: PizZip, tokens: TokenMap): Promise<Buffer> {
+  const normalizedTokens: Record<string, string> = {};
   for (const [key, value] of Object.entries(tokens)) {
+    const normalizedKey = normalizeKey(key);
+    if (!normalizedKey) continue;
     if (value == null) {
-      normalizedTokens[normalizeKey(key)] = "";
+      normalizedTokens[normalizedKey] = "";
       continue;
     }
-    normalizedTokens[normalizeKey(key)] = typeof value === "number" ? value : String(value);
+    normalizedTokens[normalizedKey] = typeof value === "number" ? String(value) : String(value);
   }
 
-  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
-  for (const filename of xmlPaths) {
+  const pptXmlPaths = Object.keys(zip.files).filter(
+    (filename) => filename.startsWith("ppt/") && filename.endsWith(".xml") && !filename.startsWith("ppt/embeddings/"),
+  );
+  for (const filename of pptXmlPaths) {
     const file = zip.file(filename);
     if (!file) continue;
     const original = file.asText();
-    const replaced = original.replace(/{{\s*([^{}]+?)\s*}}/g, (match, rawKey) => {
-      const key = normalizeKey(String(rawKey));
-      const value = key && key in normalizedTokens ? normalizedTokens[key] : "";
-      return value == null ? "" : String(value);
-    });
-    zip.file(filename, replaced);
+    const replaced = replaceTokensInContent(original, normalizedTokens);
+    if (replaced !== original) {
+      zip.file(filename, replaced);
+    }
+    logTokenReplacement(filename, original, replaced);
   }
 
+  await processEmbeddedWorkbooks(zip, normalizedTokens);
+
   return zip.generate({ type: "nodebuffer" });
+}
+
+function replaceTokensInContent(content: string, normalizedTokens: Record<string, string>): string {
+  return content.replace(/{{\s*([^{}]+?)\s*}}/g, (match, rawKey) => {
+    const key = normalizeKey(String(rawKey));
+    if (!key) return "";
+    const value = normalizedTokens[key];
+    return value ?? "";
+  });
+}
+
+function logTokenReplacement(filename: string, original: string, replaced: string): void {
+  const markers = {
+    ARAGING_0_10: original.includes("{{ARAGING_0_10}}"),
+    OCCPCT_SQFT: original.includes("{{OCCPCT_SQFT}}"),
+  };
+  const didReplace = original !== replaced;
+  console.log(
+    `[renderTokensIntoZip] processed ${filename} | markers(araging=${markers.ARAGING_0_10}, occ=${markers.OCCPCT_SQFT}) | replaced=${didReplace}`
+  );
+}
+
+async function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<string, string>): Promise<void> {
+  const embeddedPaths = Object.keys(zip.files).filter(
+    (p) => p.startsWith("ppt/embeddings/") && p.endsWith(".xlsx"),
+  );
+  console.debug("[embedded] workbooks:", embeddedPaths);
+
+  for (const embeddedPath of embeddedPaths) {
+    console.debug("[embedded] processing", embeddedPath);
+    const file = zip.file(embeddedPath);
+    if (!file) continue;
+    const buffer =
+      typeof file.asUint8Array === "function"
+        ? file.asUint8Array()
+        : file.asNodeBuffer
+          ? file.asNodeBuffer()
+          : new Uint8Array(Buffer.from(file.asBinary(), "binary"));
+    const workbookZip = new PizZip(buffer);
+    const innerXmlPaths = Object.keys(workbookZip.files).filter(
+      (innerPath) => innerPath.startsWith("xl/") && innerPath.endsWith(".xml"),
+    );
+    let mutated = false;
+    for (const innerPath of innerXmlPaths) {
+      const workbookFile = workbookZip.file(innerPath);
+      if (!workbookFile) continue;
+      const original = workbookFile.asText();
+      if (original.includes("{{ARAGING_0_10}}") || original.includes("{{OCCPCT_SQFT}}")) {
+        console.debug("[embedded] found markers in", `${embeddedPath}:${innerPath}`);
+      }
+      const replaced = replaceTokensInContent(original, normalizedTokens);
+      if (replaced !== original) {
+        workbookZip.file(innerPath, replaced);
+        mutated = true;
+        console.debug("[embedded] replaced tokens in", `${embeddedPath}:${innerPath}`);
+      }
+    }
+    if (mutated) {
+      const updatedBuffer = workbookZip.generate({ type: "uint8array" });
+      zip.file(embeddedPath, updatedBuffer);
+    }
+  }
 }
 
 function normalizeKey(key: string): string {

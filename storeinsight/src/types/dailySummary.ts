@@ -6,6 +6,7 @@ export type PropertyConfig = {
   sendTimeLocal: string; // "HH:MM"
   ownerEmails: string[];
   enabled: boolean;
+  facilityOpenDate?: string;
 };
 
 export type DailyRunStatus = {

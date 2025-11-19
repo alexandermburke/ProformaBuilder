@@ -19,6 +19,7 @@ const fallbackProperties: PropertyConfig[] = [
     sendTimeLocal: '08:15',
     ownerEmails: ['ownerA@store.com', 'ops@store.com'],
     enabled: true,
+    facilityOpenDate: 'January 2020',
   },
 ];
 
@@ -41,6 +42,7 @@ export async function listProperties(): Promise<PropertyConfig[]> {
       sendTimeLocal: data.sendTimeLocal ?? '08:00',
       ownerEmails: Array.isArray(data.ownerEmails) ? data.ownerEmails : [],
       enabled: Boolean(data.enabled),
+      facilityOpenDate: data.FACILITYOPENDATE ?? data.facilityOpenDate ?? '',
     } satisfies PropertyConfig;
   });
 }
@@ -57,6 +59,7 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       sendTimeLocal: input.sendTimeLocal ?? '08:00',
       ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
       enabled: input.enabled ?? true,
+      facilityOpenDate: input.facilityOpenDate,
     };
     if (existingIndex >= 0) {
       fallbackProperties[existingIndex] = payload;
@@ -79,6 +82,7 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     sendTimeLocal: input.sendTimeLocal ?? '08:00',
     ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
     enabled: input.enabled ?? true,
+    facilityOpenDate: input.facilityOpenDate,
   };
 
   await docRef.set(payload, { merge: true });
