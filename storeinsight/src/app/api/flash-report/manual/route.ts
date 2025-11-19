@@ -3,8 +3,8 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import PizZip from "pizzip";
-import Docxtemplater from "docxtemplater";
 import { listProperties } from "@/app/api/daily-summary/store";
+import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 
 export const runtime = "nodejs";
 
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
 
-  const workbookBuffer = Buffer.from(await file.arrayBuffer());
+  const workbookBuffer = await file.arrayBuffer();
   const workbook = new ExcelJS.Workbook();
 
   try {
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const templatePath = path.join(process.cwd(), "public", "FLASHTEMPLATE.pptx");
+  const templatePath = path.join(process.cwd(), "public", "FLATEMPLATE.pptx");
 
   let templateBuffer: Buffer;
   try {
@@ -67,17 +67,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Template file not found." }, { status: 500 });
   }
 
-  let rendered: Buffer;
-  try {
-    const zip = new PizZip(templateBuffer);
-    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-    doc.setData(tokens);
-    doc.render();
-    rendered = doc.getZip().generate({ type: "nodebuffer" });
-  } catch (err) {
-    console.error("[flash-report/manual] PPTX rendering failed", err);
-    return NextResponse.json({ error: "Unable to render PPTX." }, { status: 500 });
-  }
+  const zip = new PizZip(templateBuffer);
+  scrubHiddenCharactersFromZip(zip);
+  const rendered = renderTokensIntoZip(zip, tokens);
 
   const properties = await listProperties();
   const property = properties.find((p) => p.id === propertyId);
@@ -88,7 +80,7 @@ export async function POST(req: NextRequest) {
   const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
 
-  return new NextResponse(rendered, {
+  return new NextResponse(rendered as unknown as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -109,56 +101,89 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
   const mtdVacates = readNumber(msrSheet, "E62", "MTD vacates (MSR!E62)");
   const dailyVacates = readNumber(msrSheet, "D62", "Daily vacates (MSR!D62)");
   const mtdNetRentals = readNumber(msrSheet, "E63", "MTD net rentals (MSR!E63)");
+  const webLeadsMtd = readNumber(msrSheet, "M47", "Web leads MTD (MSR!M47)");
+  const walkInLeadsMtd = readNumber(msrSheet, "M48", "Walk-in leads MTD (MSR!M48)");
+  const phoneLeadsMtd = readNumber(msrSheet, "M49", "Phone leads MTD (MSR!M49)");
+  const otherLeadsMtd = readNumber(msrSheet, "M50", "Other leads MTD (MSR!M50)");
+  const leadsMtd = webLeadsMtd + walkInLeadsMtd + phoneLeadsMtd + otherLeadsMtd;
+  const leadsConvertedMtd = readNumber(msrSheet, "M51", "Leads converted MTD (MSR!M51)");
+  const conv = formatPercent(leadsMtd > 0 ? leadsConvertedMtd / leadsMtd : 0);
 
   const totalRsf = readNumber(msrSheet, "M44", "Total RSF (MSR!M44)");
   const occRsf = readNumber(msrSheet, "M41", "Occupied RSF (MSR!M41)");
-  const rsfOccPct = readNumber(msrSheet, "N41", "RSF occupancy % (MSR!N41)");
+  const rsfOccPct = formatToTwo(readNumber(msrSheet, "N41", "RSF occupancy % (MSR!N41)"));
   const occUnits = readNumber(msrSheet, "K41", "Occupied units (MSR!K41)");
   const pmOccUnits = occUnits - mtdNetRentals;
+  const coverage = formatPercent(readNumber(msrSheet, "N14", "Coverage enrollment % (MSR!N14)"));
 
-  const totalArAll = readNumber(msrSheet, "F47", "AR Balance (All leases) (MSR!F47)");
-  const ar30Plus = sumAr30Plus(delinquenciesSheet);
-  const arOver30Pct = totalArAll > 0 ? ar30Plus / totalArAll : 0;
+  const totalArAll = formatToTwo(readNumber(msrSheet, "F47", "AR Balance (All leases) (MSR!F47)"));
+  const ar30Plus = formatToTwo(sumArOverDays(delinquenciesSheet, 30));
+  const ar60Plus = formatToTwo(sumArOverDays(delinquenciesSheet, 60));
+  const arOver30Pct = formatPercent(totalArAll > 0 ? ar30Plus / totalArAll : 0);
+  const arOver60Pct = formatPercent(totalArAll > 0 ? ar60Plus / totalArAll : 0);
+
+  const occPctSqft = formatToTwo(readNumber(msrSheet, "E8", "SQ FT occupancy % (MSR!E8)"));
+  const occPctSpaces = formatToTwo(readNumber(msrSheet, "E9", "Spaces occupancy % (MSR!E9)"));
+  const occPctEcon = formatToTwo(readNumber(msrSheet, "E10", "Economic occupancy % (MSR!E10)"));
+
+  const arAgingTokens: Record<string, number> = {
+    ARAGING_0_10: formatToTwo(readNumber(msrSheet, "L72", "AR Aging 0-10 (MSR!L72)")),
+    ARAGING_11_30: formatToTwo(readNumber(msrSheet, "L73", "AR Aging 11-30 (MSR!L73)")),
+    ARAGING_31_60: formatToTwo(readNumber(msrSheet, "L74", "AR Aging 31-60 (MSR!L74)")),
+    ARAGING_61_90: formatToTwo(readNumber(msrSheet, "L75", "AR Aging 61-90 (MSR!L75)")),
+    ARAGING_91_120: formatToTwo(readNumber(msrSheet, "L76", "AR Aging 91-120 (MSR!L76)")),
+    ARAGING_121_180: formatToTwo(readNumber(msrSheet, "L77", "AR Aging 121-180 (MSR!L77)")),
+    ARAGING_181_360: formatToTwo(readNumber(msrSheet, "L78", "AR Aging 181-360 (MSR!L78)")),
+    ARAGING_361_PLUS: formatToTwo(readNumber(msrSheet, "L79", "AR Aging 361+ (MSR!L79)")),
+  };
 
   const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
   const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
   const gpr = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
   const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
-  const econOccPct = readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)");
+  const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
 
   return {
-    PROPERTY_DISPLAY_NAME: propertyDisplayName,
-    FACILITY_CODE: facilityCode,
-    FACILITY_SHORT_NAME: facilityShortName,
-    AS_OF_DATE: formatDate(asOfDateCell),
-    MTD_RENTALS: mtdRentals,
-    DAILY_RENTALS: dailyRentals,
-    DAILY_RES: dailyReservations,
+    PROPERTYDISPLAYNAME: propertyDisplayName,
+    FACILITYCODE: facilityCode,
+    FACILITYSHORTNAME: facilityShortName,
+    ASOFDATE: formatDate(asOfDateCell),
+    MTDRENTALS: mtdRentals,
+    DAILYRENTALS: dailyRentals,
+    DAILYRES: dailyReservations,
     RYTBMI: rybtmi,
-    MTD_VACATES: mtdVacates,
-    DAILY_VACATES: dailyVacates,
-    MTD_NET_RENTALS: mtdNetRentals,
-    TOTAL_RSF: totalRsf,
-    OCC_RSF: occRsf,
-    RSF_OCC_PCT: rsfOccPct,
-    OCC_UNITS: occUnits,
-    PM_OCC_UNITS: pmOccUnits,
-    MOM_OCC_G_PCT: 0,
-    TOTAL_AR_ALL: totalArAll,
-    AR_30_PLUS: ar30Plus,
-    AR_OVER_30D_PCT: arOver30Pct,
-    PROJ_RENT: projRent,
-    PROJ_RENT_PER_SF: projRentPerSf,
-    PROJ_RENT_MOM_PCT: 0,
-    GROSS_POT_RENT: gpr,
-    GPR_PER_SF: gprPerSf,
-    GPR_MOM_PCT: 0,
-    ECON_OCC_PCT: econOccPct,
-    RENTALS_BY_MONTH_SERIES: [],
-    VACATES_BY_MONTH_SERIES: [],
-    RSF_OCCUPANCY_BY_MONTH_SERIES: [],
-    PROJECTED_RENTAL_REVENUE_SERIES: [],
-    FACILITY_OPEN_DATE: "",
+    LEADSMTD: leadsMtd,
+    CONV: conv,
+    MTDVACATES: mtdVacates,
+    DAILYVACATES: dailyVacates,
+    MTDNETRENTALS: mtdNetRentals,
+    TOTALRSF: formatNumberWithCommas(totalRsf),
+    OCCRSF: formatNumberWithCommas(occRsf),
+    RSFOCCPCT: formatPercent(rsfOccPct),
+    OCCUNITS: occUnits,
+    COVERAGE: coverage,
+    PMOCCUNITS: pmOccUnits,
+    MOMOCCGROWTHPCT: formatPercent(0),
+    TOTALARALL: formatCurrency(totalArAll),
+    AR30PLUS: formatCurrency(ar30Plus),
+    AROVER30DAYSPCT: arOver30Pct,
+    AROVER60DAYSPCT: arOver60Pct,
+    PROJRENT: formatCurrency(projRent),
+    PROJRENTPERSF: formatCurrency(projRentPerSf),
+    PROJRENTMOMPCT: formatPercent(0),
+    GROSSPOTRENT: formatCurrency(gpr),
+    GPRPERSF: formatCurrency(gprPerSf),
+    GPRMOMPCT: formatPercent(0),
+    ECONOCCPCT: formatPercent(econOccPct),
+    OCCPCT_SQFT: occPctSqft,
+    OCCPCT_SPACES: occPctSpaces,
+    OCCPCT_ECON: occPctEcon,
+    ...arAgingTokens,
+    RENTALSBYMONTHSERIES: [],
+    VACATESBYMONTHSERIES: [],
+    RSFOCCUPANCYBYMONTHSERIES: [],
+    PROJECTEDRENTALREVENUESERIES: [],
+    FACILITYOPENDATE: "",
   };
 }
 
@@ -216,17 +241,38 @@ function readDate(sheet: ExcelJS.Worksheet, address: string, label: string): Dat
   throw new Error(`${label} is not a valid date.`);
 }
 
-function sumAr30Plus(sheet: ExcelJS.Worksheet): number {
+function sumArOverDays(sheet: ExcelJS.Worksheet, minDays: number): number {
   let total = 0;
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return; // header row
     const days = coerceNumber(normalizeCellValue(row.getCell("D").value));
     const amount = coerceNumber(normalizeCellValue(row.getCell("E").value));
-    if (Number.isFinite(days) && Number.isFinite(amount) && days >= 30) {
+    if (Number.isFinite(days) && Number.isFinite(amount) && days >= minDays) {
       total += amount;
     }
   });
   return total;
+}
+
+function formatToTwo(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  const factor = 100;
+  return Math.round(value * factor) / factor;
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  return `${formatToTwo(value)}%`;
+}
+
+function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatNumberWithCommas(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
 function normalizeCellValue(value: ExcelJS.CellValue): ExcelJS.CellValue | null {
@@ -263,4 +309,63 @@ function formatDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, "0");
   const year = date.getFullYear();
   return `${month}/${day}/${year}`;
+}
+
+const PPT_XML_FILE_PATTERN = /^ppt\/(slides|slideLayouts|slideMasters)\/.*\.xml$/;
+
+function scrubHiddenCharactersFromZip(zip: PizZip): void {
+  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
+  for (const filename of xmlPaths) {
+    const file = zip.file(filename);
+    if (!file) continue;
+    const original = file.asText();
+    const sanitized = normalizeTemplateXml(original);
+    if (sanitized !== original) {
+      zip.file(filename, sanitized);
+    }
+  }
+}
+
+const TOKEN_SPAN_PATTERN = /\{\{[\s\S]*?\}\}/g;
+const XML_TAG_PATTERN = /<[^>]+>/g;
+
+function normalizeTemplateXml(xml: string): string {
+  // Remove hidden chars and heal tokens that were split across XML nodes (e.g., {{DAIL</a:t><a:t>Y_RENTALS}})
+  const withoutHidden = stripHiddenTokenCharacters(xml);
+  return withoutHidden.replace(TOKEN_SPAN_PATTERN, (segment) => {
+    const withoutTags = segment.replace(XML_TAG_PATTERN, "");
+    const tokenText = withoutTags.replace(/[{}]/g, "").replace(/\s+/g, "");
+    if (!tokenText) return segment;
+    return `{{${tokenText}}}`;
+  });
+}
+
+function renderTokensIntoZip(zip: PizZip, tokens: TokenMap): Buffer {
+  const normalizedTokens: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(tokens)) {
+    if (value == null) {
+      normalizedTokens[normalizeKey(key)] = "";
+      continue;
+    }
+    normalizedTokens[normalizeKey(key)] = typeof value === "number" ? value : String(value);
+  }
+
+  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
+  for (const filename of xmlPaths) {
+    const file = zip.file(filename);
+    if (!file) continue;
+    const original = file.asText();
+    const replaced = original.replace(/{{\s*([^{}]+?)\s*}}/g, (match, rawKey) => {
+      const key = normalizeKey(String(rawKey));
+      const value = key && key in normalizedTokens ? normalizedTokens[key] : "";
+      return value == null ? "" : String(value);
+    });
+    zip.file(filename, replaced);
+  }
+
+  return zip.generate({ type: "nodebuffer" });
+}
+
+function normalizeKey(key: string): string {
+  return stripHiddenTokenCharacters(key).replace(/\s+/g, "").toUpperCase();
 }
