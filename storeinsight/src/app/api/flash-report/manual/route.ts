@@ -3,9 +3,11 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import PizZip from "pizzip";
+import nodemailer from "nodemailer";
 import { createCanvas } from "canvas";
-import { Chart as ChartJS, registerables, type ChartConfiguration } from "chart.js";
+import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin } from "chart.js";
 import { listProperties } from "@/app/api/daily-summary/store";
+import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 
 export const runtime = "nodejs";
@@ -14,16 +16,178 @@ type TokenMap = Record<string, string | number | unknown[]>;
 
 const chartWidth = 800;
 const chartHeight = 400;
-ChartJS.register(...registerables);
+const whiteBackgroundPlugin: Plugin<"bar"> = {
+  id: "customCanvasBackgroundColor",
+  beforeDraw: (chart, _args, opts) => {
+    const { ctx, width, height } = chart;
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = (opts as { color?: string }).color || "#FFFFFF";
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  },
+};
+ChartJS.register(...registerables, whiteBackgroundPlugin);
 ChartJS.defaults.responsive = false;
 ChartJS.defaults.animation = false;
+
+type MailerConfig = {
+  host: string;
+  port: number;
+  user?: string;
+  pass?: string;
+  from: string;
+};
+
+const resolveMailerConfig = (): MailerConfig | null => {
+  const host = process.env.SMTP_HOST;
+  const portRaw = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM || user;
+  if (!host || !portRaw || !from) {
+    console.info("[flash-report/manual] SMTP config missing; skipping email delivery");
+    return null;
+  }
+  const port = Number(portRaw);
+  if (!Number.isFinite(port)) {
+    console.warn("[flash-report/manual] Invalid SMTP_PORT; skipping email delivery");
+    return null;
+  }
+  return { host, port, user: user || undefined, pass: pass || undefined, from };
+};
 
 function renderChartBuffer(configuration: ChartConfiguration<"bar", number[], string>, mimeType: "image/png" | "image/jpeg"): Buffer {
   const canvas = createCanvas(chartWidth, chartHeight);
   const ctx = canvas.getContext("2d");
+  // Ensure a white background so exported JPEGs don't inherit template backgrounds.
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, chartWidth, chartHeight);
   // Chart.js works with the node-canvas context; cast keeps TS happy.
   new ChartJS(ctx as unknown as CanvasRenderingContext2D, configuration);
   return mimeType === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg");
+}
+
+function buildFlashEmailHtml(tokens: TokenMap): string {
+  const propertyName =
+    (tokens.PROPERTYDISPLAYNAME as string) ||
+    (tokens.FACILITYSHORTNAME as string) ||
+    (tokens.FACILITYCODE as string) ||
+    "";
+  const reportDate = (tokens.ASOFDATE as string) || "";
+  const facilityOpenDate = tokens.FACILITYOPENDATE ?? "";
+  const topRow1 = {
+    MTDRENTALS: tokens.MTDRENTALS ?? "",
+    DAILYRENTALS: tokens.DAILYRENTALS ?? "",
+    LEADSMTD: tokens.LEADSMTD ?? "",
+    CONV: tokens.CONV ?? "",
+    MTDVACATES: tokens.MTDVACATES ?? "",
+    DAILYVACATES: tokens.DAILYVACATES ?? "",
+    MTDNETRENTALS: tokens.MTDNETRENTALS ?? "",
+  };
+  const topRow2 = {
+    TOTALRSF: tokens.TOTALRSF ?? "",
+    OCCRSF: tokens.OCCRSF ?? "",
+    RSFOCCPCT: tokens.RSFOCCPCT ?? "",
+    OCCUNITS: tokens.OCCUNITS ?? "",
+    COVERAGE: tokens.COVERAGE ?? "",
+    AROVER30DAYSPCT: tokens.AROVER30DAYSPCT ?? "",
+    AROVER60DAYSPCT: tokens.AROVER60DAYSPCT ?? "",
+  };
+  const bottomRow = {
+    PROJRENT: tokens.PROJRENT ?? "",
+    PROJRENTPERSF: tokens.PROJRENTPERSF ?? "",
+    PROJRENTMOMPCT: tokens.PROJRENTMOMPCT ?? "",
+    GROSSPOTRENT: tokens.GROSSPOTRENT ?? "",
+    GPRPERSF: tokens.GPRPERSF ?? "",
+    GPRMOMPCT: tokens.GPRMOMPCT ?? "",
+    ECONOCCPCT: tokens.ECONOCCPCT ?? "",
+  };
+
+  return `
+    <html>
+      <body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
+        <h2 style="margin: 0 0 4px 0;">Daily Flash - ${propertyName}</h2>
+        <div style="margin: 0 0 16px 0;">${reportDate}</div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+          <tr>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">MTD Rentals</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Daily Rentals</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Leads (MTD)</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Lead Conversion</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">MTD Vacates</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Daily Vacates</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">MTD Net</th>
+          </tr>
+          <tr>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.MTDRENTALS}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.DAILYRENTALS}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.LEADSMTD}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.CONV}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.MTDVACATES}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.DAILYVACATES}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.MTDNETRENTALS}</td>
+          </tr>
+          <tr>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Total RSF</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Occ RSF</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">RSF Occ %</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Occ Units</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">TPP Coverage %</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">AR &gt; 30d %</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">AR &gt; 60d %</th>
+          </tr>
+          <tr>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.TOTALRSF}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.OCCRSF}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.RSFOCCPCT}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.OCCUNITS}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.COVERAGE}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.AROVER30DAYSPCT}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.AROVER60DAYSPCT}</td>
+          </tr>
+        </table>
+
+        <div style="display: flex; gap: 16px; width: 100%; margin-bottom: 16px;">
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 8px 0;">AR Aging</h3>
+            <img src="cid:ar-aging-chart" style="max-width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 4px;" />
+          </div>
+          <div style="flex: 1;">
+            <h3 style="margin: 0 0 8px 0;">Occupancy</h3>
+            <img src="cid:occupancy-chart" style="max-width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 4px;" />
+          </div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px;">
+          <tr>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Proj. Rent</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Proj. Rent / SF</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Proj. Rent MoM</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Gross Pot. Rent</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">GPR / SF</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">GPR MoM%</th>
+            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Econ Occ.</th>
+          </tr>
+          <tr>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.PROJRENT}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.PROJRENTPERSF}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.PROJRENTMOMPCT}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.GROSSPOTRENT}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.GPRPERSF}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.GPRMOMPCT}</td>
+            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.ECONOCCPCT}</td>
+          </tr>
+        </table>
+
+        <p style="margin-top: 12px; font-size: 11px; color: #666;">
+          STORE Managed since ${facilityOpenDate}<br/>
+          Full PowerPoint attached for download.
+        </p>
+      </body>
+    </html>
+  `;
 }
 
 async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
@@ -47,7 +211,7 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
         {
           label: "AR Dollars",
           data,
-          backgroundColor: "#2D73D2",
+          backgroundColor: "#3b52a1",
           borderRadius: 4,
         },
       ],
@@ -85,7 +249,7 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
         {
           label: "Percent Occupied",
           data,
-          backgroundColor: "#1C9A6B",
+          backgroundColor: "#4a4a4a",
           borderRadius: 4,
         },
       ],
@@ -110,6 +274,82 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
   };
 
   return renderChartBuffer(configuration, "image/jpeg");
+}
+
+async function sendFlashReportEmail(
+  property: PropertyConfig,
+  pptxBuffer: Buffer,
+  pptxFilename: string,
+  asOfDate: string,
+  tokens: TokenMap,
+  arAgingChartJpeg: Buffer,
+  occupancyChartJpeg: Buffer,
+): Promise<boolean> {
+  const mailConfig = resolveMailerConfig();
+  if (!mailConfig) return false;
+  const recipients = (property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
+  if (!property.enabled) {
+    console.info("[flash-report/manual] property disabled; skipping email delivery", property.id);
+    return false;
+  }
+  if (recipients.length === 0) {
+    console.info("[flash-report/manual] no ownerEmails configured; skipping email delivery", property.id);
+    return false;
+  }
+  try {
+    console.info("[flash-report/manual] preparing email delivery", {
+      propertyId: property.id,
+      to: recipients,
+      host: mailConfig.host,
+      port: mailConfig.port,
+    });
+    const transporter = nodemailer.createTransport({
+      host: mailConfig.host,
+      port: mailConfig.port,
+      secure: mailConfig.port === 465,
+      auth: mailConfig.user && mailConfig.pass ? { user: mailConfig.user, pass: mailConfig.pass } : undefined,
+    });
+    const propertyLabel =
+      (tokens.PROPERTYDISPLAYNAME as string) ||
+      (tokens.FACILITYSHORTNAME as string) ||
+      property.name ||
+      property.id;
+    const reportDate = (tokens.ASOFDATE as string) || asOfDate || "Latest";
+    const subject = `Daily Flash - ${propertyLabel} (${reportDate})`;
+    const html = buildFlashEmailHtml(tokens);
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: recipients,
+      subject,
+      html,
+      attachments: [
+        {
+          filename: pptxFilename,
+          content: pptxBuffer,
+          contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+        {
+          filename: "ar-aging-chart.jpeg",
+          content: arAgingChartJpeg,
+          cid: "ar-aging-chart",
+        },
+        {
+          filename: "occupancy-chart.jpeg",
+          content: occupancyChartJpeg,
+          cid: "occupancy-chart",
+        },
+      ],
+    });
+    console.info("[flash-report/manual] emailed flash report", {
+      propertyId: property.id,
+      to: recipients,
+      subject,
+    });
+    return true;
+  } catch (err) {
+    console.error("[flash-report/manual] failed to send flash email", err);
+    return false;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -195,6 +435,12 @@ export async function POST(req: NextRequest) {
 
   const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
+
+  try {
+    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, arAgingChartJpeg, occupancyChartJpeg);
+  } catch (err) {
+    console.error("[flash-report/manual] email delivery failed (non-fatal)", err);
+  }
 
   return new NextResponse(rendered as unknown as BodyInit, {
     status: 200,

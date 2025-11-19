@@ -37,6 +37,7 @@ import {
   type OwnerPerformancePreviewRow,
   type OwnerPerformanceTokenValues,
 } from "@/lib/ownerPerformance";
+import type { PropertyConfig } from "@/types/dailySummary";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 const TOTAL_STEPS = 7;
@@ -463,12 +464,39 @@ export default function OwnerReportsPage() {
   const viewLogButtonRef = useRef<HTMLButtonElement | null>(null);
   const logModalRef = useRef<HTMLDivElement | null>(null);
   const wasLogModalOpen = useRef(false);
+  const [properties, setProperties] = useState<PropertyConfig[]>([]);
+  const [propertyLoadError, setPropertyLoadError] = useState<string | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const performanceRequestRef = useRef(0);
 
   const resetReportLog = useCallback(() => {
     reportLogRef.current = "";
     setReportLog("");
   }, [setReportLog]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/daily-summary/properties");
+        if (!res.ok) throw new Error("Unable to fetch properties");
+        const data = (await res.json()) as PropertyConfig[];
+        if (cancelled) return;
+        setProperties(data);
+        if (!selectedPropertyId) {
+          const preferred = data.find((p) => p.enabled) ?? data[0];
+          if (preferred) setSelectedPropertyId(preferred.id);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.warn("[owner-reports] unable to load properties for email delivery", err);
+        setPropertyLoadError("Unable to load properties for auto-email");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     fieldsRef.current = fields;
@@ -932,6 +960,16 @@ export default function OwnerReportsPage() {
       }),
     [],
   );
+  const selectedProperty = useMemo(
+    () =>
+      properties.find((p) => p.id === selectedPropertyId) ??
+      properties.find((p) => p.tenantPropertyId === selectedPropertyId),
+    [properties, selectedPropertyId],
+  );
+  const emailRecipients = useMemo(
+    () => (selectedProperty?.ownerEmails ?? []).filter((email) => email && email.trim().length > 0),
+    [selectedProperty],
+  );
 
   async function onUpload(f: File) {
     setFile(f);
@@ -1076,6 +1114,9 @@ export default function OwnerReportsPage() {
         form.append("inventoryTokens", JSON.stringify(performanceTokens));
       }
       form.append("auditDelinquency", delinquencyAudit ? "true" : "false");
+      if (selectedPropertyId) {
+        form.append("propertyId", selectedPropertyId);
+      }
       const res = await fetch("/api/owner-reports/generate", { method: "POST", body: form });
       if (!res.ok) {
         const message = await res.text();
@@ -2054,6 +2095,43 @@ export default function OwnerReportsPage() {
                       );
                     })}
                   </ul>
+                  <div className="mt-6 rounded-lg border border-[color:var(--border-soft)] bg-white/70 p-4 shadow-sm">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-[color:var(--text-primary)]">Automatic owner email</p>
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          We&apos;ll email enabled properties with configured owner emails. Otherwise, the PPTX is only saved locally.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <select
+                          className="rounded-md border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-sm focus:border-[#2563EB] focus:outline-none"
+                          value={selectedPropertyId}
+                          onChange={(event) => setSelectedPropertyId(event.target.value)}
+                          disabled={properties.length === 0}
+                        >
+                          {properties.length === 0 && <option value="">No properties loaded</option>}
+                          {properties.map((prop) => (
+                            <option key={prop.id} value={prop.id}>
+                              {prop.name || prop.id} {prop.enabled ? "" : "(disabled)"}
+                            </option>
+                          ))}
+                        </select>
+                        {propertyLoadError && (
+                          <span className="text-xs text-[#B91C1C]">{propertyLoadError}</span>
+                        )}
+                        {selectedProperty && (
+                          <span className="text-xs text-[color:var(--text-secondary)]">
+                            {selectedProperty.enabled
+                              ? emailRecipients.length > 0
+                                ? `Emails: ${emailRecipients.join(", ")}`
+                                : "No owner emails configured; file will only download locally."
+                              : "Property email delivery disabled for this property."}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button
                       className="ios-button px-5 py-2 text-sm"

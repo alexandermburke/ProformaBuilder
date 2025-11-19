@@ -24,6 +24,7 @@
     "jspdf": "^3.0.3",
     "lucide-react": "^0.552.0",
     "next": "15.5.4",
+    "nodemailer": "^7.0.10",
     "pizzip": "^3.2.0",
     "pptxgenjs": "^3.12.0",
     "react": "19.1.0",

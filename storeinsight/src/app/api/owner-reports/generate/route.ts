@@ -3,6 +3,7 @@ import path from "node:path";
 import PizZip from "pizzip";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import nodemailer from "nodemailer";
 import { buildOwnerPptx } from "@/lib/buildOwnerPptx";
 import { extractOwnerFields } from "@/lib/extractOwnerFields";
 import { toNumber } from "@/lib/compute";
@@ -16,11 +17,39 @@ import { extractWebRateTokensFromAvailableSpaces } from "@/lib/extractAvailableS
 import { computeOwnerPerformance, type OwnerPerformanceOptions } from "@/lib/ownerPerformance";
 import { REQUIRED_DELINQUENCY_TOKENS } from "@/lib/pptTokens";
 import type { OwnerFields } from "@/types/ownerReport";
+import { listProperties } from "@/app/api/daily-summary/store";
+import type { PropertyConfig } from "@/types/dailySummary";
 
 export const runtime = "nodejs";
 
 const shouldLogDelinquencyTokens =
   process.env.NODE_ENV !== "production" || Boolean(process.env.DEBUG);
+
+type MailerConfig = {
+  host: string;
+  port: number;
+  user?: string;
+  pass?: string;
+  from: string;
+};
+
+const resolveMailerConfig = (): MailerConfig | null => {
+  const host = process.env.SMTP_HOST;
+  const portRaw = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM || user;
+  if (!host || !portRaw || !from) {
+    console.info("[owner-reports] SMTP config missing; skipping email delivery");
+    return null;
+  }
+  const port = Number(portRaw);
+  if (!Number.isFinite(port)) {
+    console.warn("[owner-reports] Invalid SMTP_PORT; skipping email delivery");
+    return null;
+  }
+  return { host, port, user: user || undefined, pass: pass || undefined, from };
+};
 
 const logDelinquencyTokens = (tokens: DelinquencyTokens): void => {
   if (!shouldLogDelinquencyTokens) return;
@@ -51,6 +80,88 @@ function listPptxTokens(buf: Buffer): string[] {
   }
 }
 
+async function resolveProperty(propertyKey: string | null | undefined): Promise<PropertyConfig | null> {
+  if (!propertyKey) return null;
+  const key = propertyKey.trim();
+  if (!key) return null;
+  try {
+    const properties = await listProperties();
+    return (
+      properties.find((p) => p.id === key) ??
+      properties.find((p) => p.tenantPropertyId === key) ??
+      null
+    );
+  } catch (err) {
+    console.error("[owner-reports] unable to resolve property for email", err);
+    return null;
+  }
+}
+
+async function sendOwnerReportEmail(
+  property: PropertyConfig,
+  attachment: Buffer,
+  filename: string,
+  ownerValues: OwnerFields,
+): Promise<boolean> {
+  const mailConfig = resolveMailerConfig();
+  if (!mailConfig) return false;
+  const recipients = (property.ownerEmails ?? []).filter((email) => typeof email === "string" && email.trim().length > 0);
+  if (!property.enabled) {
+    console.info("[owner-reports] property disabled; skipping email delivery", property.id);
+    return false;
+  }
+  if (recipients.length === 0) {
+    console.info("[owner-reports] no ownerEmails configured; skipping email delivery", property.id);
+    return false;
+  }
+  try {
+    console.info("[owner-reports] preparing email delivery", {
+      propertyId: property.id,
+      to: recipients,
+      host: mailConfig.host,
+      port: mailConfig.port,
+    });
+    const transporter = nodemailer.createTransport({
+      host: mailConfig.host,
+      port: mailConfig.port,
+      secure: mailConfig.port === 465,
+      auth: mailConfig.user && mailConfig.pass ? { user: mailConfig.user, pass: mailConfig.pass } : undefined,
+    });
+    const subject = `Owner Report - ${property.name ?? property.id} (${ownerValues.CURRENTDATE || "Latest"})`;
+    const text = [
+      `Attached is the latest owner report for ${property.name || property.id}.`,
+      ownerValues.CURRENTDATE ? `As of: ${ownerValues.CURRENTDATE}` : "",
+      "",
+      "This email was sent automatically from the Owner Reports generator.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await transporter.sendMail({
+      from: mailConfig.from,
+      to: recipients,
+      subject,
+      text,
+      attachments: [
+        {
+          filename,
+          content: attachment,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+      ],
+    });
+    console.info("[owner-reports] emailed owner report", {
+      propertyId: property.id,
+      to: recipients,
+      subject,
+    });
+    return true;
+  } catch (err) {
+    console.error("[owner-reports] failed to send owner email", err);
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const file = form.get("file");
@@ -59,6 +170,11 @@ export async function POST(req: NextRequest) {
   const budgetTokensRaw = form.get("budgetTokens");
   const budgetOverridesRaw = form.get("budgetOverrides");
   const inventory = form.get("inventory");
+  const propertyIdRaw = form.get("propertyId");
+  const propertyKey =
+    typeof propertyIdRaw === "string" && propertyIdRaw.trim().length > 0
+      ? propertyIdRaw.trim()
+      : null;
   const iprc = form.get("iprc");
   const availableSpaces = form.get("availableSpacesFile");
   const inventoryTokensRaw = form.get("inventoryTokens");
@@ -253,6 +369,21 @@ export async function POST(req: NextRequest) {
     enableDelinquencyAudit: auditDelinquencyPref,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
+
+  if (propertyKey) {
+    try {
+      const property = await resolveProperty(propertyKey);
+      if (property) {
+        await sendOwnerReportEmail(property, pptx, outName, data);
+      } else {
+        console.info("[owner-reports] propertyId provided but not found; skipping email", propertyKey);
+      }
+    } catch (err) {
+      console.error("[owner-reports] owner email send failed (non-fatal)", err);
+    }
+  } else {
+    console.info("[owner-reports] no propertyId provided; owner email not attempted");
+  }
 
   const pptxBytes = new Uint8Array(pptx);
   return new NextResponse(pptxBytes, {
