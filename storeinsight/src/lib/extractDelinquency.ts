@@ -86,7 +86,8 @@ export type DelinquencyExtractionResult =
     };
 
 export function extractDelinquencyMetrics(input: WorkbookInput): DelinquencyExtractionResult {
-  let workbook: XLSX.WorkBook;
+  // WorkBook type is not exported in the esm build; rely on `any` for the workbook
+  let workbook: any;
   try {
     workbook = XLSX.read(toArrayBuffer(input), { type: "array" });
   } catch (err) {
@@ -146,7 +147,7 @@ function normalizeSheetName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function readBucketValues(sheet: XLSX.WorkSheet): DelinquencyBucketRecord {
+function readBucketValues(sheet: any): DelinquencyBucketRecord {
   const record = {} as DelinquencyBucketRecord;
   for (const bucket of DELINQUENCY_BUCKET_KEYS) {
     const cells = DELINQ_CELL_MAP[bucket];
@@ -159,7 +160,7 @@ function readBucketValues(sheet: XLSX.WorkSheet): DelinquencyBucketRecord {
   return record;
 }
 
-function readCellNumber(sheet: XLSX.WorkSheet, address: string): number {
+function readCellNumber(sheet: any, address: string): number {
   const value = sheet[address]?.v;
   return coerceNumber(value as Cell);
 }
