@@ -88,7 +88,7 @@ const metricFormatters: Record<DelinquencyCellKind, Intl.NumberFormat> = {
 };
 
 const instructionList = [
-  "Upload the Executive Summary (ESR) workbook – no PPT is required.",
+  "Upload the Executive Summary (ESR) workbook -- no PPT is required.",
   "We only read the ESR sheet, scanning cells L30-L37 (dollars), M30-M37 (units), and N30-N37 (percent).",
   "Each delinquency token sums one or more of those cells. Missing cells are treated as 0 so tokens never render blank.",
 ];

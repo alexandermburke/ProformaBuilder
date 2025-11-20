@@ -15,6 +15,17 @@ const labelClass =
 const inputClass =
   'owner-field-input rounded-2xl border border-[color:var(--border-soft)] bg-white/90 px-4 py-2.5 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none focus:ring-2 focus:ring-[color:var(--focus-ring)]';
 
+const toggleButtonClass = (active: boolean): string =>
+  [
+    'relative inline-flex h-6 w-12 shrink-0 items-center rounded-full border border-[rgba(148,163,255,0.24)] p-0.5 transition-all duration-500',
+    active
+      ? 'justify-end bg-[rgba(37,99,235,0.8)] shadow-[0_8px_22px_rgba(37,99,235,0.28)]'
+      : 'justify-start bg-[rgba(148,163,255,0.28)]',
+  ].join(' ');
+
+const togglePillClass =
+  'inline-block h-5 w-5 rounded-full bg-white shadow-[0_6px_16px_rgba(15,23,42,0.2)] transition-transform duration-500';
+
 const loginHighlights = [
   'Secure access to Daily Summary, Owner Report, and Proforma workspaces.',
   'Session awareness persists across the iOS-inspired UI shell.',
@@ -23,6 +34,7 @@ const loginHighlights = [
 
 export default function LoginPage(): JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
+  const [rememberDevice, setRememberDevice] = useState(false);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -30,42 +42,9 @@ export default function LoginPage(): JSX.Element {
   };
 
   return (
-    <main className="min-h-screen px-6 pb-16 pt-12 md:px-10">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 lg:flex-row">
-        <section className="ios-card ios-animate-up flex-1 space-y-8 p-10" data-tone="blue">
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-2">
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[color:var(--text-muted)]">
-                STORE Platform
-              </p>
-              <h1 className="text-3xl font-semibold text-[color:var(--text-primary)]">
-                Welcome back
-              </h1>
-              <p className="max-w-xl text-sm text-[color:var(--text-secondary)]">
-                Sign in to continue building flash reports, owner decks, and STORE-grade proformas.
-                Access follows the same tone as the rest of the workspace—calm, intentional, and
-                ready for automation.
-              </p>
-            </div>
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-              Back home
-            </Link>
-          </div>
-          <div className="space-y-3 rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface-subtle)]/80 p-5 shadow-inner">
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[color:var(--text-muted)]">
-              Why sign in?
-            </p>
-            <ul className="space-y-2 text-sm text-[color:var(--text-secondary)]">
-              {loginHighlights.map((highlight) => (
-                <li key={highlight} className="flex items-start gap-2">
-                  <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--accent)]" />
-                  <span>{highlight}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
+    <main className="relative min-h-screen flex items-center justify-center px-6 py-12 md:px-10 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(82,138,255,0.12),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(72,187,228,0.12),transparent_40%),linear-gradient(135deg,rgba(15,23,42,0.06),rgba(255,255,255,0.08))] blur-3xl" />
+      <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center justify-center">
         <section className="ios-card ios-animate-up w-full max-w-md space-y-6 p-8">
           <div className="space-y-1">
             <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Log in</h2>
@@ -93,7 +72,7 @@ export default function LoginPage(): JSX.Element {
                 id="login-email"
                 name="email"
                 type="email"
-                placeholder="name@storemanagement.com"
+                placeholder="name@STOREstorage.com"
                 autoComplete="email"
                 required
                 className={inputClass}
@@ -108,7 +87,7 @@ export default function LoginPage(): JSX.Element {
                 id="login-password"
                 name="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="********"
                 autoComplete="current-password"
                 required
                 className={inputClass}
@@ -116,14 +95,27 @@ export default function LoginPage(): JSX.Element {
             </div>
 
             <div className="flex items-center justify-between text-xs text-[color:var(--text-secondary)]">
-              <label className="inline-flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRememberDevice((prev) => !prev)}
+                  className={toggleButtonClass(rememberDevice)}
+                  aria-pressed={rememberDevice}
+                  aria-label="Remember device"
+                >
+                  <span className={togglePillClass} />
+                </button>
+                <span className="select-none">Remember device</span>
                 <input
                   type="checkbox"
                   name="remember"
-                  className="h-4 w-4 rounded border-[color:var(--border-soft)] text-[color:var(--accent)] focus:ring-[color:var(--accent-soft)]"
+                  checked={rememberDevice}
+                  onChange={(event) => setRememberDevice(event.target.checked)}
+                  className="sr-only"
+                  aria-hidden="true"
+                  tabIndex={-1}
                 />
-                Remember device
-              </label>
+              </div>
               <button type="button" className="text-[color:var(--accent)] hover:underline">
                 Forgot password
               </button>

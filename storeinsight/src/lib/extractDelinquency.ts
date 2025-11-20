@@ -1,4 +1,5 @@
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx/xlsx.mjs";
+import * as cpexcel from "xlsx/dist/cpexcel.full.mjs";
 import {
   DELINQUENCY_BUCKET_KEYS,
   type DelinquencyBucketKey,
@@ -9,6 +10,8 @@ import {
 
 type WorkbookInput = ArrayBuffer | ArrayBufferView | Buffer;
 type Cell = string | number | boolean | null;
+
+XLSX.set_cptable(cpexcel);
 
 export type DelinquencyTokens = {
   DELINDOL30: string;
