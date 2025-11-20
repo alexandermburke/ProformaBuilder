@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as XLSX from "xlsx/xlsx.mjs";
 import * as cpexcel from "xlsx/dist/cpexcel.full.mjs";
 import {
