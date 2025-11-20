@@ -38,6 +38,7 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^7.0.4",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "eslint": "^9",
