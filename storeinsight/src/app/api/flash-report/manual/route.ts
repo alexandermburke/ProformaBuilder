@@ -420,8 +420,8 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
   const phoneLeadsMtd = readNumber(msrSheet, "M49", "Phone leads MTD (MSR!M49)");
   const otherLeadsMtd = readNumber(msrSheet, "M50", "Other leads MTD (MSR!M50)");
   const leadsMtd = webLeadsMtd + walkInLeadsMtd + phoneLeadsMtd + otherLeadsMtd;
-  const leadsConvertedMtd = readNumber(msrSheet, "M51", "Leads converted MTD (MSR!M51)");
-  const conv = formatPercent(leadsMtd > 0 ? leadsConvertedMtd / leadsMtd : 0);
+  const convRaw = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
+  const conv = formatPercent(convRaw);
 
   const totalRsf = readNumber(msrSheet, "M44", "Total RSF (MSR!M44)");
   const occRsf = readNumber(msrSheet, "M41", "Occupied RSF (MSR!M41)");
