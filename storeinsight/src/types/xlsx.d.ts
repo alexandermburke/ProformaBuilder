@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 declare module "xlsx/xlsx.mjs" {
   import type * as XLSXTypes from "xlsx";
 

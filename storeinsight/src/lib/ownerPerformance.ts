@@ -407,9 +407,11 @@ function toArrayBuffer(input: WorkbookInput): ArrayBuffer {
   if (input instanceof ArrayBuffer) return input;
   if (ArrayBuffer.isView(input)) {
     const view = input as ArrayBufferView;
-    return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+    const copy = new Uint8Array(view.byteLength);
+    copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+    return copy.buffer;
   }
-  if (typeof Buffer !== "undefined" && input instanceof Buffer) {
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(input)) {
     return input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
   }
   throw new Error("Unsupported workbook input type");
