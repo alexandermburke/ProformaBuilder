@@ -59,7 +59,7 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       sendTimeLocal: input.sendTimeLocal ?? '08:00',
       ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
       enabled: input.enabled ?? true,
-      facilityOpenDate: input.facilityOpenDate ?? null,
+      facilityOpenDate: input.facilityOpenDate ?? '',
     };
     if (existingIndex >= 0) {
       fallbackProperties[existingIndex] = payload;
@@ -82,7 +82,7 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     sendTimeLocal: input.sendTimeLocal ?? '08:00',
     ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
     enabled: input.enabled ?? true,
-    facilityOpenDate: input.facilityOpenDate ?? null,
+    facilityOpenDate: input.facilityOpenDate ?? '',
   };
 
   await docRef.set(payload, { merge: true });
