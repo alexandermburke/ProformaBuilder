@@ -26,12 +26,6 @@ const toggleButtonClass = (active: boolean): string =>
 const togglePillClass =
   'inline-block h-5 w-5 rounded-full bg-white shadow-[0_6px_16px_rgba(15,23,42,0.2)] transition-transform duration-500';
 
-const onboardingHighlights = [
-  'Centralized onboarding handled by STORE Portfolio Operations.',
-  'Granular workspace access (Daily Flash, Proforma, Owner Reports).',
-  'Automatic cross-environment sync for preferences and themes.',
-];
-
 export default function SignupPage(): JSX.Element {
   const [status, setStatus] = useState<string | null>(null);
   const [agree, setAgree] = useState(false);

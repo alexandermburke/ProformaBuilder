@@ -8,7 +8,8 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { usePreferences } from '@/components/PreferencesProvider';
@@ -162,11 +163,65 @@ function FeatureIcon({ name, tone }: { name: FeatureIconKey; tone: FeatureTone }
 }
 
 export default function DirectoryPage(): JSX.Element {
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
   const { delinquencyAudit, toggleDelinquencyAudit } = usePreferences();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | null>(null);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const checkSession = async () => {
+      try {
+        const res = await fetch('/api/auth/me', { method: 'GET' });
+        if (!active) return;
+        if (!res.ok) {
+          setSessionEmail(null);
+          const redirectTarget =
+            typeof window !== 'undefined'
+              ? encodeURIComponent(`${window.location.pathname}${window.location.search}`)
+              : '';
+          router.replace(`/login${redirectTarget ? `?redirect=${redirectTarget}` : ''}`);
+          return;
+        }
+        const data = (await res.json().catch(() => null)) as { email?: string } | null;
+        if (active) {
+          setSessionEmail(data?.email ?? null);
+        }
+      } finally {
+        if (active) setSessionChecked(true);
+      }
+    };
+
+    checkSession();
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  const handleLogout = async () => {
+    setActionStatus('Signing out...');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error', err);
+    } finally {
+      setSessionEmail(null);
+      router.replace('/login');
+    }
+  };
+
+  const handlePasswordRequest = () => {
+    setActionStatus('Password change request noted.'); // simple feedback for now
+    if (typeof window !== 'undefined') {
+      window.open('mailto:platform@store.com?subject=Password%20change%20request', '_blank');
+    }
+  };
 
   const toggleDarkMode = () => toggleTheme();
   const openSettings = () => setIsSettingsOpen(true);
@@ -346,6 +401,14 @@ export default function DirectoryPage(): JSX.Element {
             <span>Platform v{PLATFORM_VERSION}</span>
             <span aria-hidden>|</span>
             <span>Next.js v{NEXT_VERSION}</span>
+            <span aria-hidden>|</span>
+            <span>
+              {sessionEmail
+                ? `Logged in as ${sessionEmail}`
+                : sessionChecked
+                  ? 'Logged out'
+                  : 'Checking session...'}
+            </span>
           </div>
         </footer>
       </div>
@@ -430,6 +493,36 @@ export default function DirectoryPage(): JSX.Element {
               </div>
               <div className="rounded-[16px] border border-[rgba(148,163,255,0.28)] bg-white/60 p-4 text-xs text-[color:var(--text-secondary)]">
                 <p>Preferences sync locally in this browser. More personalization options are coming soon.</p>
+              </div>
+
+              <div className="border-t border-[rgba(148,163,255,0.18)] pt-4">
+                <div className="text-sm font-semibold text-[color:var(--text-primary)]">Account</div>
+                <p className="text-xs text-[color:var(--text-secondary)]">
+                  Manage your session for this internal workspace. Contact Ops for credential changes.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="ios-button px-4 py-2 text-sm"
+                    data-variant="secondary"
+                  >
+                    Log out
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePasswordRequest}
+                    className="ios-button px-4 py-2 text-sm"
+                    data-variant="ghost"
+                  >
+                    Request password change
+                  </button>
+                </div>
+                {actionStatus ? (
+                  <p className="mt-2 text-xs text-[color:var(--text-muted)]" role="status">
+                    {actionStatus}
+                  </p>
+                ) : null}
               </div>
             </div>
 

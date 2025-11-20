@@ -7,7 +7,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import type { FormEvent, JSX } from 'react';
 
 const labelClass =
@@ -26,19 +27,52 @@ const toggleButtonClass = (active: boolean): string =>
 const togglePillClass =
   'inline-block h-5 w-5 rounded-full bg-white shadow-[0_6px_16px_rgba(15,23,42,0.2)] transition-transform duration-500';
 
-const loginHighlights = [
-  'Secure access to Daily Summary, Owner Report, and Proforma workspaces.',
-  'Session awareness persists across the iOS-inspired UI shell.',
-  'MFA and SSO enforcement are provisioned through Azure AD.',
-];
-
 export default function LoginPage(): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent(): JSX.Element {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectPath = searchParams.get('redirect') ?? '/';
   const [status, setStatus] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setStatus('Authentication wiring ships next. Your request is staged.');
+    setStatus(null);
+    setSubmitting(true);
+
+    const formData = new FormData(event.currentTarget);
+    const email = String(formData.get('email') ?? '').trim();
+    const password = String(formData.get('password') ?? '');
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { message?: string } | null;
+        setStatus(body?.message ?? 'Unable to sign in. Check your credentials.');
+        setSubmitting(false);
+        return;
+      }
+
+      setStatus('Authenticated. Redirecting...');
+      router.push(redirectPath);
+    } catch (err) {
+      console.error('Login error', err);
+      setStatus('Network error while signing in. Please retry.');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -117,12 +151,16 @@ export default function LoginPage(): JSX.Element {
                 />
               </div>
               <button type="button" className="text-[color:var(--accent)] hover:underline">
-                Forgot password
+                Request password change
               </button>
             </div>
 
-            <button type="submit" className="ios-button w-full justify-center py-3 text-sm font-semibold">
-              Continue
+            <button
+              type="submit"
+              className="ios-button w-full justify-center py-3 text-sm font-semibold"
+              disabled={submitting}
+            >
+              {submitting ? 'Signing in...' : 'Continue'}
             </button>
           </form>
 
