@@ -483,7 +483,7 @@ export default function DailySummaryPage() {
             <div className="mb-4 space-y-1">
               <h2 className="text-lg font-semibold">Manual Daily Flash Report</h2>
               <p className="text-sm text-[color:var(--text-secondary)]">
-                Upload a Management Summary Report XLSX, fill the FLASHTEMPLATE, and download the Daily Flash PPTX.
+                Upload a Management Summary Report XLSX, fill the template, and download the Daily Flash PPTX.
                 No emails are sent in this flow.
               </p>
             </div>
@@ -577,7 +577,7 @@ export default function DailySummaryPage() {
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-40">
-          <div className="flex items-center gap-3 rounded-2xl bg-[color:var(--text-primary)] px-4 py-3 text-sm text-white shadow-2xl shadow-black/15">
+          <div className="flex items-center gap-3 rounded-2xl border border-[rgba(248,113,113,0.35)] bg-[rgba(248,113,113,0.9)] px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-black/20 backdrop-blur-sm dark:border-[rgba(248,113,113,0.55)] dark:bg-[rgba(239,68,68,0.92)]">
             <span>{toast}</span>
             <button
               type="button"

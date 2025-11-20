@@ -77,7 +77,7 @@ function LoginPageContent(): JSX.Element {
 
   return (
     <main className="relative min-h-screen flex items-center justify-center px-6 py-12 md:px-10 overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(82,138,255,0.12),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(72,187,228,0.12),transparent_40%),linear-gradient(135deg,rgba(15,23,42,0.06),rgba(255,255,255,0.08))] blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(82,138,255,0.22),transparent_50%),radial-gradient(circle_at_85%_25%,rgba(72,187,228,0.2),transparent_45%),linear-gradient(135deg,rgba(15,23,42,0.12),rgba(255,255,255,0.14))] blur-2xl opacity-95 dark:bg-[radial-gradient(circle_at_18%_18%,rgba(147,197,253,0.28),transparent_55%),radial-gradient(circle_at_80%_28%,rgba(52,211,153,0.24),transparent_50%),linear-gradient(145deg,rgba(15,23,42,0.24),rgba(59,130,246,0.18))] dark:opacity-100 dark:mix-blend-screen" />
       <div className="relative mx-auto flex w-full max-w-4xl flex-col items-center justify-center">
         <section className="ios-card ios-animate-up w-full max-w-md space-y-6 p-8">
           <div className="space-y-1">
