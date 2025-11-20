@@ -1,4 +1,7 @@
+﻿import { execFile } from "node:child_process";
 import fs from "node:fs";
+import { promises as fsp } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
@@ -57,132 +60,87 @@ const resolveMailerConfig = (): MailerConfig | null => {
   return { host, port, user: user || undefined, pass: pass || undefined, from };
 };
 
+function resolveSofficePath(): string {
+  const envPath = process.env.LIBREOFFICE_PATH;
+  if (envPath) return envPath;
+  if (process.platform === "win32") {
+    const candidates = [
+      "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+      "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+      "C:\\Program Files\\LibreOffice\\program\\soffice.com",
+      "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com",
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } else {
+    const candidates = ["/usr/bin/soffice", "/usr/local/bin/soffice", "/snap/bin/libreoffice"];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return "soffice";
+}
+
 function renderChartBuffer(configuration: ChartConfiguration<"bar", number[], string>, mimeType: "image/png" | "image/jpeg"): Buffer {
   const canvas = createCanvas(chartWidth, chartHeight);
   const ctx = canvas.getContext("2d");
-  // Ensure a white background so exported JPEGs don't inherit template backgrounds.
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, chartWidth, chartHeight);
-  // Chart.js works with the node-canvas context; cast keeps TS happy.
   new ChartJS(ctx as unknown as CanvasRenderingContext2D, configuration);
   return mimeType === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg");
 }
 
-function buildFlashEmailHtml(tokens: TokenMap): string {
+async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Buffer> {
+  if (!pptBuffer || pptBuffer.length === 0) {
+    throw new Error("PPTX buffer is empty");
+  }
+  const sofficePath = resolveSofficePath();
+  console.info("[flash-report/manual] using soffice path", sofficePath);
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "flash-ppt-"));
+  const pptPath = path.join(tempDir, "flash.pptx");
+  try {
+    await fsp.writeFile(pptPath, pptBuffer);
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        sofficePath,
+        ["--headless", "--convert-to", "png", "--outdir", tempDir, pptPath],
+        (error, stdout, stderr) => {
+          if (error) {
+            error.message += `; stdout: ${stdout}; stderr: ${stderr}`;
+            reject(error);
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+    const files = await fsp.readdir(tempDir);
+    const pngName = files.find((f) => f.toLowerCase().endsWith(".png"));
+    if (!pngName) {
+      throw new Error("LibreOffice convert did not produce a PNG");
+    }
+    const pngBuffer = await fsp.readFile(path.join(tempDir, pngName));
+    return pngBuffer;
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+function buildFlashEmailHtmlFromPng(tokens: TokenMap): string {
   const propertyName =
     (tokens.PROPERTYDISPLAYNAME as string) ||
     (tokens.FACILITYSHORTNAME as string) ||
     (tokens.FACILITYCODE as string) ||
     "";
   const reportDate = (tokens.ASOFDATE as string) || "";
-  const facilityOpenDate = tokens.FACILITYOPENDATE ?? "";
-  const topRow1 = {
-    MTDRENTALS: tokens.MTDRENTALS ?? "",
-    DAILYRENTALS: tokens.DAILYRENTALS ?? "",
-    LEADSMTD: tokens.LEADSMTD ?? "",
-    CONV: tokens.CONV ?? "",
-    MTDVACATES: tokens.MTDVACATES ?? "",
-    DAILYVACATES: tokens.DAILYVACATES ?? "",
-    MTDNETRENTALS: tokens.MTDNETRENTALS ?? "",
-  };
-  const topRow2 = {
-    TOTALRSF: tokens.TOTALRSF ?? "",
-    OCCRSF: tokens.OCCRSF ?? "",
-    RSFOCCPCT: tokens.RSFOCCPCT ?? "",
-    OCCUNITS: tokens.OCCUNITS ?? "",
-    COVERAGE: tokens.COVERAGE ?? "",
-    AROVER30DAYSPCT: tokens.AROVER30DAYSPCT ?? "",
-    AROVER60DAYSPCT: tokens.AROVER60DAYSPCT ?? "",
-  };
-  const bottomRow = {
-    PROJRENT: tokens.PROJRENT ?? "",
-    PROJRENTPERSF: tokens.PROJRENTPERSF ?? "",
-    PROJRENTMOMPCT: tokens.PROJRENTMOMPCT ?? "",
-    GROSSPOTRENT: tokens.GROSSPOTRENT ?? "",
-    GPRPERSF: tokens.GPRPERSF ?? "",
-    GPRMOMPCT: tokens.GPRMOMPCT ?? "",
-    ECONOCCPCT: tokens.ECONOCCPCT ?? "",
-  };
-
   return `
     <html>
       <body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
-        <h2 style="margin: 0 0 4px 0;">Daily Flash - ${propertyName}</h2>
+        <h2 style="margin: 0 0 4px 0;">Daily Flash – ${propertyName}</h2>
         <div style="margin: 0 0 16px 0;">${reportDate}</div>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
-          <tr>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">MTD Rentals</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Daily Rentals</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Leads (MTD)</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Lead Conversion</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">MTD Vacates</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Daily Vacates</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">MTD Net</th>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.MTDRENTALS}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.DAILYRENTALS}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.LEADSMTD}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.CONV}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.MTDVACATES}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.DAILYVACATES}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow1.MTDNETRENTALS}</td>
-          </tr>
-          <tr>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Total RSF</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Occ RSF</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">RSF Occ %</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Occ Units</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">TPP Coverage %</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">AR &gt; 30d %</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">AR &gt; 60d %</th>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.TOTALRSF}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.OCCRSF}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.RSFOCCPCT}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.OCCUNITS}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.COVERAGE}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.AROVER30DAYSPCT}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${topRow2.AROVER60DAYSPCT}</td>
-          </tr>
-        </table>
-
-        <div style="display: flex; gap: 16px; width: 100%; margin-bottom: 16px;">
-          <div style="flex: 1;">
-            <h3 style="margin: 0 0 8px 0;">AR Aging</h3>
-            <img src="cid:ar-aging-chart" style="max-width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 4px;" />
-          </div>
-          <div style="flex: 1;">
-            <h3 style="margin: 0 0 8px 0;">Occupancy</h3>
-            <img src="cid:occupancy-chart" style="max-width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 4px;" />
-          </div>
-        </div>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px;">
-          <tr>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Proj. Rent</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Proj. Rent / SF</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Proj. Rent MoM</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Gross Pot. Rent</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">GPR / SF</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">GPR MoM%</th>
-            <th style="border: 1px solid #e5e7eb; padding: 6px; text-align: left;">Econ Occ.</th>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.PROJRENT}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.PROJRENTPERSF}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.PROJRENTMOMPCT}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.GROSSPOTRENT}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.GPRPERSF}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.GPRMOMPCT}</td>
-            <td style="border: 1px solid #e5e7eb; padding: 6px;">${bottomRow.ECONOCCPCT}</td>
-          </tr>
-        </table>
-
-        <p style="margin-top: 12px; font-size: 11px; color: #666;">
-          STORE Managed since ${facilityOpenDate}<br/>
+        <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
+        <p style="margin-top: 16px; font-size: 11px; color: #666;">
           Full PowerPoint attached for download.
         </p>
       </body>
@@ -282,16 +240,11 @@ async function sendFlashReportEmail(
   pptxFilename: string,
   asOfDate: string,
   tokens: TokenMap,
-  arAgingChartJpeg: Buffer,
-  occupancyChartJpeg: Buffer,
+  slidePngBuffer: Buffer | null,
 ): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
   const recipients = (property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
-  if (!property.enabled) {
-    console.info("[flash-report/manual] property disabled; skipping email delivery", property.id);
-    return false;
-  }
   if (recipients.length === 0) {
     console.info("[flash-report/manual] no ownerEmails configured; skipping email delivery", property.id);
     return false;
@@ -315,8 +268,8 @@ async function sendFlashReportEmail(
       property.name ||
       property.id;
     const reportDate = (tokens.ASOFDATE as string) || asOfDate || "Latest";
-    const subject = `Daily Flash - ${propertyLabel} (${reportDate})`;
-    const html = buildFlashEmailHtml(tokens);
+    const subject = `Daily Flash – ${propertyLabel} (${reportDate})`;
+    const html = buildFlashEmailHtmlFromPng(tokens);
     await transporter.sendMail({
       from: mailConfig.from,
       to: recipients,
@@ -328,16 +281,15 @@ async function sendFlashReportEmail(
           content: pptxBuffer,
           contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         },
-        {
-          filename: "ar-aging-chart.jpeg",
-          content: arAgingChartJpeg,
-          cid: "ar-aging-chart",
-        },
-        {
-          filename: "occupancy-chart.jpeg",
-          content: occupancyChartJpeg,
-          cid: "occupancy-chart",
-        },
+        ...(slidePngBuffer
+          ? [
+              {
+                filename: "daily-flash-slide.png",
+                content: slidePngBuffer,
+                cid: "flash-slide",
+              },
+            ]
+          : []),
       ],
     });
     console.info("[flash-report/manual] emailed flash report", {
@@ -404,12 +356,7 @@ export async function POST(req: NextRequest) {
   if (!property) {
     return NextResponse.json({ error: "Unknown propertyId" }, { status: 404 });
   }
-  const facilityCodeToken = typeof tokens.FACILITYCODE === "string" ? tokens.FACILITYCODE : "";
-  let facilityOpenDate = property.facilityOpenDate;
-  if (!facilityOpenDate && facilityCodeToken) {
-    const byTenantProperty = properties.find((p) => p.tenantPropertyId === facilityCodeToken);
-    facilityOpenDate = byTenantProperty?.facilityOpenDate;
-  }
+  const facilityOpenDate = property.facilityOpenDate;
   if (facilityOpenDate) {
     tokens.FACILITYOPENDATE = facilityOpenDate;
   }
@@ -420,24 +367,29 @@ export async function POST(req: NextRequest) {
 
   let templateBuffer: Buffer;
   try {
-    templateBuffer = fs.readFileSync(templatePath);
+    templateBuffer = await fsp.readFile(templatePath);
   } catch (err) {
     console.error("[flash-report/manual] unable to read PPTX template", err);
     return NextResponse.json({ error: "Template file not found." }, { status: 500 });
   }
 
   const zip = new PizZip(templateBuffer);
-  // Overwrite Canva placeholders for AR Aging and Occupancy charts with server-rendered JPEGs.
   zip.file("ppt/media/image3.jpeg", arAgingChartJpeg);
   zip.file("ppt/media/image4.jpeg", occupancyChartJpeg);
   scrubHiddenCharactersFromZip(zip);
   const rendered = await renderTokensIntoZip(zip, tokens);
+  let slidePngBuffer: Buffer | null = null;
+  try {
+    slidePngBuffer = await convertPptxBufferToPngLocal(rendered);
+  } catch (err) {
+    console.error("[flash-report/manual] unable to convert PPTX to PNG (non-fatal)", err);
+  }
 
   const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
 
   try {
-    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, arAgingChartJpeg, occupancyChartJpeg);
+    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer);
   } catch (err) {
     console.error("[flash-report/manual] email delivery failed (non-fatal)", err);
   }
@@ -660,7 +612,6 @@ function coerceNumber(value: ExcelJS.CellValue | null): number {
 }
 
 function excelSerialDateToJsDate(serial: number): Date {
-  // Excel serial dates start on Jan 1, 1900. Adjust for Leap year bug by subtracting 1.
   const epoch = new Date(Date.UTC(1899, 11, 30));
   const date = new Date(epoch.getTime() + serial * 24 * 60 * 60 * 1000);
   return date;
@@ -690,7 +641,6 @@ const TOKEN_SPAN_PATTERN = /\{\{[\s\S]*?\}\}/g;
 const XML_TAG_PATTERN = /<[^>]+>/g;
 
 function normalizeTemplateXml(xml: string): string {
-  // Remove hidden chars and heal tokens that were split across XML nodes (e.g., {{DAIL</a:t><a:t>Y_RENTALS}})
   const withoutHidden = stripHiddenTokenCharacters(xml);
   return withoutHidden.replace(TOKEN_SPAN_PATTERN, (segment) => {
     const withoutTags = segment.replace(XML_TAG_PATTERN, "");
@@ -796,3 +746,4 @@ async function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<st
 function normalizeKey(key: string): string {
   return stripHiddenTokenCharacters(key).replace(/\s+/g, "").toUpperCase();
 }
+
