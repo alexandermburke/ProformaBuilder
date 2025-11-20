@@ -405,14 +405,16 @@ export function computeOwnerPerformance({
 
 function toArrayBuffer(input: WorkbookInput): ArrayBuffer {
   if (input instanceof ArrayBuffer) return input;
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(input)) {
+    const copy = new Uint8Array(input.byteLength);
+    copy.set(input);
+    return copy.buffer;
+  }
   if (ArrayBuffer.isView(input)) {
     const view = input as ArrayBufferView;
     const copy = new Uint8Array(view.byteLength);
     copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
     return copy.buffer;
-  }
-  if (typeof Buffer !== "undefined" && Buffer.isBuffer(input)) {
-    return input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
   }
   throw new Error("Unsupported workbook input type");
 }
