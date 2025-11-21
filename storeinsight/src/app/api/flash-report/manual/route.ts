@@ -409,6 +409,7 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
   const asOfDateCell = readDate(msrSheet, "A3", "As-of date (MSR!A3)");
 
   const mtdRentals = readNumber(msrSheet, "E61", "MTD rentals (MSR!E61)");
+  const netsqftmtd = readNumber(msrSheet, "E70", "Net SQ FT Activity	(MSR!E70)");
   const dailyRentals = readNumber(msrSheet, "D61", "Daily rentals (MSR!D61)");
   const dailyReservations = readNumber(msrSheet, "D65", "Daily reservations (MSR!D65)");
   const rybtmi = readNumber(msrSheet, "F61", "YTD move-ins (MSR!F61)");
@@ -482,7 +483,7 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     TOTALARALL: formatCurrency(totalArAll),
     AR30PLUS: formatCurrency(ar30Plus),
     AROVER30DAYSPCT: arOver30Pct,
-    AROVER60DAYSPCT: arOver60Pct,
+    NETSQFTACTMTD: formatNumberWithCommas(netsqftmtd),
     PROJRENT: formatCurrency(projRent),
     PROJRENTPERSF: formatCurrency(projRentPerSf),
     PROJRENTMOMPCT: formatPercent(0),
