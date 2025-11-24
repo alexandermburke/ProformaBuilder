@@ -138,7 +138,6 @@ function buildFlashEmailHtmlFromPng(tokens: TokenMap): string {
     <html>
       <body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
         <h2 style="margin: 0 0 4px 0;">Daily Flash – ${propertyName}</h2>
-        <div style="margin: 0 0 16px 0;">${reportDate}</div>
         <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
         <p style="margin-top: 16px; font-size: 11px; color: #666;">
           Full PowerPoint attached for download.
