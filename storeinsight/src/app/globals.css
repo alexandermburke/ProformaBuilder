@@ -96,9 +96,26 @@ html.dark {
 
 html,
 body {
-  background: radial-gradient(circle at 10% 0%, var(--gradient-start), transparent 55%),
+  background:
+    radial-gradient(circle at 10% 0%, var(--gradient-start), transparent 55%),
     radial-gradient(circle at 90% 0%, var(--gradient-hint), transparent 52%),
-    radial-gradient(circle at 50% 100%, var(--gradient-end), transparent 60%), var(--background);
+    radial-gradient(circle at 50% 100%, var(--gradient-end), transparent 60%),
+    linear-gradient(145deg, color-mix(in srgb, var(--tint-blue) 32%, transparent), transparent 65%),
+    conic-gradient(
+      from 130deg at 70% 30%,
+      color-mix(in srgb, var(--tint-purple) 28%, transparent),
+      transparent 28%,
+      color-mix(in srgb, var(--tint-blue) 18%, transparent),
+      transparent 62%
+    ),
+    repeating-linear-gradient(
+      140deg,
+      color-mix(in srgb, var(--accent-soft) 28%, transparent) 0px,
+      color-mix(in srgb, var(--accent-soft) 28%, transparent) 1px,
+      transparent 1px,
+      transparent 24px
+    ),
+    var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, Arial, Helvetica, sans-serif;
   text-rendering: optimizeLegibility;
@@ -113,10 +130,11 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.7;
+  opacity: 0.78;
   background:
     radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.28), transparent 60%),
-    radial-gradient(circle at 80% 20%, rgba(37, 99, 235, 0.14), transparent 55%);
+    radial-gradient(circle at 80% 20%, rgba(37, 99, 235, 0.14), transparent 55%),
+    radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.12), transparent 55%);
   transition: opacity 0.6s var(--ease-smooth);
   z-index: -2;
 }
@@ -133,10 +151,12 @@ body::after {
 }
 
 html.dark body::before {
-  opacity: 0.85;
+  opacity: 0.92;
   background:
     radial-gradient(circle at 18% 82%, rgba(37, 99, 235, 0.32), transparent 62%),
-    radial-gradient(circle at 84% 16%, rgba(14, 165, 233, 0.22), transparent 58%);
+    radial-gradient(circle at 84% 16%, rgba(14, 165, 233, 0.22), transparent 58%),
+    radial-gradient(circle at 22% 28%, rgba(56, 189, 248, 0.16), transparent 58%),
+    radial-gradient(circle at 72% 68%, rgba(139, 92, 246, 0.18), transparent 60%);
 }
 
 /* --- Motion ------------------------------------------------------------- */

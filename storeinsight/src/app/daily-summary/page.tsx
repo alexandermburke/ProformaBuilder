@@ -11,6 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { PropertyConfig } from '@/types/dailySummary';
+import type { FlashCloudStatus, FlashStatus } from './types';
+import type { CloudRunState, CloudStatusResponse } from '@/types/cloudStatus';
 
 type PropertyFormState = {
   id?: string;
@@ -31,6 +33,37 @@ const createEmptyForm = (): PropertyFormState => ({
   enabled: true,
 });
 
+const statusMeta: Record<FlashStatus, { label: string; tone?: 'success' | 'warning' | 'danger'; dotClass: string }> = {
+  success: { label: 'Healthy', tone: 'success', dotClass: 'bg-emerald-400 dark:bg-emerald-300' },
+  pending: { label: 'Pending', tone: 'warning', dotClass: 'bg-amber-400 dark:bg-amber-300' },
+  failed: { label: 'Failed', tone: 'danger', dotClass: 'bg-rose-400 dark:bg-rose-300' },
+  no_msr: { label: 'Waiting for MSR', dotClass: 'bg-slate-400 dark:bg-slate-300' },
+};
+
+const cloudToFlashStatus: Record<CloudRunState, FlashStatus> = {
+  healthy: 'success',
+  pending: 'pending',
+  failed: 'failed',
+  awaiting_msr: 'no_msr',
+};
+
+const mapCloudState = (state: CloudRunState): FlashStatus => cloudToFlashStatus[state] ?? 'pending';
+
+const statTileClass =
+  'rounded-2xl border border-[color:var(--border-soft)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--surface) 86%,transparent),color-mix(in_srgb,var(--tint-blue) 62%,transparent))] px-3 py-3 shadow-[0_14px_36px_rgba(3,7,18,0.14)] backdrop-blur';
+
+const formatDateTime = (value?: string): string => {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
 export default function DailySummaryPage() {
   const [properties, setProperties] = useState<PropertyConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +79,9 @@ export default function DailySummaryPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [propertyMessage, setPropertyMessage] = useState<string | null>(null);
   const [manualMessage, setManualMessage] = useState<string | null>(null);
+  const [cloudStatuses, setCloudStatuses] = useState<FlashCloudStatus[]>([]);
+  const [cloudStatusLoading, setCloudStatusLoading] = useState(false);
+  const [cloudStatusMessage, setCloudStatusMessage] = useState<string | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -60,6 +96,16 @@ export default function DailySummaryPage() {
 
   const togglePillClass =
     'inline-block h-6 w-6 rounded-full bg-white shadow-[0_8px_18px_rgba(15,23,42,0.22)] transition-transform duration-300';
+
+  const buildFallbackCloudStatuses = useCallback(
+    (list: PropertyConfig[]): FlashCloudStatus[] =>
+      list.map((prop) => ({
+        propertyId: prop.id,
+        propertyName: prop.name,
+        status: 'no_msr',
+      })),
+    [],
+  );
 
   const sortedProperties = useMemo(() => {
     const list = [...properties];
@@ -79,6 +125,18 @@ export default function DailySummaryPage() {
     });
     return list;
   }, [properties, sortDir, sortKey]);
+
+  const cloudStatusCounts = useMemo(
+    () =>
+      cloudStatuses.reduce(
+        (acc, item) => {
+          acc[item.status] += 1;
+          return acc;
+        },
+        { success: 0, pending: 0, failed: 0, no_msr: 0 },
+      ),
+    [cloudStatuses],
+  );
 
   const refreshProperties = useCallback(async () => {
     setLoading(true);
@@ -102,6 +160,44 @@ export default function DailySummaryPage() {
   useEffect(() => {
     void refreshProperties();
   }, [refreshProperties]);
+
+  const refreshCloudStatus = useCallback(async () => {
+    setCloudStatusLoading(true);
+    setCloudStatusMessage(null);
+    try {
+      const res = await fetch('/api/flash-report/cloud-status', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('Unable to load cloud run status');
+      }
+      const data = (await res.json()) as CloudStatusResponse;
+      const mapped = data.rows.map<FlashCloudStatus>((row) => ({
+        propertyId: row.propertyId,
+        propertyName: row.propertyName,
+        lastMsrReceivedAt: row.msrReceivedAt ?? undefined,
+        lastRunAt: row.lastRunAt ?? undefined,
+        nextRunAt: row.nextRunAt ?? undefined,
+        status: mapCloudState(row.lastRunStatus),
+        errorMessage: row.errorMessage ?? undefined,
+      }));
+      setCloudStatuses(mapped);
+    } catch (err) {
+      const fallback = properties.length > 0 ? buildFallbackCloudStatuses(properties) : [];
+      const baseMessage = 'Waiting for cloud status feed';
+      if (fallback.length > 0) {
+        setCloudStatuses(fallback);
+        setCloudStatusMessage(`${baseMessage}. Showing property list until data is connected.`);
+      } else {
+        const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
+        setCloudStatusMessage(`Unable to load cloud run status${detail}`);
+      }
+    } finally {
+      setCloudStatusLoading(false);
+    }
+  }, [buildFallbackCloudStatuses, properties]);
+
+  useEffect(() => {
+    void refreshCloudStatus();
+  }, [refreshCloudStatus]);
 
   const parseErrorMessage = async (res: Response): Promise<string | null> => {
     try {
@@ -325,7 +421,7 @@ export default function DailySummaryPage() {
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-10 lg:px-10 lg:py-16">
-        <header className="ios-card ios-animate-up rounded-3xl p-8 shadow-lg">
+        <header className="ios-card ios-animate-up rounded-3xl bg-[linear-gradient(140deg,color-mix(in_srgb,var(--surface) 88%,transparent),color-mix(in_srgb,var(--tint-blue) 58%,transparent))] p-8 shadow-lg">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-3">
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Daily Summary Report</h1>
@@ -341,8 +437,8 @@ export default function DailySummaryPage() {
           </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="ios-card ios-animate-up rounded-3xl p-6 shadow-lg">
+        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.95fr]">
+          <div className="ios-card ios-animate-up rounded-3xl border border-[color:var(--border-soft)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--surface) 90%,transparent),color-mix(in_srgb,var(--tint-blue) 48%,transparent))] p-6 shadow-lg">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">Property configuration</h2>
@@ -360,9 +456,9 @@ export default function DailySummaryPage() {
               </button>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto rounded-2xl border border-[color:var(--border-soft)] max-h-[480px]">
+            <div className="overflow-x-auto overflow-y-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/40 shadow-inner max-h-[480px]">
               <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-sm">
-                <thead className="bg-[color:var(--surface-muted)] text-[color:var(--text-secondary)]">
+                <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 36%,transparent))] text-[color:var(--text-secondary)]">
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">
                       <button
@@ -376,7 +472,7 @@ export default function DailySummaryPage() {
                       >
                         Property
                         <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                          {sortKey === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          {sortKey === 'name' ? (sortDir === 'asc' ? '^' : 'v') : ''}
                         </span>
                       </button>
                     </th>
@@ -392,7 +488,7 @@ export default function DailySummaryPage() {
                       >
                         Property ID
                         <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                          {sortKey === 'tenantPropertyId' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          {sortKey === 'tenantPropertyId' ? (sortDir === 'asc' ? '^' : 'v') : ''}
                         </span>
                       </button>
                     </th>
@@ -408,7 +504,7 @@ export default function DailySummaryPage() {
                       >
                         Send time (MST)
                         <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                          {sortKey === 'sendTimeLocal' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          {sortKey === 'sendTimeLocal' ? (sortDir === 'asc' ? '^' : 'v') : ''}
                         </span>
                       </button>
                     </th>
@@ -424,7 +520,7 @@ export default function DailySummaryPage() {
                       >
                         Enabled
                         <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                          {sortKey === 'enabled' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                          {sortKey === 'enabled' ? (sortDir === 'asc' ? '^' : 'v') : ''}
                         </span>
                       </button>
                     </th>
@@ -446,7 +542,7 @@ export default function DailySummaryPage() {
                     </tr>
                   ) : (
                     sortedProperties.map((prop) => (
-                      <tr key={prop.id} className="hover:bg-[color:var(--surface-subtle)]/60">
+                      <tr key={prop.id} className="transition-colors hover:bg-[color:var(--surface-subtle)]/70">
                         <td className="px-4 py-3 font-semibold text-[color:var(--text-primary)]">{prop.name}</td>
                         <td className="px-4 py-3 text-[color:var(--text-secondary)]">{prop.tenantPropertyId}</td>
                         <td className="px-4 py-3 text-[color:var(--text-secondary)]">{prop.sendTimeLocal}</td>
@@ -479,7 +575,131 @@ export default function DailySummaryPage() {
             </div>
           </div>
 
-          <div className="ios-card ios-animate-up rounded-3xl p-6 shadow-lg">
+          <div className="ios-card ios-animate-up rounded-3xl border border-[color:var(--border-soft)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--surface) 88%,transparent),color-mix(in_srgb,var(--tint-blue) 42%,transparent))] p-6 shadow-lg">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold">Cloud run status</h2>
+                <p className="text-sm text-[color:var(--text-secondary)]">
+                  Monitor nightly flash automation and the latest MSR ingestion.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="secondary"
+                onClick={() => void refreshCloudStatus()}
+                disabled={cloudStatusLoading}
+              >
+                {cloudStatusLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div className={statTileClass}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Healthy
+                </p>
+                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
+                  {cloudStatusCounts.success}
+                </p>
+              </div>
+              <div className={statTileClass}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Pending
+                </p>
+                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
+                  {cloudStatusCounts.pending}
+                </p>
+              </div>
+              <div className={statTileClass}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Failed
+                </p>
+                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
+                  {cloudStatusCounts.failed}
+                </p>
+              </div>
+              <div className={statTileClass}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Awaiting MSR
+                </p>
+                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
+                  {cloudStatusCounts.no_msr}
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/38 shadow-inner">
+              <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-sm">
+                <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 34%,transparent))] text-[color:var(--text-secondary)]">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold">Property</th>
+                    <th className="px-4 py-3 text-left font-semibold">MSR received</th>
+                    <th className="px-4 py-3 text-left font-semibold">Last run</th>
+                    <th className="px-4 py-3 text-left font-semibold">Next run</th>
+                    <th className="px-4 py-3 text-left font-semibold">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[color:var(--border-soft)]">
+                  {cloudStatusLoading ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-[color:var(--text-secondary)]">
+                        Loading cloud run status...
+                      </td>
+                    </tr>
+                  ) : cloudStatuses.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-[color:var(--text-secondary)]">
+                        No cloud run records yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    cloudStatuses.map((entry) => {
+                      const meta = statusMeta[entry.status];
+                      return (
+                        <tr
+                          key={`${entry.propertyId}-${entry.status}-${entry.lastRunAt ?? 'na'}`}
+                          className="transition-colors hover:bg-[color:var(--surface-subtle)]/60"
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-semibold text-[color:var(--text-primary)]">{entry.propertyName}</span>
+                              <span className="text-xs text-[color:var(--text-secondary)]">{entry.propertyId}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-[color:var(--text-secondary)]">
+                            {formatDateTime(entry.lastMsrReceivedAt)}
+                          </td>
+                          <td className="px-4 py-3 text-[color:var(--text-secondary)]">
+                            {formatDateTime(entry.lastRunAt)}
+                          </td>
+                          <td className="px-4 py-3 text-[color:var(--text-secondary)]">
+                            {formatDateTime(entry.nextRunAt)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              <span className="owner-status-badge" data-tone={meta.tone ?? undefined}>
+                                <span className={`h-2 w-2 rounded-full ${meta.dotClass}`} />
+                                {meta.label}
+                              </span>
+                              {entry.errorMessage && (
+                                <span className="text-xs text-[color:var(--text-secondary)]">{entry.errorMessage}</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {cloudStatusMessage && (
+              <p className="pt-3 text-xs text-[color:var(--text-secondary)]">{cloudStatusMessage}</p>
+            )}
+          </div>
+
+          <div className="ios-card ios-animate-up rounded-3xl border border-[color:var(--border-soft)] bg-[linear-gradient(160deg,color-mix(in_srgb,var(--surface) 90%,transparent),color-mix(in_srgb,var(--tint-blue) 46%,transparent))] p-6 shadow-lg lg:col-span-2">
             <div className="mb-4 space-y-1">
               <h2 className="text-lg font-semibold">Manual Daily Flash Report</h2>
               <p className="text-sm text-[color:var(--text-secondary)]">
@@ -494,7 +714,7 @@ export default function DailySummaryPage() {
                   Property
                 </label>
                 <select
-                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none"
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   value={selectedPropertyId}
                   onChange={(e) => setSelectedPropertyId(e.target.value)}
                 >
@@ -513,7 +733,7 @@ export default function DailySummaryPage() {
                 </label>
                 <input
                   type="date"
-                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none"
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   value={asOfDate}
                   onChange={(e) => setAsOfDate(e.target.value)}
                 />
@@ -524,8 +744,10 @@ export default function DailySummaryPage() {
                   Management Summary Report (.xlsx)
                 </label>
                 <div
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-center transition-colors duration-150 ${
-                    isDraggingFile ? 'border-[color:var(--accent)] bg-[color:var(--surface-muted)]' : 'border-[color:var(--border-soft)] bg-white'
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-center shadow-inner transition-colors duration-150 ${
+                    isDraggingFile
+                      ? 'border-[color:var(--accent)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--surface-muted) 88%,transparent),color-mix(in_srgb,var(--tint-blue) 50%,transparent))]'
+                      : 'border-[color:var(--border-soft)] bg-[color:var(--surface)]/70'
                   }`}
                   onDrop={handleFileDrop}
                   onDragOver={handleDragOver}
@@ -632,7 +854,7 @@ export default function DailySummaryPage() {
                   name="name"
                   value={formState.name}
                   onChange={handleFormChange}
-                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none"
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   placeholder="e.g. STORE at the Grove"
                   required
                 />
@@ -645,7 +867,7 @@ export default function DailySummaryPage() {
                   name="tenantPropertyId"
                   value={formState.tenantPropertyId}
                   onChange={handleFormChange}
-                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none"
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   placeholder="e.g. L001"
                   required
                 />
@@ -660,7 +882,7 @@ export default function DailySummaryPage() {
                     name="sendTimeLocal"
                     value={formState.sendTimeLocal}
                     onChange={handleFormChange}
-                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none"
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                     required
                   />
                 </div>
@@ -689,7 +911,7 @@ export default function DailySummaryPage() {
                   name="ownerEmails"
                   value={formState.ownerEmails}
                   onChange={handleFormChange}
-                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[color:var(--accent)] focus:outline-none"
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   placeholder="owner@example.com, ops@example.com"
                 />
               </div>
@@ -720,3 +942,8 @@ export default function DailySummaryPage() {
     </div>
   );
 }
+
+
+
+
+
