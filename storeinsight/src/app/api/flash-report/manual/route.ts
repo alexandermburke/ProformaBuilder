@@ -451,12 +451,15 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     ARAGING_361_PLUS: formatToTwo(readNumber(msrSheet, "L79", "AR Aging 361+ (MSR!L79)")),
   };
 
-  const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
-  const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
-  const gpr = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
-  const gprAdj = gpr * 1.1;
-  const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
-  const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
+    const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
+    const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
+    const gpr = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
+    const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
+    const grossPotRentSf = readNumber(msrSheet, "N26", "Gross potential rent per SF (MSR!N26)");
+    const effPotRent = readNumber(msrSheet, "I26", "Effective potential rent (MSR!I26)");
+    const effRentSf = readNumber(msrSheet, "K26", "Effective rent per SF (MSR!K26)");
+    const avgSfVaca = readNumber(msrSheet, "L38", "Average SF Vacant (MSR!L38)");
+    const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
 
   return {
     PROPERTYDISPLAYNAME: propertyDisplayName,
@@ -483,15 +486,22 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     AR30PLUS: formatCurrency(ar30Plus),
     AROVER30DAYSPCT: arOver30Pct,
     NETSQFTACTMTD: formatNumberWithCommas(netsqftmtd),
-    PROJRENT: formatCurrency(projRent),
-    PROJRENTPERSF: formatCurrency(projRentPerSf),
-    PROJRENTMOMPCT: formatPercent(0),
-    GROSSPOTRENT: formatCurrency(gprAdj),
-    GPRPERSF: formatCurrency(gprPerSf),
-    GPRMOMPCT: formatPercent(0),
-    ECONOCCPCT: formatPercent(econOccPct),
-    OCCPCT_SQFT: occPctSqft,
-    OCCPCT_SPACES: occPctSpaces,
+      PROJRENT: formatCurrency(projRent),
+      PROJRENTPERSF: formatCurrency(projRentPerSf),
+      PROJRENTMOMPCT: formatPercent(0),
+      GROSSPOTRENT: formatCurrency(gpr),
+      GROSSPOTSFT: formatCurrency(grossPotRentSf),
+      GROSSPOTRENTSF: formatCurrency(grossPotRentSf), // alias for template variations
+      GPRPERSF: formatCurrency(gprPerSf),
+      GPRMOMPCT: formatPercent(0),
+      EFFPOTRENT: formatCurrency(effPotRent),
+      EFFRENTSF: formatCurrency(effRentSf),
+      EFFRENTPERSF: formatCurrency(effRentSf), // alias for template variations
+      AVGSFVACA: formatCurrency(avgSfVaca),
+      AVGRENTVACANTSF: formatCurrency(avgSfVaca), // alias for template variations
+      ECONOCCPCT: formatPercent(econOccPct),
+      OCCPCT_SQFT: occPctSqft,
+      OCCPCT_SPACES: occPctSpaces,
     OCCPCT_ECON: occPctEcon,
     ...arAgingTokens,
     RENTALSBYMONTHSERIES: [],
