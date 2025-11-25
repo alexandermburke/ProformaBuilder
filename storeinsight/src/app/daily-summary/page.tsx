@@ -86,6 +86,7 @@ export default function DailySummaryPage() {
   const [toast, setToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [manualEmailBody, setManualEmailBody] = useState('');
+  const propertiesRef = useRef<PropertyConfig[]>([]);
 
   const toggleButtonClass = (active: boolean): string =>
     [
@@ -148,6 +149,7 @@ export default function DailySummaryPage() {
       }
       const data = (await res.json()) as PropertyConfig[];
       setProperties(data);
+      propertiesRef.current = data;
       if (!selectedPropertyId && data.length > 0) {
         setSelectedPropertyId(data[0].id);
       }
@@ -182,7 +184,7 @@ export default function DailySummaryPage() {
       }));
       setCloudStatuses(mapped);
     } catch (err) {
-      const fallback = properties.length > 0 ? buildFallbackCloudStatuses(properties) : [];
+      const fallback = propertiesRef.current.length > 0 ? buildFallbackCloudStatuses(propertiesRef.current) : [];
       const baseMessage = 'Waiting for cloud status feed';
       if (fallback.length > 0) {
         setCloudStatuses(fallback);
@@ -194,7 +196,7 @@ export default function DailySummaryPage() {
     } finally {
       setCloudStatusLoading(false);
     }
-  }, [buildFallbackCloudStatuses, properties]);
+  }, [buildFallbackCloudStatuses]);
 
   useEffect(() => {
     void refreshCloudStatus();
@@ -236,13 +238,13 @@ export default function DailySummaryPage() {
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setIsDraggingFile(true);
+    if (!isDraggingFile) setIsDraggingFile(true);
   };
 
   const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setIsDraggingFile(false);
+    if (isDraggingFile) setIsDraggingFile(false);
   };
 
   useEffect(() => {
@@ -460,7 +462,10 @@ export default function DailySummaryPage() {
               </button>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/40 shadow-inner max-h-[480px]">
+            <div
+              className="overflow-x-auto overflow-y-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/40 shadow-inner max-h-[480px]"
+              style={{ contentVisibility: 'auto', containIntrinsicSize: '720px' }}
+            >
               <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-sm">
                 <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 36%,transparent))] text-[color:var(--text-secondary)]">
                   <tr>
@@ -633,7 +638,10 @@ export default function DailySummaryPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/38 shadow-inner">
+            <div
+              className="overflow-x-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/38 shadow-inner"
+              style={{ contentVisibility: 'auto', containIntrinsicSize: '620px' }}
+            >
               <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-sm">
                 <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 34%,transparent))] text-[color:var(--text-secondary)]">
                   <tr>

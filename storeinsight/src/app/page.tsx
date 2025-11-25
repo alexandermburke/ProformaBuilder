@@ -33,7 +33,7 @@ const features: Feature[] = [
     title: 'Daily Summary Report',
     description: 'Automate daily flash reports for STORE properties.',
     href: '/daily-summary',
-    status: 'WIP',
+    status: 'Beta',
     tone: 'purple',
     icon: 'document',
     highlights: [
