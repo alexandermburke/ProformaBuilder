@@ -47,6 +47,10 @@
   --ai-iris: #7c3aed;
   --ai-cyan: #22d3ee;
   --ai-rose: #fb7185;
+  --ios26-iris: rgba(150, 139, 255, 0.36);
+  --ios26-sky: rgba(72, 186, 255, 0.35);
+  --ios26-foam: rgba(185, 232, 255, 0.3);
+  --ios26-sunset: rgba(255, 196, 188, 0.28);
 }
 
 @theme inline {
@@ -92,16 +96,20 @@ html.dark {
   --blur-medium: 26px;
   --blur-strong: 38px;
   --focus-ring: rgba(125, 179, 255, 0.32);
+  --ios26-iris: rgba(121, 106, 255, 0.45);
+  --ios26-sky: rgba(56, 162, 255, 0.38);
+  --ios26-foam: rgba(80, 186, 255, 0.26);
+  --ios26-sunset: rgba(255, 150, 210, 0.24);
 }
 
 html,
 body {
   background:
-    radial-gradient(circle at 10% 0%, var(--gradient-start), transparent 55%),
-    radial-gradient(circle at 90% 0%, var(--gradient-hint), transparent 52%),
-    radial-gradient(circle at 50% 100%, var(--gradient-end), transparent 60%),
-    linear-gradient(145deg, color-mix(in srgb, var(--tint-blue) 32%, transparent), transparent 65%),
-    conic-gradient(from 140deg at 70% 30%, color-mix(in srgb, var(--tint-purple) 28%, transparent), transparent 45%),
+    radial-gradient(160% 130% at 6% 12%, color-mix(in srgb, var(--ios26-sky) 70%, transparent), transparent 58%),
+    radial-gradient(140% 120% at 92% 0%, color-mix(in srgb, var(--ios26-iris) 85%, transparent), transparent 60%),
+    radial-gradient(130% 130% at 70% 92%, color-mix(in srgb, var(--ios26-sunset) 75%, transparent), transparent 62%),
+    conic-gradient(from 120deg at 52% 46%, color-mix(in srgb, var(--tint-blue) 36%, var(--tint-purple) 32%), transparent 54%),
+    linear-gradient(145deg, color-mix(in srgb, var(--tint-soft) 70%, var(--background) 30%), var(--background)),
     var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, Arial, Helvetica, sans-serif;
@@ -110,6 +118,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   position: relative;
+  background-attachment: fixed;
 }
 
 body::before {
@@ -117,13 +126,18 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.78;
+  opacity: 0.9;
   background:
-    radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.28), transparent 60%),
-    radial-gradient(circle at 80% 20%, rgba(37, 99, 235, 0.14), transparent 55%),
-    radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.12), transparent 55%);
+    radial-gradient(80% 72% at 18% 76%, color-mix(in srgb, var(--ios26-foam) 80%, transparent), transparent 60%),
+    radial-gradient(90% 70% at 80% 28%, color-mix(in srgb, var(--ios26-iris) 88%, transparent), transparent 68%),
+    radial-gradient(75% 68% at 44% 16%, color-mix(in srgb, var(--ios26-sky) 78%, transparent), transparent 62%);
+  background-size: 160% 160%, 150% 150%, 180% 180%;
+  background-position: 12% 78%, 86% 24%, 42% 18%;
+  filter: blur(32px) saturate(120%);
+  mix-blend-mode: screen;
   transition: opacity 0.6s var(--ease-smooth);
   z-index: -2;
+  animation: ios26-glow 32s ease-in-out infinite alternate;
 }
 
 body::after {
@@ -132,38 +146,65 @@ body::after {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 65% 25%, rgba(148, 163, 255, 0.24), transparent 45%),
-    radial-gradient(circle at 30% 10%, rgba(56, 189, 248, 0.22), transparent 50%),
-    radial-gradient(circle at 50% 75%, rgba(14, 165, 233, 0.18), transparent 52%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0)),
-    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.06), transparent 45%);
+    conic-gradient(from 140deg at 32% 32%, color-mix(in srgb, var(--ios26-iris) 85%, transparent), transparent 64%),
+    conic-gradient(from 220deg at 78% 68%, color-mix(in srgb, var(--ios26-sky) 78%, transparent), transparent 62%),
+    radial-gradient(140% 110% at 52% 50%, color-mix(in srgb, var(--ios26-foam) 55%, transparent), transparent 68%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+  background-size: 140% 140%, 150% 150%, 160% 160%, 100% 100%;
+  background-position: 10% 26%, 84% 72%, 52% 48%, 50% 52%;
   mix-blend-mode: screen;
-  opacity: 0.65;
+  opacity: 0.85;
+  filter: saturate(115%);
   z-index: -3;
-  animation: aurora-pan 18s ease-in-out infinite alternate;
+  animation: aurora-pan 28s ease-in-out infinite alternate;
 }
 
 html.dark body::before {
-  opacity: 0.92;
+  opacity: 0.95;
   background:
-    radial-gradient(circle at 18% 82%, rgba(37, 99, 235, 0.32), transparent 62%),
-    radial-gradient(circle at 84% 16%, rgba(14, 165, 233, 0.22), transparent 58%),
-    radial-gradient(circle at 22% 28%, rgba(56, 189, 248, 0.16), transparent 58%),
-    radial-gradient(circle at 72% 68%, rgba(139, 92, 246, 0.18), transparent 60%);
+    radial-gradient(80% 70% at 16% 82%, color-mix(in srgb, var(--ios26-sky) 90%, transparent), transparent 62%),
+    radial-gradient(90% 72% at 82% 30%, color-mix(in srgb, var(--ios26-iris) 95%, transparent), transparent 68%),
+    radial-gradient(70% 60% at 44% 20%, color-mix(in srgb, var(--ai-iris) 32%, transparent), transparent 65%);
+}
+
+html.dark body::after {
+  opacity: 0.9;
+  filter: saturate(125%);
 }
 
 @keyframes aurora-pan {
   0% {
-    transform: translate3d(-3%, -2%, 0) scale(1);
-    filter: hue-rotate(0deg);
+    background-position: 10% 26%, 84% 72%, 52% 48%, 50% 52%;
+    filter: hue-rotate(0deg) saturate(110%);
+    transform: translate3d(-1%, -1%, 0) scale(1);
   }
   50% {
-    transform: translate3d(2%, 3%, 0) scale(1.02);
-    filter: hue-rotate(6deg);
+    background-position: 18% 38%, 76% 60%, 50% 54%, 50% 48%;
+    filter: hue-rotate(10deg) saturate(120%);
+    transform: translate3d(1%, 2%, 0) scale(1.015);
   }
   100% {
-    transform: translate3d(-4%, 4%, 0) scale(1.04);
-    filter: hue-rotate(-6deg);
+    background-position: 14% 64%, 70% 78%, 48% 60%, 50% 50%;
+    filter: hue-rotate(-8deg) saturate(115%);
+    transform: translate3d(-1%, 1%, 0) scale(1.02);
+  }
+}
+
+@keyframes ios26-glow {
+  0% {
+    background-position: 12% 78%, 86% 24%, 42% 18%;
+    transform: translate3d(-1%, -1%, 0) scale(1);
+    opacity: 0.88;
+  }
+  50% {
+    background-position: 16% 70%, 80% 28%, 46% 22%;
+    transform: translate3d(1%, 1%, 0) scale(1.025);
+    opacity: 0.95;
+  }
+  100% {
+    background-position: 10% 82%, 90% 34%, 40% 16%;
+    transform: translate3d(-1%, 0.5%, 0) scale(1.015);
+    opacity: 0.9;
   }
 }
 
@@ -234,6 +275,11 @@ html.dark body::before {
 @media (prefers-reduced-motion: reduce) {
   .ios-animate-fade,
   .ios-animate-up {
+    animation: none;
+  }
+
+  body::before,
+  body::after {
     animation: none;
   }
 

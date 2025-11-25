@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+﻿import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
@@ -19,6 +19,7 @@ type TokenMap = Record<string, string | number | unknown[]>;
 
 const chartWidth = 800;
 const chartHeight = 400;
+const chartPixelRatio = 2; // render at higher density for crisper labels
 const whiteBackgroundPlugin: Plugin<"bar"> = {
   id: "customCanvasBackgroundColor",
   beforeDraw: (chart, _args, opts) => {
@@ -33,6 +34,9 @@ const whiteBackgroundPlugin: Plugin<"bar"> = {
 ChartJS.register(...registerables, whiteBackgroundPlugin);
 ChartJS.defaults.responsive = false;
 ChartJS.defaults.animation = false;
+ChartJS.defaults.devicePixelRatio = chartPixelRatio;
+ChartJS.defaults.font.size = 14;
+ChartJS.defaults.font.family = 'Arial, "Helvetica Neue", sans-serif';
 
 type MailerConfig = {
   host: string;
@@ -127,17 +131,41 @@ async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Buffer> {
   }
 }
 
-function buildFlashEmailHtmlFromPng(tokens: TokenMap): string {
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "\"":
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+}
+
+function buildFlashEmailHtmlFromPng(tokens: TokenMap, customBody?: string): string {
   const propertyName =
     (tokens.PROPERTYDISPLAYNAME as string) ||
     (tokens.FACILITYSHORTNAME as string) ||
     (tokens.FACILITYCODE as string) ||
     "";
   const reportDate = (tokens.ASOFDATE as string) || "";
+  const bodySection =
+    customBody && customBody.trim()
+      ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(customBody.trim()).replace(/\n/g, "<br />")}</div>`
+      : "";
   return `
     <html>
-      <body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
-        <h2 style="margin: 0 0 4px 0;">Daily Flash – ${propertyName}</h2>
+      <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
+        <h2 style="margin: 0 0 4px 0;">Daily Flash — ${propertyName}</h2>
+        ${bodySection}
         <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
         <p style="margin-top: 16px; font-size: 11px; color: #666;">
           Full PowerPoint attached for download.
@@ -240,6 +268,7 @@ async function sendFlashReportEmail(
   asOfDate: string,
   tokens: TokenMap,
   slidePngBuffer: Buffer | null,
+  customBody: string,
 ): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
@@ -267,8 +296,8 @@ async function sendFlashReportEmail(
       property.name ||
       property.id;
     const reportDate = (tokens.ASOFDATE as string) || asOfDate || "Latest";
-    const subject = `Daily Flash – ${propertyLabel} (${reportDate})`;
-    const html = buildFlashEmailHtmlFromPng(tokens);
+    const subject = `Daily Flash — ${propertyLabel} (${reportDate})`;
+    const html = buildFlashEmailHtmlFromPng(tokens, customBody);
     await transporter.sendMail({
       from: mailConfig.from,
       to: recipients,
@@ -307,6 +336,7 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const propertyId = String(formData.get("propertyId") ?? "");
   const asOfDate = String(formData.get("asOfDate") ?? "");
+  const emailBody = String(formData.get("emailBody") ?? "");
   const file = formData.get("file");
 
   if (!propertyId) {
@@ -388,7 +418,7 @@ export async function POST(req: NextRequest) {
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
 
   try {
-    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer);
+    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer, emailBody);
   } catch (err) {
     console.error("[flash-report/manual] email delivery failed (non-fatal)", err);
   }
@@ -757,3 +787,6 @@ async function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<st
 function normalizeKey(key: string): string {
   return stripHiddenTokenCharacters(key).replace(/\s+/g, "").toUpperCase();
 }
+
+
+

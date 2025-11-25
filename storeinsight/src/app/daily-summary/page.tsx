@@ -85,6 +85,7 @@ export default function DailySummaryPage() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [manualEmailBody, setManualEmailBody] = useState('');
 
   const toggleButtonClass = (active: boolean): string =>
     [
@@ -378,6 +379,9 @@ export default function DailySummaryPage() {
       form.append('propertyId', selectedPropertyId);
       form.append('asOfDate', asOfDate);
       form.append('file', uploadFile);
+      if (manualEmailBody.trim()) {
+        form.append('emailBody', manualEmailBody.trim());
+      }
 
       const res = await fetch('/api/flash-report/manual', {
         method: 'POST',
@@ -703,8 +707,7 @@ export default function DailySummaryPage() {
             <div className="mb-4 space-y-1">
               <h2 className="text-lg font-semibold">Manual Daily Flash Report</h2>
               <p className="text-sm text-[color:var(--text-secondary)]">
-                Upload a Management Summary Report XLSX, fill the template, and download the Daily Flash PPTX.
-                No emails are sent in this flow.
+                Upload a Management Summary Report XLSX, fill the template, and download/email the Daily Flash PPTX.
               </p>
             </div>
 
@@ -779,6 +782,19 @@ export default function DailySummaryPage() {
                     <span className="text-xs text-[color:var(--text-muted)]">Only one .xlsx file is needed.</span>
                   )}
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Optional email body (shown above the slide)
+                </label>
+                <textarea
+                  rows={3}
+                  value={manualEmailBody}
+                  onChange={(e) => setManualEmailBody(e.target.value)}
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                  placeholder="Add a short note for owners (optional)"
+                />
               </div>
 
               <button
