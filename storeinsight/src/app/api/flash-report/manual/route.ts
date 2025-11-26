@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import PizZip from "pizzip";
 import nodemailer from "nodemailer";
+import type Mail from "nodemailer/lib/mailer";
 import { createCanvas } from "canvas";
 import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin } from "chart.js";
 import { listProperties } from "@/app/api/daily-summary/store";
@@ -126,6 +127,42 @@ async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Buffer> {
     }
     const pngBuffer = await fsp.readFile(path.join(tempDir, pngName));
     return pngBuffer;
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function convertPptxBufferToPdfLocal(pptBuffer: Buffer): Promise<Buffer> {
+  if (!pptBuffer || pptBuffer.length === 0) {
+    throw new Error("PPTX buffer is empty");
+  }
+  const sofficePath = resolveSofficePath();
+  console.info("[flash-report/manual] converting pptx to pdf with soffice", sofficePath);
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "flash-pdf-"));
+  const pptPath = path.join(tempDir, "flash.pptx");
+  try {
+    await fsp.writeFile(pptPath, pptBuffer);
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        sofficePath,
+        ["--headless", "--convert-to", "pdf", "--outdir", tempDir, pptPath],
+        (error, stdout, stderr) => {
+          if (error) {
+            error.message += `; stdout: ${stdout}; stderr: ${stderr}`;
+            reject(error);
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+    const files = await fsp.readdir(tempDir);
+    const pdfName = files.find((f) => f.toLowerCase().endsWith(".pdf"));
+    if (!pdfName) {
+      throw new Error("LibreOffice convert did not produce a PDF");
+    }
+    const pdfBuffer = await fsp.readFile(path.join(tempDir, pdfName));
+    return pdfBuffer;
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -268,6 +305,7 @@ async function sendFlashReportEmail(
   asOfDate: string,
   tokens: TokenMap,
   slidePngBuffer: Buffer | null,
+  pdfBuffer: Buffer | null,
   customBody: string,
 ): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
@@ -296,29 +334,36 @@ async function sendFlashReportEmail(
       property.name ||
       property.id;
     const reportDate = (tokens.ASOFDATE as string) || asOfDate || "Latest";
-    const subject = `Daily Flash — ${propertyLabel} (${reportDate})`;
+    const subject = `Daily Flash - ${propertyLabel} (${reportDate})`;
     const html = buildFlashEmailHtmlFromPng(tokens, customBody);
+    const pdfFilename = pptxFilename.replace(/\.pptx$/i, ".pdf");
+    const attachments: Mail.Attachment[] = [];
+    if (pdfBuffer) {
+      attachments.push({
+        filename: pdfFilename,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      });
+    } else {
+      attachments.push({
+        filename: pptxFilename,
+        content: pptxBuffer,
+        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      });
+    }
+    if (slidePngBuffer) {
+      attachments.push({
+        filename: "daily-flash-slide.png",
+        content: slidePngBuffer,
+        cid: "flash-slide",
+      });
+    }
     await transporter.sendMail({
       from: mailConfig.from,
       to: recipients,
       subject,
       html,
-      attachments: [
-        {
-          filename: pptxFilename,
-          content: pptxBuffer,
-          contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        },
-        ...(slidePngBuffer
-          ? [
-              {
-                filename: "daily-flash-slide.png",
-                content: slidePngBuffer,
-                cid: "flash-slide",
-              },
-            ]
-          : []),
-      ],
+      attachments,
     });
     console.info("[flash-report/manual] emailed flash report", {
       propertyId: property.id,
@@ -408,17 +453,23 @@ export async function POST(req: NextRequest) {
   scrubHiddenCharactersFromZip(zip);
   const rendered = await renderTokensIntoZip(zip, tokens);
   let slidePngBuffer: Buffer | null = null;
+  let pdfBuffer: Buffer | null = null;
   try {
     slidePngBuffer = await convertPptxBufferToPngLocal(rendered);
   } catch (err) {
     console.error("[flash-report/manual] unable to convert PPTX to PNG (non-fatal)", err);
+  }
+  try {
+    pdfBuffer = await convertPptxBufferToPdfLocal(rendered);
+  } catch (err) {
+    console.error("[flash-report/manual] unable to convert PPTX to PDF (non-fatal, will attach PPTX)", err);
   }
 
   const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
 
   try {
-    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer, emailBody);
+    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer, pdfBuffer, emailBody);
   } catch (err) {
     console.error("[flash-report/manual] email delivery failed (non-fatal)", err);
   }
@@ -787,6 +838,4 @@ async function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<st
 function normalizeKey(key: string): string {
   return stripHiddenTokenCharacters(key).replace(/\s+/g, "").toUpperCase();
 }
-
-
 
