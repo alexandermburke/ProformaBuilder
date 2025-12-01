@@ -75,7 +75,11 @@ export default function DailySummaryPage() {
   const [deleting, setDeleting] = useState(false);
   const [sortKey, setSortKey] = useState<'name' | 'tenantPropertyId' | 'sendTimeLocal' | 'enabled'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [asOfDate, setAsOfDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [asOfDate, setAsOfDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  });
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [propertyMessage, setPropertyMessage] = useState<string | null>(null);
   const [manualMessage, setManualMessage] = useState<string | null>(null);
@@ -87,6 +91,14 @@ export default function DailySummaryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [manualEmailBody, setManualEmailBody] = useState('');
   const propertiesRef = useRef<PropertyConfig[]>([]);
+  const parsedOwnerEmails = useMemo(
+    () =>
+      formState.ownerEmails
+        .split(',')
+        .map((email) => email.trim())
+        .filter((email) => email.length > 0 && email.includes('@')),
+    [formState.ownerEmails],
+  );
 
   const toggleButtonClass = (active: boolean): string =>
     [
@@ -927,17 +939,35 @@ export default function DailySummaryPage() {
                   <span className="text-sm font-semibold text-[color:var(--text-secondary)]">Enable daily emails</span>
                 </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                  Owner emails (comma-separated)
-                </label>
-                <input
-                  name="ownerEmails"
-                  value={formState.ownerEmails}
-                  onChange={handleFormChange}
-                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
-                  placeholder="owner@example.com, ops@example.com"
-                />
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    Owner emails (comma-separated)
+                  </label>
+                  <input
+                    name="ownerEmails"
+                    value={formState.ownerEmails}
+                    onChange={handleFormChange}
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                    placeholder="owner@example.com, ops@example.com"
+                  />
+                </div>
+                <div className="flex flex-col gap-2 rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">Parsed recipients</span>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {parsedOwnerEmails.map((email) => (
+                      <span
+                        key={email}
+                        className="rounded-full bg-[rgba(37,99,235,0.12)] px-3 py-1 text-xs font-semibold text-[color:var(--accent-strong)]"
+                      >
+                        {email}
+                      </span>
+                    ))}
+                    {parsedOwnerEmails.length === 0 && (
+                      <span className="text-xs text-[color:var(--text-muted)]">No recipients parsed yet.</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center gap-3 pt-2">
