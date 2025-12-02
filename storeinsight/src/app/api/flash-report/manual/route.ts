@@ -18,9 +18,9 @@ export const runtime = "nodejs";
 
 type TokenMap = Record<string, string | number | unknown[]>;
 
-const chartWidth = 800;
-const chartHeight = 400;
-const chartPixelRatio = 2; // render at higher density for crisper labels
+const chartWidth = 1200;
+const chartHeight = 650;
+const chartPixelRatio = 2;
 const whiteBackgroundPlugin: Plugin<"bar"> = {
   id: "customCanvasBackgroundColor",
   beforeDraw: (chart, _args, opts) => {
@@ -36,8 +36,9 @@ ChartJS.register(...registerables, whiteBackgroundPlugin);
 ChartJS.defaults.responsive = false;
 ChartJS.defaults.animation = false;
 ChartJS.defaults.devicePixelRatio = chartPixelRatio;
-ChartJS.defaults.font.size = 14;
+ChartJS.defaults.font.size = 18;
 ChartJS.defaults.font.family = 'Arial, "Helvetica Neue", sans-serif';
+ChartJS.defaults.color = "#111827";
 
 type MailerConfig = {
   host: string;
@@ -91,7 +92,7 @@ function renderChartBuffer(configuration: ChartConfiguration<"bar", number[], st
   const canvas = createCanvas(chartWidth, chartHeight);
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, 0, chartWidth, chartHeight);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   new ChartJS(ctx as unknown as CanvasRenderingContext2D, configuration);
   return mimeType === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg");
 }
@@ -205,7 +206,7 @@ function buildFlashEmailHtmlFromPng(tokens: TokenMap, customBody?: string): stri
         ${bodySection}
         <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
         <p style="margin-top: 16px; font-size: 11px; color: #666;">
-          Full PowerPoint attached for download.
+          Full PDF attached for download.
         </p>
       </body>
     </html>
@@ -235,6 +236,7 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
           data,
           backgroundColor: "#3b52a1",
           borderRadius: 4,
+          borderWidth: 1,
         },
       ],
     },
@@ -244,13 +246,20 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
         legend: { display: false },
         title: { display: false },
       },
+      layout: { padding: { top: 20, right: 24, bottom: 20, left: 50 } },
       scales: {
         y: {
           beginAtZero: true,
           title: { display: true, text: "Dollars ($)" },
+          ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 8 },
+          grid: { lineWidth: 1, color: "rgba(0,0,0,0.1)" },
+          border: { display: true, color: "#111827" },
         },
         x: {
           title: { display: true, text: "Days" },
+          ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 6 },
+          grid: { lineWidth: 1, color: "rgba(0,0,0,0.08)" },
+          border: { display: true, color: "#111827" },
         },
       },
     },
@@ -260,7 +269,7 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
 }
 
 async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
-  const labels = ["Sqft", "Spaces", "Econ"];
+  const labels = ["Sqft", "Spaces", "Projected"];
   const data = [tokens.OCCPCT_SQFT, tokens.OCCPCT_SPACES, tokens.OCCPCT_ECON].map(Number);
 
   const configuration: ChartConfiguration<"bar", number[], string> = {
@@ -273,6 +282,7 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
           data,
           backgroundColor: "#4a4a4a",
           borderRadius: 4,
+          borderWidth: 1,
         },
       ],
     },
@@ -282,14 +292,22 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
         legend: { display: false },
         title: { display: false },
       },
+      layout: { padding: { top: 40, right: 32, bottom: 24, left: 60 } },
       scales: {
         y: {
           beginAtZero: true,
-          max: 100,
+          suggestedMax: 110,
+          max: 110,
           title: { display: true, text: "Percent" },
+          ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 8 },
+          grid: { lineWidth: 1, color: "rgba(0,0,0,0.1)" },
+          border: { display: true, color: "#111827" },
         },
         x: {
           title: { display: true, text: "Type" },
+          ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 6 },
+          grid: { lineWidth: 1, color: "rgba(0,0,0,0.08)" },
+          border: { display: true, color: "#111827" },
         },
       },
     },
@@ -532,15 +550,16 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     ARAGING_361_PLUS: formatToTwo(readNumber(msrSheet, "L79", "AR Aging 361+ (MSR!L79)")),
   };
 
-    const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
-    const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
-    const gpr = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
-    const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
-    const grossPotRentSf = readNumber(msrSheet, "N26", "Gross potential rent per SF (MSR!N26)");
-    const effPotRent = readNumber(msrSheet, "I26", "Effective potential rent (MSR!I26)");
-    const effRentSf = readNumber(msrSheet, "K26", "Effective rent per SF (MSR!K26)");
-    const avgSfVaca = readNumber(msrSheet, "L38", "Average SF Vacant (MSR!L38)");
-    const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
+  const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
+  const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
+  const gpr = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
+  const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
+  const grossPotRentSf = readNumber(msrSheet, "N26", "Gross potential rent per SF (MSR!N26)");
+  const grossVacantRevenue = readNumber(msrSheet, "I28", "Gross Vacant Revenue (MSR!I28)");
+  const avgSfVaca = readNumber(msrSheet, "L38", "Average SF Vacant (MSR!L38)");
+  const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
+  const effPotRent = projRent + grossVacantRevenue;
+  const effRentSf = totalRsf > 0 ? effPotRent / totalRsf : 0;
 
   return {
     PROPERTYDISPLAYNAME: propertyDisplayName,

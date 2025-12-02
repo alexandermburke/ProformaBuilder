@@ -1233,6 +1233,22 @@ html.dark .log-input::placeholder {
   }
 }
 
+.progress-gleam {
+  animation: progress-gleam-move 1.6s ease-in-out infinite;
+}
+
+@keyframes progress-gleam-move {
+  0% {
+    transform: translateX(-60%);
+  }
+  50% {
+    transform: translateX(40%);
+  }
+  100% {
+    transform: translateX(140%);
+  }
+}
+
 .owner-status-badge {
   display: inline-flex;
   align-items: center;

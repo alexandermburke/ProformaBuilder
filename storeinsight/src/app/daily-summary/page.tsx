@@ -99,6 +99,31 @@ export default function DailySummaryPage() {
         .filter((email) => email.length > 0 && email.includes('@')),
     [formState.ownerEmails],
   );
+  const parseMsrFilename = useCallback((name: string): { propertyLabel?: string; date?: string } => {
+    const match = name.match(/management\s+summary\s+report\s*-\s*(.+?)\s*-\s*(\d{4}-\d{2}-\d{2})/i);
+    if (!match) return {};
+    const propertyLabel = match[1]?.trim();
+    const date = match[2]?.trim();
+    return { propertyLabel, date };
+  }, []);
+
+  const autoDetectFromFile = useCallback(
+    (file: File | null | undefined, propertyList: PropertyConfig[]): { foundProperty?: PropertyConfig; date?: string } => {
+      if (!file) return {};
+      const { propertyLabel, date } = parseMsrFilename(file.name);
+      if (!propertyLabel && !date) return {};
+      let found: PropertyConfig | undefined;
+      if (propertyLabel) {
+        const normalized = propertyLabel.toLowerCase();
+        found =
+          propertyList.find((p) => p.name.toLowerCase() === normalized) ||
+          propertyList.find((p) => p.tenantPropertyId.toLowerCase() === normalized) ||
+          propertyList.find((p) => p.id.toLowerCase() === normalized);
+      }
+      return { foundProperty: found, date };
+    },
+    [parseMsrFilename],
+  );
 
   const toggleButtonClass = (active: boolean): string =>
     [
@@ -176,6 +201,17 @@ export default function DailySummaryPage() {
     void refreshProperties();
   }, [refreshProperties]);
 
+  useEffect(() => {
+    if (!uploadFile || properties.length === 0) return;
+    const { foundProperty, date } = autoDetectFromFile(uploadFile, properties);
+    if (foundProperty) {
+      setSelectedPropertyId(foundProperty.id);
+    }
+    if (date) {
+      setAsOfDate(date);
+    }
+  }, [uploadFile, properties, autoDetectFromFile]);
+
   const refreshCloudStatus = useCallback(async () => {
     setCloudStatusLoading(true);
     setCloudStatusMessage(null);
@@ -232,6 +268,20 @@ export default function DailySummaryPage() {
     }
     setManualMessage(null);
     setUploadFile(file);
+    const { foundProperty, date } = autoDetectFromFile(file, propertiesRef.current);
+    if (foundProperty) {
+      setSelectedPropertyId(foundProperty.id);
+    }
+    if (date) {
+      setAsOfDate(date);
+    }
+    if (foundProperty || date) {
+      setManualMessage(
+        `Detected ${foundProperty ? `"${foundProperty.name}"` : 'property'}${foundProperty && date ? ' and ' : ''}${
+          date ? `date ${date}` : ''
+        } from file name.`,
+      );
+    }
   };
 
   const handleFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -826,6 +876,12 @@ export default function DailySummaryPage() {
               >
                 {manualSubmitting ? 'Generating...' : 'Generate Daily Flash PPTX'}
               </button>
+              {manualSubmitting && (
+                <div className="relative h-2 w-full overflow-hidden rounded-full bg-[color:var(--surface-subtle)]">
+                  <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(37,99,235,0.15),rgba(125,179,255,0.3),rgba(37,99,235,0.15))]" />
+                  <div className="progress-gleam absolute left-[-50%] top-0 h-full w-1/2 rounded-full bg-[color:var(--accent)] opacity-90" />
+                </div>
+              )}
 
               {manualMessage && <p className="text-xs text-[color:var(--text-secondary)]">{manualMessage}</p>}
             </div>
