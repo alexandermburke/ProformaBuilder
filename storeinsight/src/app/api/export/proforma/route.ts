@@ -141,14 +141,13 @@ function normLabel(s: string): string {
   return s
     .toLowerCase()
     .replace(/&/g, ' and ')
-    .replace(/\([^)]*\)/g, (m) => m) // keep parentheses so exact labels still match
+    .replace(/\([^)]*\)/g, (m) => m)
     .replace(/[^\w\s&().\/-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function findRowByExact(ws: ExcelJS.Worksheet, label: string): number | null {
-  // Search B..D for safety (some templates shift label one column)
   const want = normLabel(label);
   for (let r = 1; r <= 500; r++) {
     for (let col = 2; col <= 4; col++) {
