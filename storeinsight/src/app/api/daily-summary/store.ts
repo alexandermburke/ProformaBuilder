@@ -26,8 +26,6 @@ const fallbackProperties: PropertyConfig[] = [
 
 const fallbackRunStatuses: Record<string, DailyRunStatus> = {};
 
-const useFallback = !adminDb;
-
 export async function listProperties(): Promise<PropertyConfig[]> {
   if (!adminDb) {
     return fallbackProperties;

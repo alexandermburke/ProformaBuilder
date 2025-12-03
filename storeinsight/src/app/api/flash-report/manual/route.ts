@@ -216,6 +216,9 @@ function buildFlashEmailHtmlFromPng(tokens: TokenMap, customBody?: string): stri
     (tokens.FACILITYCODE as string) ||
     "";
   const reportDate = (tokens.ASOFDATE as string) || "";
+  const dateLabel = reportDate
+    ? `<p style="margin: 4px 0 12px 0; font-size: 11px; color: #4b5563;">As of ${escapeHtml(reportDate)}</p>`
+    : "";
   const bodySection =
     customBody && customBody.trim()
       ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(customBody.trim()).replace(/\n/g, "<br />")}</div>`
@@ -224,6 +227,7 @@ function buildFlashEmailHtmlFromPng(tokens: TokenMap, customBody?: string): stri
     <html>
       <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
         <h2 style="margin: 0 0 4px 0;">Daily Flash — ${propertyName}</h2>
+        ${dateLabel}
         ${bodySection}
         <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
         <p style="margin-top: 16px; font-size: 11px; color: #666;">
@@ -612,6 +616,7 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     TOTALARALL: formatCurrency(totalArAll),
     AR30PLUS: formatCurrency(ar30Plus),
     AROVER30DAYSPCT: arOver30Pct,
+    AROVER60DAYSPCT: arOver60Pct,
     NETSQFTACTMTD: formatNumberWithCommas(netsqftmtd),
       PROJRENT: formatCurrency(projRent),
       PROJRENTPERSF: formatCurrency(projRentPerSf),

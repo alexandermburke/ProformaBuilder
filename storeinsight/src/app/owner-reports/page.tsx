@@ -443,8 +443,8 @@ export default function OwnerReportsPage() {
   const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
   const [iprcFile, setIprcFile] = useState<File | null>(null);
   const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
-  const [currentMonthOverride, setCurrentMonthOverride] = useState("");
-  const [includeCurrentMonth, setIncludeCurrentMonth] = useState(true);
+  const [currentMonthOverride] = useState("");
+  const [includeCurrentMonth] = useState(true);
   const [performanceTokens, setPerformanceTokens] = useState<OwnerPerformanceTokenValues | null>(null);
   const [performancePreview, setPerformancePreview] = useState<OwnerPerformancePreviewRow[]>([]);
   const [performanceStatus, setPerformanceStatus] = useState<{ variant: "error" | "warning"; text: string } | null>(null);
@@ -483,10 +483,11 @@ export default function OwnerReportsPage() {
         const data = (await res.json()) as PropertyConfig[];
         if (cancelled) return;
         setProperties(data);
-        if (!selectedPropertyId) {
+        setSelectedPropertyId((prev) => {
+          if (prev) return prev;
           const preferred = data.find((p) => p.enabled) ?? data[0];
-          if (preferred) setSelectedPropertyId(preferred.id);
-        }
+          return preferred ? preferred.id : prev;
+        });
       } catch (err) {
         if (cancelled) return;
         console.warn("[owner-reports] unable to load properties for email delivery", err);

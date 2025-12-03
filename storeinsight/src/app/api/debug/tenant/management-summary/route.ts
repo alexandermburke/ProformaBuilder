@@ -30,8 +30,9 @@ export async function GET(request: Request) {
     const tokens = mapManagementSummaryToTokens(summary);
 
     return NextResponse.json({ summary, tokens }, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
     console.error("Tenant management summary test failed:", err);
-    return NextResponse.json({ error: err?.message ?? "Unknown error" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Unknown error" }, { status: 500 });
   }
 }

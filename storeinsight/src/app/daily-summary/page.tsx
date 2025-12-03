@@ -6,6 +6,7 @@
 
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
@@ -1066,12 +1067,15 @@ export default function DailySummaryPage() {
                     />
                     {formState.propertyImageData ? (
                       <div className="space-y-2">
-                        <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface-subtle)]">
+                        <div className="relative h-48 w-full overflow-hidden rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface-subtle)]">
                           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.08),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(125,179,255,0.12),transparent_55%)]" />
-                          <img
+                          <Image
                             src={formState.propertyImageData}
                             alt="Property"
-                            className="relative block h-48 w-full rounded-2xl object-cover"
+                            fill
+                            sizes="(max-width: 768px) 100vw, 640px"
+                            className="rounded-2xl object-cover"
+                            unoptimized
                           />
                         </div>
                         <div className="flex items-center gap-2">
