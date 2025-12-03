@@ -151,6 +151,7 @@ export async function listRunStatusesForDate(reportDate: string): Promise<DailyR
     const data = doc.data() as {
       propertyId?: string;
       propertyName?: string;
+      msrReceived?: boolean | null;
       msrReceivedAt?: Timestamp | null;
       lastRunAt?: Timestamp | null;
       nextRunAt?: Timestamp | null;
