@@ -28,7 +28,7 @@ const isAuthorized = (req: NextRequest): boolean => {
 };
 
 // Vercel Cron example:
-// - Path: /api/cron/msr-ingest · Method: POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 0,30 4-10 * * *
+// - Path: /api/cron/msr-ingest · Method: POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 0 16 * * * (09:00 MST)
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

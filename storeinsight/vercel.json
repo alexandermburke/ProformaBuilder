@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/msr-ingest",
-      "schedule": "0 13 * * *"
+      "schedule": "0 16 * * *"
     },
     {
       "path": "/api/cron/daily-flash",
-      "schedule": "*/10 14-22 * * *"
+      "schedule": "15 16 * * *"
     }
   ]
 }
