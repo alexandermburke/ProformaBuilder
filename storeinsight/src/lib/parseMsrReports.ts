@@ -70,6 +70,7 @@ export async function parseMsrReports(options: ParseOptions = {}): Promise<Parse
   if (!firestore || !storage) {
     throw new Error('Firebase is not initialized (firestore/storage missing). Check environment variables.');
   }
+  const storageClient = storage;
 
   const outcomes: ParseOutcome[] = [];
 
@@ -89,7 +90,8 @@ export async function parseMsrReports(options: ParseOptions = {}): Promise<Parse
     if (!shouldProcess) {
       return outcomes;
     }
-    return processDoc({ docRef, data }, outcomes);
+    await processDoc({ docRef, data }, outcomes, storageClient);
+    return outcomes;
   }
 
   let query = firestore.collection('msrReports').where('parseStatus', '==', 'pending');
@@ -104,7 +106,7 @@ export async function parseMsrReports(options: ParseOptions = {}): Promise<Parse
       reportDate?: string;
       storagePath?: string;
     };
-    await processDoc({ docRef: doc.ref, data }, outcomes);
+    await processDoc({ docRef: doc.ref, data }, outcomes, storageClient);
   }
 
   return outcomes;
@@ -120,6 +122,7 @@ async function processDoc(
     };
   },
   outcomes: ParseOutcome[],
+  storageClient: NonNullable<typeof storage>,
 ): Promise<void> {
   const { docRef, data } = input;
   const docId = docRef.id;
@@ -142,7 +145,7 @@ async function processDoc(
   }
 
   try {
-    const [buffer] = await storage.file(storagePath).download();
+    const [buffer] = await storageClient.file(storagePath).download();
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const { tokens, summary } = mapWorkbookToTokens(workbook);
 

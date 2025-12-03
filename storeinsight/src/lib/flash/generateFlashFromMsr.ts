@@ -49,11 +49,15 @@ export type FlashGenerationResult = {
 const DEFAULT_TEMPLATE = path.join(process.cwd(), "public", "FLASHTEMPLATE.pptx");
 
 export async function generateFlashFromMsr(
-  msrBuffer: Buffer,
+  msrBuffer: ArrayBuffer | ArrayBufferView,
   options: FlashGenerationOptions,
 ): Promise<FlashGenerationResult> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(msrBuffer);
+  const workbookBuffer =
+    msrBuffer instanceof ArrayBuffer
+      ? msrBuffer
+      : new Uint8Array(msrBuffer.buffer, msrBuffer.byteOffset, msrBuffer.byteLength).slice().buffer;
+  await workbook.xlsx.load(workbookBuffer);
 
   const msrSheet = workbook.getWorksheet("MSR");
   const delinquenciesSheet = workbook.getWorksheet("Delinquencies");

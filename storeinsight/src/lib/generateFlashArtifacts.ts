@@ -47,14 +47,18 @@ const renderPptx = async (templatePath: string, tokens: Record<string, string | 
 };
 
 const convertWithLibreService = async (
-  pptxBuffer: Buffer,
+  pptxBuffer: ArrayBuffer | ArrayBufferView,
   format: "pdf" | "png",
   convertUrl: string,
 ): Promise<Buffer> => {
+  const pptxArrayBuffer: ArrayBuffer =
+    pptxBuffer instanceof ArrayBuffer
+      ? pptxBuffer
+      : new Uint8Array(pptxBuffer.buffer, pptxBuffer.byteOffset, pptxBuffer.byteLength).slice().buffer;
   const form = new FormData();
   form.append(
     "file",
-    new Blob([pptxBuffer], {
+    new Blob([pptxArrayBuffer], {
       type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     }),
     "flash.pptx",
