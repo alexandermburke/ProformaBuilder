@@ -162,7 +162,7 @@ export async function listRunStatusesForDate(reportDate: string): Promise<DailyR
     return {
       propertyCode: doc.id,
       propertyId: data.propertyId ?? doc.id,
-      propertyName: data.propertyName ?? null,
+      propertyName: data.propertyName ?? undefined,
       reportDate,
       msrReceived: data.msrReceived ?? null,
       msrReceivedAt: formatTimestamp(data.msrReceivedAt),
