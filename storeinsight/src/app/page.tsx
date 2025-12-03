@@ -88,7 +88,7 @@ const HERO_STATS = [
   },
 ];
 
-const PLATFORM_VERSION = '0.8.1';
+const PLATFORM_VERSION = '0.8.8';
 const NEXT_VERSION = '15.5.4';
 
 const iconToneLight: Record<FeatureTone, string> = {
