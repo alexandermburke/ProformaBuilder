@@ -411,7 +411,7 @@ export default function DevMsrPage() {
           </div>
           {useAllEnabled && (
             <p className="mt-2 text-[11px] text-[color:var(--text-muted,#9ca3af)]">
-              Selections are ignored while "Use all enabled properties" is on.
+              Selections are ignored while &quot;Use all enabled properties&quot; is on.
             </p>
           )}
         </div>
