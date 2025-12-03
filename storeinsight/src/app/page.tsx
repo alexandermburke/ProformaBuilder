@@ -83,7 +83,7 @@ const HERO_STATS = [
   },
   {
     label: 'Last update',
-    value: 'Nov, 18th',
+    value: 'Dec, 3rd',
     detail: 'Audit surface refresh',
   },
 ];
