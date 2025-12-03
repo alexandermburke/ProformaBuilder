@@ -21,6 +21,7 @@ type PropertyFormState = {
   sendTimeLocal: string;
   ownerEmails: string;
   enabled: boolean;
+  propertyImageData: string;
 };
 
 const DEFAULT_TIME = '08:00';
@@ -31,6 +32,7 @@ const createEmptyForm = (): PropertyFormState => ({
   sendTimeLocal: DEFAULT_TIME,
   ownerEmails: '',
   enabled: true,
+  propertyImageData: '',
 });
 
 const statusMeta: Record<FlashStatus, { label: string; tone?: 'success' | 'warning' | 'danger'; dotClass: string }> = {
@@ -309,6 +311,18 @@ export default function DailySummaryPage() {
     if (isDraggingFile) setIsDraggingFile(false);
   };
 
+  const handleImageUpload = async (file: File | null | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        setFormState((prev) => ({ ...prev, propertyImageData: result }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   useEffect(() => {
     if (!toast) return;
     const id = window.setTimeout(() => setToast(null), 4000);
@@ -324,6 +338,7 @@ export default function DailySummaryPage() {
         sendTimeLocal: prop.sendTimeLocal,
         ownerEmails: prop.ownerEmails.join(', '),
         enabled: prop.enabled,
+        propertyImageData: prop.propertyImageData ?? '',
       });
     } else {
       setFormState(createEmptyForm());
@@ -360,6 +375,7 @@ export default function DailySummaryPage() {
           .map((email) => email.trim())
           .filter(Boolean),
         enabled: draft.enabled,
+        propertyImageData: draft.propertyImageData || '',
       };
 
       const res = await fetch('/api/daily-summary/properties', {
@@ -907,7 +923,7 @@ export default function DailySummaryPage() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm">
-          <div className="ios-card ios-animate-up w-full max-w-md space-y-6 p-6">
+          <div className={`ios-card ios-animate-up w-full space-y-6 p-6 ${formState.propertyImageData ? 'max-w-4xl' : 'max-w-md'}`}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-semibold">{formState.id ? 'Edit property' : 'Add property'}</h3>
@@ -1021,6 +1037,60 @@ export default function DailySummaryPage() {
                     ))}
                     {parsedOwnerEmails.length === 0 && (
                       <span className="text-xs text-[color:var(--text-muted)]">No recipients parsed yet.</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    Property image (PNG/JPG)
+                  </label>
+                  <div className="flex flex-col gap-2 rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 p-3 shadow-inner">
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        className="ios-button px-3 py-2 text-xs"
+                        data-variant="secondary"
+                        onClick={() => document.getElementById('property-image-input')?.click()}
+                      >
+                        Upload image
+                      </button>
+                      <span className="text-[11px] text-[color:var(--text-muted)]">Appears in property config</span>
+                    </div>
+                    <input
+                      id="property-image-input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      className="hidden"
+                      onChange={(e) => void handleImageUpload(e.target.files?.[0] ?? null)}
+                    />
+                    {formState.propertyImageData ? (
+                      <div className="space-y-2">
+                        <div className="relative overflow-hidden rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface-subtle)]">
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(37,99,235,0.08),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(125,179,255,0.12),transparent_55%)]" />
+                          <img
+                            src={formState.propertyImageData}
+                            alt="Property"
+                            className="relative block h-48 w-full rounded-2xl object-cover"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="ios-button px-2 py-1 text-[11px]"
+                            data-variant="secondary"
+                            onClick={() => {
+                              setFormState((prev) => ({ ...prev, propertyImageData: '' }));
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-32 items-center justify-center rounded-2xl border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface-subtle)] text-[12px] text-[color:var(--text-muted)]">
+                        No image selected
+                      </div>
                     )}
                   </div>
                 </div>

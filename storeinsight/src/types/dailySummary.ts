@@ -7,6 +7,7 @@ export type PropertyConfig = {
   ownerEmails: string[];
   enabled: boolean;
   facilityOpenDate?: string;
+  propertyImageData?: string;
 };
 
 export type DailyRunStatus = {

@@ -169,6 +169,27 @@ async function convertPptxBufferToPdfLocal(pptBuffer: Buffer): Promise<Buffer> {
   }
 }
 
+async function loadImageBufferFromData(data: string): Promise<Buffer | null> {
+  if (!data) return null;
+  try {
+    if (data.startsWith("http://") || data.startsWith("https://")) {
+      const res = await fetch(data);
+      if (!res.ok) return null;
+      const arrayBuffer = await res.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+    if (data.startsWith("data:")) {
+      const base64 = data.split(",")[1];
+      if (!base64) return null;
+      return Buffer.from(base64, "base64");
+    }
+    return Buffer.from(data, "base64");
+  } catch (err) {
+    console.error("[flash-report/manual] unable to load property image", err);
+    return null;
+  }
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -466,6 +487,12 @@ export async function POST(req: NextRequest) {
   }
 
   const zip = new PizZip(templateBuffer);
+  if (property.propertyImageData) {
+    const heroImage = await loadImageBufferFromData(property.propertyImageData);
+    if (heroImage) {
+      zip.file("ppt/media/image2.jpeg", heroImage);
+    }
+  }
   zip.file("ppt/media/image3.jpeg", arAgingChartJpeg);
   zip.file("ppt/media/image4.jpeg", occupancyChartJpeg);
   scrubHiddenCharactersFromZip(zip);

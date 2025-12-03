@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
       timezone: body.timezone,
       ownerEmails,
       enabled: body.enabled,
+      propertyImageData: body.propertyImageData,
+      facilityOpenDate: body.facilityOpenDate,
     };
     const saved = await upsertProperty(payload);
     console.info("[daily-summary] saved property config", saved);

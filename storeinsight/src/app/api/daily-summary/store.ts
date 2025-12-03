@@ -20,6 +20,7 @@ const fallbackProperties: PropertyConfig[] = [
     ownerEmails: ['ownerA@store.com', 'ops@store.com'],
     enabled: true,
     facilityOpenDate: 'January 2020',
+    propertyImageData: '',
   },
 ];
 
@@ -43,6 +44,7 @@ export async function listProperties(): Promise<PropertyConfig[]> {
       ownerEmails: Array.isArray(data.ownerEmails) ? data.ownerEmails : [],
       enabled: Boolean(data.enabled),
       facilityOpenDate: data.FACILITYOPENDATE ?? data.facilityOpenDate ?? '',
+      propertyImageData: data.propertyImageData ?? '',
     } satisfies PropertyConfig;
   });
 }
@@ -60,6 +62,7 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
       enabled: input.enabled ?? true,
       facilityOpenDate: input.facilityOpenDate ?? '',
+      propertyImageData: input.propertyImageData ?? '',
     };
     if (existingIndex >= 0) {
       fallbackProperties[existingIndex] = payload;
@@ -83,6 +86,7 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
     enabled: input.enabled ?? true,
     facilityOpenDate: input.facilityOpenDate ?? '',
+    propertyImageData: input.propertyImageData ?? '',
   };
 
   await docRef.set(payload, { merge: true });
