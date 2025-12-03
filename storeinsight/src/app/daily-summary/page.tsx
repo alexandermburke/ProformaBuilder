@@ -411,6 +411,7 @@ export default function DailySummaryPage() {
       sendTimeLocal: prop.sendTimeLocal,
       ownerEmails: prop.ownerEmails.join(', '),
       enabled: !prop.enabled,
+      propertyImageData: prop.propertyImageData ?? '',
     };
     await persistProperty(draft);
   };
