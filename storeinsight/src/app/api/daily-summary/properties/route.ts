@@ -24,12 +24,14 @@ export async function POST(req: NextRequest) {
         : Array.isArray(body.ownerEmails)
           ? body.ownerEmails
           : [];
+    const propertyId = (body.propertyId ?? body.tenantPropertyId ?? body.id ?? body.propertyCode ?? "").toString().trim();
+    const propertyCode = (body.propertyCode ?? "").toString().trim();
     const payload: Partial<PropertyConfig> = {
-      id: body.id,
-      propertyCode: body.propertyCode ?? body.id ?? body.tenantPropertyId,
-      propertyId: body.propertyId ?? body.tenantPropertyId,
+      id: body.id ?? (propertyId || undefined),
+      propertyCode: propertyCode || propertyId,
+      propertyId: propertyId || propertyCode,
       name: body.name,
-      tenantPropertyId: body.tenantPropertyId,
+      tenantPropertyId: body.tenantPropertyId ?? propertyId,
       sendTimeLocal: body.sendTimeLocal ?? body.sendTimeMst,
       sendTimeMst: body.sendTimeMst ?? body.sendTimeLocal,
       timezone: body.timezone,

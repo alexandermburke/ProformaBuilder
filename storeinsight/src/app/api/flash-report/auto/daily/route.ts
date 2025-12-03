@@ -17,11 +17,11 @@ type MsrDoc = {
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
-const normalizeCode = (value: string | undefined | null): string =>
-  (value ?? "").toString().trim();
+const normalizeCode = (value: string | undefined | null): string => (value ?? "").toString().trim();
+const normalizeSlug = (value: string | undefined | null): string => normalizeCode(value).toLowerCase();
 
 const resolvePropertyCode = (property: PropertyConfig): string =>
-  normalizeCode(property.propertyCode || property.id || property.tenantPropertyId);
+  normalizeCode(property.propertyCode) || normalizeCode(property.tenantPropertyId) || normalizeCode(property.id);
 
 const getCurrentMstTime = (): string => {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -84,9 +84,9 @@ export async function POST(req: NextRequest) {
   }
 
   const baseProps = properties.filter((prop) => {
-    const code = resolvePropertyCode(prop);
+    const code = normalizeSlug(resolvePropertyCode(prop));
     if (!code) return false;
-    if (requestedCodes && !requestedCodes.has(code.toLowerCase())) return false;
+    if (requestedCodes && !requestedCodes.has(code)) return false;
     if (!requestedCodes && !prop.enabled) return false; // default: only enabled properties
     if (requestedCodes && (sendEmails || respectSendTime) && !prop.enabled) return false; // email/scheduled respects toggle
     return true;
@@ -101,31 +101,35 @@ export async function POST(req: NextRequest) {
   msrSnap.docs.forEach((doc) => {
     const data = doc.data() as MsrDoc;
     const codeRaw = normalizeCode(data.propertyCode ?? doc.id.split("_")[0]);
-    if (!codeRaw) return;
-    msrByCode.set(codeRaw.toLowerCase(), data);
+    const slug = normalizeSlug(codeRaw);
+    if (!slug) return;
+    msrByCode.set(slug, { ...data, propertyCode: codeRaw });
   });
 
   const propertiesProcessed: Array<{
     propertyCode: string;
+    propertyId?: string;
+    propertyName?: string;
     msrPath: string;
     flashPath: string;
     emailSent: boolean;
     status: string;
   }> = [];
-  const propertiesSkipped: Array<{ propertyCode: string; reason: string }> = [];
+  const propertiesSkipped: Array<{ propertyCode: string; propertyId?: string; reason: string }> = [];
 
   for (const prop of baseProps) {
-    const propertyCode = resolvePropertyCode(prop);
+    const propertyCode = normalizeSlug(resolvePropertyCode(prop));
+    if (!propertyCode) continue;
     const propertyId = prop.propertyId ?? prop.tenantPropertyId ?? prop.id;
     const propertyName = prop.name || propertyCode;
     const sendTimeMst = prop.sendTimeMst ?? prop.sendTimeLocal;
 
     if (respectSendTime && !isTimeOnOrAfter(currentMstTime, sendTimeMst)) {
-      propertiesSkipped.push({ propertyCode, reason: "before_send_time" });
+      propertiesSkipped.push({ propertyCode, propertyId, reason: "before_send_time" });
       continue;
     }
 
-    const msrDoc = msrByCode.get(propertyCode.toLowerCase());
+    const msrDoc = msrByCode.get(propertyCode);
     if (!msrDoc || !msrDoc.storagePath) {
       await recordFlashRunResult({
         propertyCode,
@@ -136,7 +140,7 @@ export async function POST(req: NextRequest) {
         sendTimeMst,
         errorMessage: "MSR not found for reportDate",
       }).catch((err) => console.warn("[flash-report/auto] status update failed (awaiting msr)", { propertyCode, reportDate }, err));
-      propertiesSkipped.push({ propertyCode, reason: "msr_missing" });
+      propertiesSkipped.push({ propertyCode, propertyId, reason: "msr_missing" });
       continue;
     }
 
@@ -184,6 +188,8 @@ export async function POST(req: NextRequest) {
 
       propertiesProcessed.push({
         propertyCode,
+        propertyId,
+        propertyName: generation.propertyName || propertyName,
         msrPath: msrDoc.storagePath,
         flashPath,
         emailSent,

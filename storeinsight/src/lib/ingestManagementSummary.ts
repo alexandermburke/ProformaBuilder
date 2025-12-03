@@ -39,9 +39,13 @@ export async function ingestManagementSummariesFromViewer(
 
   const propertyMap = new Map<string, PropertyConfig>();
   (options?.propertyConfigs ?? []).forEach((config) => {
-    const key = (config.propertyCode ?? config.id ?? config.tenantPropertyId ?? "").toLowerCase();
-    if (key) {
-      propertyMap.set(key, config);
+    const slug = (config.propertyCode ?? "").toLowerCase();
+    const idKey = (config.propertyId ?? config.tenantPropertyId ?? config.id ?? "").toLowerCase();
+    if (slug) {
+      propertyMap.set(slug, config);
+    }
+    if (idKey && !propertyMap.has(idKey)) {
+      propertyMap.set(idKey, config);
     }
   });
 

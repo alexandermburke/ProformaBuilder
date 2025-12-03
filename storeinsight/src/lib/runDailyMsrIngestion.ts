@@ -72,8 +72,9 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
       }
 
       for (const item of ingested) {
-        properties.add(item.propertyCode);
-        reportsIngested.push({ propertyCode: item.propertyCode, reportDate: item.reportDate });
+        const propertyCode = item.propertyCode.toLowerCase();
+        properties.add(propertyCode);
+        reportsIngested.push({ propertyCode, reportDate: item.reportDate });
       }
 
       await doc.ref.update({

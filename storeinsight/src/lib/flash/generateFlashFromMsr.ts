@@ -111,7 +111,8 @@ function resolvePropertyName(tokens: TokenMap, propertyConfig?: PropertyConfig):
     (tokens.FACILITYSHORTNAME as string) ||
     (tokens.FACILITYCODE as string) ||
     "";
-  const configName = propertyConfig?.name || propertyConfig?.tenantPropertyId || propertyConfig?.id || "";
+  const configName =
+    propertyConfig?.name || propertyConfig?.propertyId || propertyConfig?.tenantPropertyId || propertyConfig?.id || "";
   const raw = tokenName || configName || "Property";
   return raw.replace(/[\\/]/g, "-").trim() || "Property";
 }

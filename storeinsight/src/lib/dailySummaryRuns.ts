@@ -9,6 +9,8 @@ type Timestamp = FirebaseFirestore.Timestamp;
 const RUN_COLLECTION = "dailySummaryRuns";
 const fallbackRuns: Record<string, DailyRunStatus> = {};
 
+const normalizeCode = (value: string): string => (value ?? "").toString().trim().toLowerCase();
+
 const formatTimestamp = (value?: Timestamp | null): string | null => {
   if (!value) return null;
   return value.toDate().toISOString();
@@ -40,11 +42,12 @@ export async function recordMsrReceipt(params: {
   propertyId?: string;
   sendTimeMst?: string;
 }): Promise<void> {
-  const key = `${params.reportDate}|${params.propertyCode}`;
+  const propertyCode = normalizeCode(params.propertyCode);
+  const key = `${params.reportDate}|${propertyCode}`;
   const nextRunAt = computeNextRunAt(params.reportDate, params.sendTimeMst);
   if (!firestore) {
     setFallbackRun(key, {
-      propertyCode: params.propertyCode,
+      propertyCode,
       propertyId: params.propertyId ?? params.propertyCode,
       propertyName: params.propertyName,
       reportDate: params.reportDate,
@@ -60,11 +63,11 @@ export async function recordMsrReceipt(params: {
     return;
   }
 
-  const docRef = runDocRef(params.reportDate, params.propertyCode);
+  const docRef = runDocRef(params.reportDate, propertyCode);
   const nextRunTs = nextRunAt ? admin.firestore.Timestamp.fromDate(nextRunAt) : null;
   await docRef.set(
     {
-      propertyCode: params.propertyCode,
+      propertyCode,
       propertyId: params.propertyId ?? params.propertyCode,
       propertyName: params.propertyName ?? null,
       reportDate: params.reportDate,
@@ -90,11 +93,12 @@ export async function recordFlashRunResult(params: {
   propertyId?: string;
   sendTimeMst?: string;
 }): Promise<void> {
-  const key = `${params.reportDate}|${params.propertyCode}`;
+  const propertyCode = normalizeCode(params.propertyCode);
+  const key = `${params.reportDate}|${propertyCode}`;
   const nextRunAt = computeNextRunAt(params.reportDate, params.sendTimeMst);
   if (!firestore) {
     setFallbackRun(key, {
-      propertyCode: params.propertyCode,
+      propertyCode,
       propertyId: params.propertyId ?? params.propertyCode,
       propertyName: params.propertyName,
       reportDate: params.reportDate,
@@ -110,7 +114,7 @@ export async function recordFlashRunResult(params: {
     return;
   }
 
-  const docRef = runDocRef(params.reportDate, params.propertyCode);
+  const docRef = runDocRef(params.reportDate, propertyCode);
   const nextRunTs = nextRunAt ? admin.firestore.Timestamp.fromDate(nextRunAt) : null;
   const errorValue =
     params.errorMessage !== undefined
@@ -119,7 +123,7 @@ export async function recordFlashRunResult(params: {
         ? null
         : admin.firestore.FieldValue.delete();
   const payload: Record<string, unknown> = {
-    propertyCode: params.propertyCode,
+    propertyCode,
     propertyId: params.propertyId ?? params.propertyCode,
     propertyName: params.propertyName ?? null,
     reportDate: params.reportDate,

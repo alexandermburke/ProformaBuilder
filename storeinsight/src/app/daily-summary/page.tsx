@@ -18,6 +18,7 @@ import type { CloudRunState, CloudStatusResponse } from '@/types/cloudStatus';
 type PropertyFormState = {
   id?: string;
   propertyCode: string;
+  propertyId: string;
   name: string;
   tenantPropertyId: string;
   sendTimeLocal: string;
@@ -31,6 +32,7 @@ const DEFAULT_TIME = '08:00';
 const createEmptyForm = (): PropertyFormState => ({
   name: '',
   propertyCode: '',
+  propertyId: '',
   tenantPropertyId: '',
   sendTimeLocal: DEFAULT_TIME,
   ownerEmails: '',
@@ -127,6 +129,7 @@ export default function DailySummaryPage() {
         found =
           propertyList.find((p) => p.name.toLowerCase() === normalized) ||
           propertyList.find((p) => (p.propertyCode ?? '').toLowerCase() === normalized) ||
+          propertyList.find((p) => (p.propertyId ?? '').toLowerCase() === normalized) ||
           propertyList.find((p) => p.tenantPropertyId.toLowerCase() === normalized) ||
           propertyList.find((p) => p.id.toLowerCase() === normalized);
       }
@@ -149,7 +152,7 @@ export default function DailySummaryPage() {
   const buildFallbackCloudStatuses = useCallback(
     (list: PropertyConfig[]): FlashCloudStatus[] =>
       list.map((prop) => ({
-        propertyId: prop.id,
+        propertyId: prop.propertyId ?? prop.tenantPropertyId ?? prop.id,
         propertyName: prop.name,
         status: 'no_msr',
       })),
@@ -341,9 +344,10 @@ export default function DailySummaryPage() {
     if (prop) {
       setFormState({
         id: prop.id,
-        propertyCode: prop.propertyCode ?? prop.id ?? prop.tenantPropertyId,
+        propertyCode: prop.propertyCode ?? '',
+        propertyId: prop.propertyId ?? prop.tenantPropertyId ?? prop.id,
         name: prop.name,
-        tenantPropertyId: prop.tenantPropertyId,
+        tenantPropertyId: prop.tenantPropertyId ?? prop.propertyId ?? prop.id,
         sendTimeLocal: prop.sendTimeLocal,
         ownerEmails: prop.ownerEmails.join(', '),
         enabled: prop.enabled,
@@ -365,7 +369,9 @@ export default function DailySummaryPage() {
     const { name, value, type, checked } = event.target;
     setFormState((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      ...(name === 'propertyId'
+        ? { propertyId: value, tenantPropertyId: value }
+        : { [name]: type === 'checkbox' ? checked : value }),
     }));
   };
 
@@ -375,10 +381,10 @@ export default function DailySummaryPage() {
     try {
       const payload: Omit<PropertyConfig, 'id'> & { id?: string } = {
         id: draft.id && draft.id.trim() ? draft.id.trim() : undefined,
-        propertyCode: draft.propertyCode.trim() || draft.id || draft.tenantPropertyId,
-        propertyId: draft.tenantPropertyId.trim(),
+        propertyCode: draft.propertyCode.trim() || draft.id || draft.propertyId || draft.tenantPropertyId,
+        propertyId: draft.propertyId.trim() || draft.tenantPropertyId.trim() || draft.id || draft.propertyCode,
         name: draft.name.trim() || 'Untitled property',
-        tenantPropertyId: draft.tenantPropertyId.trim(),
+        tenantPropertyId: draft.tenantPropertyId.trim() || draft.propertyId.trim(),
         timezone: 'America/Phoenix',
         sendTimeLocal: draft.sendTimeLocal || DEFAULT_TIME,
         sendTimeMst: draft.sendTimeLocal || DEFAULT_TIME,
@@ -418,6 +424,7 @@ export default function DailySummaryPage() {
     const draft: PropertyFormState = {
       id: prop.id,
        propertyCode: prop.propertyCode ?? prop.id ?? prop.tenantPropertyId,
+      propertyId: prop.propertyId ?? prop.tenantPropertyId ?? prop.id,
       name: prop.name,
       tenantPropertyId: prop.tenantPropertyId,
       sendTimeLocal: prop.sendTimeLocal,
@@ -490,8 +497,9 @@ export default function DailySummaryPage() {
 
       const blob = await res.blob();
       const property = properties.find((p) => p.id === selectedPropertyId);
-      const propertyCodeOrName = property?.propertyCode || property?.tenantPropertyId || property?.name || selectedPropertyId;
-      const safeProperty = propertyCodeOrName.replace(/[^A-Za-z0-9._-]+/g, '_');
+      const propertyLabel =
+        property?.propertyId || property?.tenantPropertyId || property?.name || property?.propertyCode || selectedPropertyId;
+      const safeProperty = propertyLabel.replace(/[^A-Za-z0-9._-]+/g, '_');
       const filename = `DailyFlash-${safeProperty}-${asOfDate}.pptx`;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -645,7 +653,9 @@ export default function DailySummaryPage() {
                     sortedProperties.map((prop) => (
                       <tr key={prop.id} className="transition-colors hover:bg-[color:var(--surface-subtle)]/70">
                         <td className="px-4 py-3 font-semibold text-[color:var(--text-primary)]">{prop.name}</td>
-                        <td className="px-4 py-3 text-[color:var(--text-secondary)]">{prop.tenantPropertyId}</td>
+                        <td className="px-4 py-3 text-[color:var(--text-secondary)]">
+                          {prop.propertyId || prop.tenantPropertyId || prop.id}
+                        </td>
                         <td className="px-4 py-3 text-[color:var(--text-secondary)]">{prop.sendTimeLocal}</td>
                         <td className="px-4 py-3">
                           <button
@@ -1002,8 +1012,8 @@ export default function DailySummaryPage() {
                   Property ID
                 </label>
                 <input
-                  name="tenantPropertyId"
-                  value={formState.tenantPropertyId}
+                  name="propertyId"
+                  value={formState.propertyId}
                   onChange={handleFormChange}
                   className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   placeholder="e.g. L001"

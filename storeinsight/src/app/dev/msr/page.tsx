@@ -380,17 +380,19 @@ export default function DevMsrPage() {
           </div>
           <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
             {properties.map((prop) => {
-              const code = prop.propertyCode || prop.id || prop.tenantPropertyId;
-              const checked = selectedCodes.has(code);
+              const code = (prop.propertyCode || prop.id || prop.tenantPropertyId || '').toLowerCase();
+              const checked = code ? selectedCodes.has(code) : false;
+              const propertyId = prop.propertyId || prop.tenantPropertyId || prop.id;
               return (
                 <label
-                  key={code}
+                  key={prop.id || code}
                   className="flex items-center justify-between gap-2 rounded-xl border border-[color:var(--border-soft,#1f2937)] bg-[color:var(--surface,#0b1222)]/70 px-3 py-2"
                 >
                   <div className="flex min-w-0 flex-col">
                     <span className="text-sm font-semibold">{prop.name}</span>
                     <span className="text-[11px] text-[color:var(--text-muted,#9ca3af)]">
-                      {code} • {prop.enabled ? 'enabled' : 'disabled'} • send {prop.sendTimeMst ?? prop.sendTimeLocal ?? '—'} MST
+                      Slug: {prop.propertyCode || code || '—'} · ID: {propertyId || '—'} · send{' '}
+                      {prop.sendTimeMst ?? prop.sendTimeLocal ?? '--'} MST · {prop.enabled ? 'enabled' : 'disabled'}
                     </span>
                   </div>
                   <input
@@ -398,7 +400,7 @@ export default function DevMsrPage() {
                     className="h-4 w-4"
                     disabled={useAllEnabled}
                     checked={useAllEnabled ? prop.enabled : checked}
-                    onChange={() => toggleProperty(code)}
+                    onChange={() => code && toggleProperty(code)}
                   />
                 </label>
               );

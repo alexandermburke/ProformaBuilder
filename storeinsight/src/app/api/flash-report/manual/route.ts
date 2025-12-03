@@ -469,7 +469,7 @@ export async function POST(req: NextRequest) {
   }
 
   const properties = await listProperties();
-  const property = properties.find((p) => p.id === propertyId);
+  const property = properties.find((p) => p.id === propertyId || p.propertyId === propertyId);
   if (!property) {
     return NextResponse.json({ error: "Unknown propertyId" }, { status: 404 });
   }

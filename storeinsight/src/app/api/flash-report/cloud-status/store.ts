@@ -39,7 +39,7 @@ export async function getCloudStatus(targetDate?: string): Promise<CloudStatusRe
     const rowStatus = normalizeStatus(statusDoc?.status);
 
     return {
-      propertyId: prop.id,
+      propertyId: prop.propertyId ?? prop.tenantPropertyId ?? prop.id,
       propertyName: prop.name,
       msrReceivedAt: statusDoc?.msrReceivedAt ?? null,
       lastRunStatus: rowStatus,

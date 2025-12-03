@@ -36,14 +36,16 @@ export async function listProperties(): Promise<PropertyConfig[]> {
   const snapshot = await adminDb.collection(PROPS_COLLECTION).get();
   return snapshot.docs.map((doc) => {
     const data = doc.data();
-    const propertyCode = (data.propertyCode ?? data.tenantPropertyId ?? doc.id ?? '').toString();
+    const propertyId = (data.propertyId ?? data.tenantPropertyId ?? doc.id ?? '').toString();
+    const propertyCodeRaw = (data.propertyCode ?? '').toString().trim();
+    const propertyCode = (propertyCodeRaw ? propertyCodeRaw.toLowerCase() : '') || propertyId || doc.id;
     const sendTimeLocal = data.sendTimeLocal ?? data.sendTimeMst ?? '08:00';
     return {
       id: doc.id,
       propertyCode: propertyCode || doc.id,
-      propertyId: data.propertyId ?? data.tenantPropertyId ?? doc.id,
+      propertyId: propertyId || doc.id,
       name: data.name ?? 'Untitled property',
-      tenantPropertyId: data.tenantPropertyId ?? '',
+      tenantPropertyId: data.tenantPropertyId ?? propertyId ?? doc.id,
       timezone: data.timezone ?? 'America/Phoenix',
       sendTimeLocal,
       sendTimeMst: data.sendTimeMst ?? sendTimeLocal,
@@ -59,14 +61,20 @@ export async function listProperties(): Promise<PropertyConfig[]> {
 export async function upsertProperty(input: Partial<PropertyConfig>): Promise<PropertyConfig> {
   if (!adminDb) {
     const existingIndex = fallbackProperties.findIndex((p) => p.id === input.id);
-    const code = input.propertyCode && input.propertyCode.trim().length > 0 ? input.propertyCode.trim() : input.tenantPropertyId;
-    const id = input.id && input.id.trim().length > 0 ? input.id : code && code.trim() ? code.trim() : `prop-${fallbackProperties.length + 1}`;
+    const propertyId =
+      (input.propertyId ?? input.tenantPropertyId ?? input.id ?? input.propertyCode ?? '').toString().trim() ||
+      `prop-${fallbackProperties.length + 1}`;
+    const code =
+      input.propertyCode && input.propertyCode.trim().length > 0
+        ? input.propertyCode.trim().toLowerCase()
+        : ((input.id ?? '').trim() || (input.tenantPropertyId ?? '').trim() || propertyId).toLowerCase();
+    const id = input.id && input.id.trim().length > 0 ? input.id : propertyId;
     const payload: PropertyConfig = {
       id,
-      propertyCode: code ?? id,
-      propertyId: input.propertyId ?? input.tenantPropertyId ?? id,
+      propertyCode: code ?? id.toLowerCase(),
+      propertyId,
       name: input.name ?? 'Untitled property',
-      tenantPropertyId: input.tenantPropertyId ?? '',
+      tenantPropertyId: input.tenantPropertyId ?? propertyId,
       timezone: input.timezone ?? 'America/Phoenix',
       sendTimeLocal: input.sendTimeLocal ?? input.sendTimeMst ?? '08:00',
       sendTimeMst: input.sendTimeMst ?? input.sendTimeLocal ?? '08:00',
@@ -84,18 +92,22 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     return payload;
   }
 
-  const normalizedCode = input.propertyCode && input.propertyCode.trim().length > 0 ? input.propertyCode.trim() : undefined;
-  const id = input.id && input.id.trim().length > 0 ? input.id : normalizedCode;
-  const docRef = id
-    ? adminDb.collection(PROPS_COLLECTION).doc(id)
-    : adminDb.collection(PROPS_COLLECTION).doc(normalizedCode ?? undefined);
+  const propertyId =
+    (input.propertyId ?? input.tenantPropertyId ?? input.id ?? input.propertyCode ?? '').toString().trim() || undefined;
+  const normalizedCode =
+    input.propertyCode && input.propertyCode.trim().length > 0 ? input.propertyCode.trim().toLowerCase() : propertyId ?? undefined;
+  const docRef = propertyId
+    ? adminDb.collection(PROPS_COLLECTION).doc(propertyId)
+    : adminDb.collection(PROPS_COLLECTION).doc();
+
+  const propertyCode = (normalizedCode ?? docRef.id).toString().trim().toLowerCase();
 
   const payload: PropertyConfig = {
     id: docRef.id,
-    propertyCode: normalizedCode ?? docRef.id,
-    propertyId: input.propertyId ?? input.tenantPropertyId ?? docRef.id,
+    propertyCode,
+    propertyId: propertyId ?? docRef.id,
     name: input.name ?? 'Untitled property',
-    tenantPropertyId: input.tenantPropertyId ?? '',
+    tenantPropertyId: input.tenantPropertyId ?? propertyId ?? docRef.id,
     timezone: input.timezone ?? 'America/Phoenix',
     sendTimeLocal: input.sendTimeLocal ?? input.sendTimeMst ?? '08:00',
     sendTimeMst: input.sendTimeMst ?? input.sendTimeLocal ?? '08:00',

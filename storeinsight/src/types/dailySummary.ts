@@ -1,7 +1,7 @@
 export type PropertyConfig = {
   id: string;
-  propertyCode?: string;
-  propertyId?: string;
+  propertyCode: string; // slug used for ingestion + filenames (e.g. "storeatthegrove")
+  propertyId: string; // human-readable ID (e.g. "L001" / "W002")
   name: string;
   tenantPropertyId: string;
   timezone: "America/Phoenix";
