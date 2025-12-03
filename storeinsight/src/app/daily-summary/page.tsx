@@ -17,6 +17,7 @@ import type { CloudRunState, CloudStatusResponse } from '@/types/cloudStatus';
 
 type PropertyFormState = {
   id?: string;
+  propertyCode: string;
   name: string;
   tenantPropertyId: string;
   sendTimeLocal: string;
@@ -29,6 +30,7 @@ const DEFAULT_TIME = '08:00';
 
 const createEmptyForm = (): PropertyFormState => ({
   name: '',
+  propertyCode: '',
   tenantPropertyId: '',
   sendTimeLocal: DEFAULT_TIME,
   ownerEmails: '',
@@ -45,9 +47,13 @@ const statusMeta: Record<FlashStatus, { label: string; tone?: 'success' | 'warni
 
 const cloudToFlashStatus: Record<CloudRunState, FlashStatus> = {
   healthy: 'success',
+  HEALTHY: 'success',
   pending: 'pending',
+  PENDING: 'pending',
   failed: 'failed',
+  FAILED: 'failed',
   awaiting_msr: 'no_msr',
+  AWAITING_MSR: 'no_msr',
 };
 
 const mapCloudState = (state: CloudRunState): FlashStatus => cloudToFlashStatus[state] ?? 'pending';
@@ -120,6 +126,7 @@ export default function DailySummaryPage() {
         const normalized = propertyLabel.toLowerCase();
         found =
           propertyList.find((p) => p.name.toLowerCase() === normalized) ||
+          propertyList.find((p) => (p.propertyCode ?? '').toLowerCase() === normalized) ||
           propertyList.find((p) => p.tenantPropertyId.toLowerCase() === normalized) ||
           propertyList.find((p) => p.id.toLowerCase() === normalized);
       }
@@ -334,6 +341,7 @@ export default function DailySummaryPage() {
     if (prop) {
       setFormState({
         id: prop.id,
+        propertyCode: prop.propertyCode ?? prop.id ?? prop.tenantPropertyId,
         name: prop.name,
         tenantPropertyId: prop.tenantPropertyId,
         sendTimeLocal: prop.sendTimeLocal,
@@ -367,10 +375,13 @@ export default function DailySummaryPage() {
     try {
       const payload: Omit<PropertyConfig, 'id'> & { id?: string } = {
         id: draft.id && draft.id.trim() ? draft.id.trim() : undefined,
+        propertyCode: draft.propertyCode.trim() || draft.id || draft.tenantPropertyId,
+        propertyId: draft.tenantPropertyId.trim(),
         name: draft.name.trim() || 'Untitled property',
         tenantPropertyId: draft.tenantPropertyId.trim(),
         timezone: 'America/Phoenix',
         sendTimeLocal: draft.sendTimeLocal || DEFAULT_TIME,
+        sendTimeMst: draft.sendTimeLocal || DEFAULT_TIME,
         ownerEmails: draft.ownerEmails
           .split(',')
           .map((email) => email.trim())
@@ -406,6 +417,7 @@ export default function DailySummaryPage() {
   const toggleEnabled = async (prop: PropertyConfig) => {
     const draft: PropertyFormState = {
       id: prop.id,
+       propertyCode: prop.propertyCode ?? prop.id ?? prop.tenantPropertyId,
       name: prop.name,
       tenantPropertyId: prop.tenantPropertyId,
       sendTimeLocal: prop.sendTimeLocal,
@@ -478,7 +490,7 @@ export default function DailySummaryPage() {
 
       const blob = await res.blob();
       const property = properties.find((p) => p.id === selectedPropertyId);
-      const propertyCodeOrName = property?.tenantPropertyId || property?.name || selectedPropertyId;
+      const propertyCodeOrName = property?.propertyCode || property?.tenantPropertyId || property?.name || selectedPropertyId;
       const safeProperty = propertyCodeOrName.replace(/[^A-Za-z0-9._-]+/g, '_');
       const filename = `DailyFlash-${safeProperty}-${asOfDate}.pptx`;
       const url = URL.createObjectURL(blob);
@@ -968,6 +980,22 @@ export default function DailySummaryPage() {
                   placeholder="e.g. STORE at the Grove"
                   required
                 />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Property code (slug)
+                </label>
+                <input
+                  name="propertyCode"
+                  value={formState.propertyCode}
+                  onChange={handleFormChange}
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                  placeholder="e.g. storeatthegrove"
+                  required
+                />
+                <span className="text-[11px] text-[color:var(--text-muted)]">
+                  Must match the Management Summary Report filename slug (used for automation).
+                </span>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">

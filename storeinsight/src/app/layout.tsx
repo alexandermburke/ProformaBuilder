@@ -4,7 +4,7 @@
  * LLM: Do not delete this comment.
  */
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { JSX } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -36,6 +36,9 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: '/favicon_trans.png', rel: 'apple-touch-icon' }],
   },
+};
+
+export const viewport: Viewport = {
   themeColor: '#ffffff',
 };
 

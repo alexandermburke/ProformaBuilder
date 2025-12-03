@@ -1,4 +1,12 @@
-export type CloudRunState = "healthy" | "pending" | "failed" | "awaiting_msr";
+export type CloudRunState =
+  | "healthy"
+  | "pending"
+  | "failed"
+  | "awaiting_msr"
+  | "HEALTHY"
+  | "PENDING"
+  | "FAILED"
+  | "AWAITING_MSR";
 
 export interface CloudRunStatusRow {
   propertyId: string;

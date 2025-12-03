@@ -1,0 +1,168 @@
+import admin from "firebase-admin";
+import { firestore } from "@/server/firebaseAdmin";
+
+export type MsrEmailRecord = {
+  messageId: string;
+  receivedAt: string;
+  from: string;
+  subject: string;
+  viewerUrl: string;
+  processed: boolean;
+};
+
+type GraphMessage = {
+  id: string;
+  receivedDateTime?: string;
+  subject?: string;
+  from?: { emailAddress?: { address?: string } };
+  body?: { contentType?: string; content?: string };
+};
+
+const viewerRegex =
+  /https:\/\/reportviewer\.tenantinc\.com\/shared-reports\/owners\/[^\s"'<>]+\/folders\/[^\s"'<>]+/i;
+const trackingRegex = /https:\/\/track\.pstmrk\.it\/[^\s"'<>]+/i;
+
+async function getGraphAccessToken(): Promise<string> {
+  const tenantId = process.env.MS_GRAPH_TENANT_ID;
+  const clientId = process.env.MS_GRAPH_CLIENT_ID;
+  const clientSecret = process.env.MS_GRAPH_CLIENT_SECRET;
+
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error("Missing MS Graph credentials (tenant, client id, or client secret).");
+  }
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope: "https://graph.microsoft.com/.default",
+    grant_type: "client_credentials",
+  });
+
+  const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Unable to obtain Graph token (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const json = (await res.json()) as { access_token?: string };
+  if (!json.access_token) {
+    throw new Error("Graph token response missing access_token");
+  }
+  return json.access_token;
+}
+
+async function fetchMsrMessages(params: {
+  userId?: string;
+  maxMessages?: number;
+  accessToken: string;
+}): Promise<GraphMessage[]> {
+  const { userId, maxMessages = 50, accessToken } = params;
+  const mailboxUser = userId ?? process.env.MSR_MAILBOX_USER_ID ?? process.env.MS_GRAPH_USER_ID;
+  if (!mailboxUser) {
+    throw new Error("Missing mailbox user id (set MSR_MAILBOX_USER_ID or MS_GRAPH_USER_ID).");
+  }
+
+  const query = new URLSearchParams({
+    $top: Math.min(Math.max(maxMessages, 1), 200).toString(),
+    $select: "id,receivedDateTime,subject,from,body",
+    $orderby: "receivedDateTime desc",
+  });
+
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailboxUser)}/messages?${query}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Prefer: 'outlook.body-content-type="html"',
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Graph messages fetch failed (${res.status} ${res.statusText}): ${text.slice(0, 300)}`);
+  }
+
+  const json = (await res.json()) as { value?: GraphMessage[] };
+  return Array.isArray(json.value) ? json.value : [];
+}
+
+export async function ingestMsrEmails(options: {
+  senderEmail: string;
+  subjectPhrase: string;
+  maxMessages?: number;
+  userId?: string;
+}): Promise<Array<Pick<MsrEmailRecord, "messageId" | "receivedAt" | "viewerUrl">>> {
+  if (!firestore) {
+    throw new Error("Firebase is not initialized (firestore missing). Check environment variables.");
+  }
+
+  const accessToken = await getGraphAccessToken();
+  const messages = await fetchMsrMessages({ userId: options.userId, maxMessages: options.maxMessages, accessToken });
+
+  const created: Array<Pick<MsrEmailRecord, "messageId" | "receivedAt" | "viewerUrl">> = [];
+  const senderLower = options.senderEmail.toLowerCase();
+  const subjectPhraseLower = options.subjectPhrase.toLowerCase();
+
+  for (const message of messages) {
+    const messageId = message.id;
+    if (!messageId) continue;
+
+    const fromAddress = message.from?.emailAddress?.address?.toLowerCase() ?? "";
+    const subjectText = message.subject ?? "";
+    if (fromAddress !== senderLower) {
+      continue;
+    }
+    if (subjectPhraseLower && !subjectText.toLowerCase().includes(subjectPhraseLower)) {
+      continue;
+    }
+
+    const docRef = firestore.collection("msrEmails").doc(messageId);
+    const existing = await docRef.get();
+    if (existing.exists) {
+      continue;
+    }
+
+    const html = message.body?.content ?? "";
+    const viewerMatch = html.match(viewerRegex) ?? html.match(trackingRegex);
+    if (!viewerMatch) {
+      console.warn("[msr-email] viewer URL not found", { id: messageId, subject: message.subject });
+      continue;
+    }
+    const viewerUrl = viewerMatch[0];
+
+    const receivedAt = message.receivedDateTime ?? new Date().toISOString();
+    const record: MsrEmailRecord = {
+      messageId,
+      receivedAt,
+      from: message.from?.emailAddress?.address ?? "",
+      subject: message.subject ?? "",
+      viewerUrl,
+      processed: false,
+    };
+
+    try {
+      await docRef.set(
+        {
+          ...record,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: false },
+      );
+      created.push({ messageId, receivedAt, viewerUrl });
+    } catch (err) {
+      const code = (err as { code?: number; message?: string })?.code;
+      const msg = (err as { message?: string })?.message ?? "";
+      if (code === 6 || msg.includes("ALREADY_EXISTS")) {
+        continue;
+      }
+      console.error("[msr-email] failed to store message", { id: messageId }, err);
+    }
+  }
+
+  return created;
+}

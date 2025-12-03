@@ -26,13 +26,17 @@ export async function POST(req: NextRequest) {
           : [];
     const payload: Partial<PropertyConfig> = {
       id: body.id,
+      propertyCode: body.propertyCode ?? body.id ?? body.tenantPropertyId,
+      propertyId: body.propertyId ?? body.tenantPropertyId,
       name: body.name,
       tenantPropertyId: body.tenantPropertyId,
-      sendTimeLocal: body.sendTimeLocal,
+      sendTimeLocal: body.sendTimeLocal ?? body.sendTimeMst,
+      sendTimeMst: body.sendTimeMst ?? body.sendTimeLocal,
       timezone: body.timezone,
       ownerEmails,
       enabled: body.enabled,
-      propertyImageData: body.propertyImageData,
+      propertyImageData: body.propertyImageData ?? body.imagePath,
+      imagePath: body.imagePath ?? body.propertyImageData,
       facilityOpenDate: body.facilityOpenDate,
     };
     const saved = await upsertProperty(payload);

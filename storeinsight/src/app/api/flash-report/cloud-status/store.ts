@@ -1,37 +1,7 @@
 import type { CloudRunState, CloudRunStatusRow, CloudStatusResponse } from "@/types/cloudStatus";
-import { firestore as adminDb } from "@/server/firebaseAdmin";
-
-type Timestamp = FirebaseFirestore.Timestamp;
-
-type FlashRunPropertyDoc = {
-  propertyId: string;
-  msrReceivedAt?: Timestamp | null;
-  lastRunStatus?: CloudRunState | null;
-  lastRunAt?: Timestamp | null;
-  nextRunAt?: Timestamp | null;
-  errorMessage?: string | null;
-};
-
-export type DailyFlashProperty = {
-  id: string;
-  name: string;
-  sendTimeMst: string;
-  enabled: boolean;
-};
-
-const FLASH_PROPS_COLLECTION = "flashProperties";
-const FLASH_RUNS_COLLECTION = "flashRuns";
-
-const fallbackProperties: DailyFlashProperty[] = [
-  {
-    id: "demo-001",
-    name: "Demo Property",
-    sendTimeMst: "09:00",
-    enabled: true,
-  },
-];
-
-const useFallback = !adminDb;
+import type { DailyRunStatus } from "@/types/dailySummary";
+import { listProperties } from "@/app/api/daily-summary/store";
+import { listRunStatusesForDate } from "@/lib/dailySummaryRuns";
 
 const mstFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Phoenix",
@@ -40,59 +10,43 @@ const mstFormatter = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-const formatIso = (timestamp?: Timestamp | null): string | null => {
-  if (!timestamp) return null;
-  return timestamp.toDate().toISOString();
-};
-
 export function getCurrentMstDate(): string {
   return mstFormatter.format(new Date());
 }
 
-export async function listFlashProperties(): Promise<DailyFlashProperty[]> {
-  if (useFallback) return fallbackProperties;
-  const snapshot = await adminDb!.collection(FLASH_PROPS_COLLECTION).get();
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: data.name ?? "Untitled property",
-      sendTimeMst: data.sendTimeMst ?? "09:00",
-      enabled: Boolean(data.enabled),
-    } satisfies DailyFlashProperty;
+const normalizeStatus = (status?: string | null): CloudRunState => {
+  const normalized = (status ?? "").toString().toLowerCase();
+  if (normalized === "healthy") return "healthy";
+  if (normalized === "pending") return "pending";
+  if (normalized === "failed") return "failed";
+  return "awaiting_msr";
+};
+
+export async function getCloudStatus(targetDate?: string): Promise<CloudStatusResponse> {
+  const asOfDate = targetDate ?? getCurrentMstDate();
+  const properties = await listProperties();
+  const runStatuses = await listRunStatusesForDate(asOfDate).catch(() => []);
+  const statusMap = new Map<string, DailyRunStatus>();
+
+  runStatuses.forEach((status) => {
+    const key = (status.propertyCode ?? status.propertyId ?? "").toLowerCase();
+    if (key) statusMap.set(key, status);
   });
-}
 
-export async function getCloudStatus(): Promise<CloudStatusResponse> {
-  const asOfDate = getCurrentMstDate();
-  const properties = await listFlashProperties();
+  const rows: CloudRunStatusRow[] = properties.map((prop) => {
+    const code = (prop.propertyCode ?? prop.id ?? prop.tenantPropertyId ?? "").toLowerCase();
+    const statusDoc = statusMap.get(code);
+    const rowStatus = normalizeStatus(statusDoc?.status);
 
-  const rows: CloudRunStatusRow[] = [];
-  const runEntries: Map<string, FlashRunPropertyDoc> = new Map();
-
-  if (!useFallback) {
-    const propsSnapshot = await adminDb!
-      .collection(FLASH_RUNS_COLLECTION)
-      .doc(asOfDate)
-      .collection("properties")
-      .get();
-    propsSnapshot.docs.forEach((doc) => {
-      runEntries.set(doc.id, doc.data() as FlashRunPropertyDoc);
-    });
-  }
-
-  properties.forEach((prop) => {
-    const entry = runEntries.get(prop.id);
-    const lastRunStatus: CloudRunState = entry?.lastRunStatus ?? "awaiting_msr";
-    rows.push({
+    return {
       propertyId: prop.id,
       propertyName: prop.name,
-      msrReceivedAt: formatIso(entry?.msrReceivedAt ?? null),
-      lastRunStatus,
-      lastRunAt: formatIso(entry?.lastRunAt ?? null),
-      nextRunAt: formatIso(entry?.nextRunAt ?? null),
-      errorMessage: entry?.errorMessage ?? null,
-    });
+      msrReceivedAt: statusDoc?.msrReceivedAt ?? null,
+      lastRunStatus: rowStatus,
+      lastRunAt: statusDoc?.lastRunAt ?? null,
+      nextRunAt: statusDoc?.nextRunAt ?? null,
+      errorMessage: statusDoc?.errorMessage ?? null,
+    };
   });
 
   return {
