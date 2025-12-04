@@ -43,17 +43,26 @@ type CronFlashBody = {
 };
 
 const handle = async (request: NextRequest): Promise<NextResponse> => {
+  const started = Date.now();
   console.info("[cron/daily-flash] received", {
     method: request.method,
     ua: request.headers.get("user-agent") ?? "",
   });
   try {
     if (!authorize(request)) {
+      console.warn("[cron/daily-flash] unauthorized");
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
-    const body: CronFlashBody =
-      request.method === "POST" ? ((await request.json().catch(() => ({}))) as CronFlashBody) : {};
+    let body: CronFlashBody = {};
+    if (request.method === "POST") {
+      try {
+        body = ((await request.json()) as CronFlashBody) ?? {};
+      } catch (err) {
+        console.error("[cron/daily-flash] body parse failed", err);
+        body = {};
+      }
+    }
 
     const providedDate =
       typeof body.reportDate === "string" && isValidDate(body.reportDate.trim()) ? body.reportDate.trim() : null;
@@ -71,8 +80,10 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
       }),
     });
 
-    console.info("[cron/daily-flash] dispatching", { reportDate, sendEmails });
-    return await runAutoFlash(proxyRequest);
+    console.info("[cron/daily-flash] dispatching", { reportDate, sendEmails, propertyCodes: body.propertyCodes ?? [] });
+    const res = await runAutoFlash(proxyRequest);
+    console.info("[cron/daily-flash] completed", { status: res.status, durationMs: Date.now() - started });
+    return res;
   } catch (err) {
     console.error("[cron/daily-flash] failed", err);
     return NextResponse.json(
