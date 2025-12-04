@@ -33,4 +33,6 @@ export type DailyRunStatus = {
   errorMessage?: string | null;
   flashPath?: string | null;
   msrPath?: string | null;
+  pdfPath?: string | null;
+  slidePngPaths?: string[] | null;
 };

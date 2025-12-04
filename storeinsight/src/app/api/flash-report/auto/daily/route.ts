@@ -5,6 +5,7 @@ import { firestore, storage } from "@/server/firebaseAdmin";
 import { generateFlashFromMsr } from "@/lib/flash/generateFlashFromMsr";
 import { recordFlashRunResult } from "@/lib/dailySummaryRuns";
 import { sendFlashEmail } from "@/lib/flash/sendFlashEmail";
+import { convertPptxRemote } from "@/lib/convertPptxRemote";
 
 export const runtime = "nodejs";
 
@@ -159,6 +160,25 @@ export async function POST(req: NextRequest) {
         metadata: { cacheControl: "private,max-age=0" },
       });
 
+      let pdfPath: string | undefined;
+      let slidePngPaths: string[] | undefined;
+      const convertUrl = process.env.PPTX_CONVERT_URL || process.env.LIBRE_CONVERT_URL;
+      const bucketName = process.env.FIREBASE_STORAGE_BUCKET || storage.name;
+      if (convertUrl && bucketName) {
+        try {
+          const convertResult = await convertPptxRemote({
+            convertUrl,
+            storageBucket: bucketName,
+            pptxPath: flashPath,
+            outputBasePath: flashPath.replace(/\.pptx$/i, ""),
+          });
+          pdfPath = convertResult.pdfPath;
+          slidePngPaths = convertResult.slidePngPaths;
+        } catch (err) {
+          console.warn("[flash-report/auto] pptx convert failed", { propertyCode, reportDate }, err);
+        }
+      }
+
       let emailSent = false;
       if (sendEmails) {
         emailSent = await sendFlashEmail({
@@ -180,6 +200,8 @@ export async function POST(req: NextRequest) {
         reportDate,
         msrPath: msrDoc.storagePath,
         flashPath,
+        pdfPath: pdfPath ?? null,
+        slidePngPaths: slidePngPaths ?? null,
         status: "HEALTHY",
         sendTimeMst,
       }).catch((err) =>

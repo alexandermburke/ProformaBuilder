@@ -87,6 +87,8 @@ export async function recordFlashRunResult(params: {
   reportDate: string;
   status: RunStatusState;
   flashPath?: string | null;
+  pdfPath?: string | null;
+  slidePngPaths?: string[] | null;
   errorMessage?: string | null;
   msrPath?: string | null;
   propertyName?: string;
@@ -110,6 +112,8 @@ export async function recordFlashRunResult(params: {
       msrPath: params.msrPath ?? fallbackRuns[key]?.msrPath ?? null,
       msrReceived: params.msrPath ? true : fallbackRuns[key]?.msrReceived ?? false,
       flashPath: params.flashPath ?? null,
+      pdfPath: params.pdfPath ?? null,
+      slidePngPaths: params.slidePngPaths ?? null,
     });
     return;
   }
@@ -132,6 +136,8 @@ export async function recordFlashRunResult(params: {
     nextRunAt: nextRunTs ?? admin.firestore.FieldValue.delete(),
     errorMessage: errorValue,
     flashPath: params.flashPath ?? null,
+    pdfPath: params.pdfPath ?? null,
+    slidePngPaths: params.slidePngPaths ?? null,
     msrPath: params.msrPath ?? null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
@@ -159,6 +165,8 @@ export async function listRunStatusesForDate(reportDate: string): Promise<DailyR
       errorMessage?: string | null;
       msrPath?: string | null;
       flashPath?: string | null;
+      pdfPath?: string | null;
+      slidePngPaths?: string[] | null;
     };
     return {
       propertyCode: doc.id,
@@ -173,6 +181,8 @@ export async function listRunStatusesForDate(reportDate: string): Promise<DailyR
       errorMessage: data.errorMessage ?? null,
       msrPath: data.msrPath ?? null,
       flashPath: data.flashPath ?? null,
+      pdfPath: data.pdfPath ?? null,
+      slidePngPaths: data.slidePngPaths ?? null,
     } satisfies DailyRunStatus;
   });
 }

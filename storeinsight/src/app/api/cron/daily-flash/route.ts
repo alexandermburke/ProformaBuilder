@@ -43,30 +43,43 @@ type CronFlashBody = {
 };
 
 const handle = async (request: NextRequest): Promise<NextResponse> => {
-  if (!authorize(request)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  const body: CronFlashBody =
-    request.method === "POST" ? ((await request.json().catch(() => ({}))) as CronFlashBody) : {};
-
-  const providedDate =
-    typeof body.reportDate === "string" && isValidDate(body.reportDate.trim()) ? body.reportDate.trim() : null;
-  const reportDate = providedDate || getTodayMstDate();
-  const sendEmails = body.sendEmails === undefined ? true : body.sendEmails === true || body.sendEmails === "true";
-
-  const proxyRequest = new NextRequest(new URL("/api/flash-report/auto/daily", "http://localhost"), {
-    method: "POST",
-    headers: new Headers({ "content-type": "application/json" }),
-    body: JSON.stringify({
-      reportDate,
-      propertyCodes: Array.isArray(body.propertyCodes) ? body.propertyCodes : undefined,
-      sendEmails,
-      mode: "scheduled",
-    }),
+  console.info("[cron/daily-flash] received", {
+    method: request.method,
+    ua: request.headers.get("user-agent") ?? "",
   });
+  try {
+    if (!authorize(request)) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
 
-  return runAutoFlash(proxyRequest);
+    const body: CronFlashBody =
+      request.method === "POST" ? ((await request.json().catch(() => ({}))) as CronFlashBody) : {};
+
+    const providedDate =
+      typeof body.reportDate === "string" && isValidDate(body.reportDate.trim()) ? body.reportDate.trim() : null;
+    const reportDate = providedDate || getTodayMstDate();
+    const sendEmails = body.sendEmails === undefined ? true : body.sendEmails === true || body.sendEmails === "true";
+
+    const proxyRequest = new NextRequest(new URL("/api/flash-report/auto/daily", "http://localhost"), {
+      method: "POST",
+      headers: new Headers({ "content-type": "application/json" }),
+      body: JSON.stringify({
+        reportDate,
+        propertyCodes: Array.isArray(body.propertyCodes) ? body.propertyCodes : undefined,
+        sendEmails,
+        mode: "scheduled",
+      }),
+    });
+
+    console.info("[cron/daily-flash] dispatching", { reportDate, sendEmails });
+    return await runAutoFlash(proxyRequest);
+  } catch (err) {
+    console.error("[cron/daily-flash] failed", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Unexpected error during daily flash cron" },
+      { status: 500 },
+    );
+  }
 };
 
 // Vercel Cron example:
