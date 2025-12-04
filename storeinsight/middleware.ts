@@ -19,7 +19,12 @@ const redirectToLogin = (request: NextRequest): NextResponse => {
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
-  if (isPublic(pathname) || pathname.startsWith("/_next") || pathname.startsWith("/static")) {
+  if (
+    isPublic(pathname) ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/static") ||
+    pathname.startsWith("/api/cron/")
+  ) {
     return NextResponse.next();
   }
 

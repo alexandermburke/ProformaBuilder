@@ -4,7 +4,8 @@
  * LLM: Do not delete this comment.
  */
 
-import { firestore as adminDb } from '@/server/firebaseAdmin';
+import admin from 'firebase-admin';
+import { firestore as adminDb, storage as adminStorage } from '@/server/firebaseAdmin';
 import type { DailyRunStatus, PropertyConfig } from '@/types/dailySummary';
 
 const PROPS_COLLECTION = 'dailySummaryProperties';
@@ -23,6 +24,9 @@ const fallbackProperties: PropertyConfig[] = [
     ownerEmails: ['ownerA@store.com', 'ops@store.com'],
     enabled: true,
     facilityOpenDate: 'January 2020',
+    heroImageUrl: '',
+    heroImagePath: '',
+    heroImageUpdatedAt: null,
     propertyImageData: '',
   },
 ];
@@ -40,6 +44,17 @@ export async function listProperties(): Promise<PropertyConfig[]> {
     const propertyCodeRaw = (data.propertyCode ?? '').toString().trim();
     const propertyCode = (propertyCodeRaw ? propertyCodeRaw.toLowerCase() : '') || propertyId || doc.id;
     const sendTimeLocal = data.sendTimeLocal ?? data.sendTimeMst ?? '08:00';
+  const heroImagePath = data.heroImagePath ?? '';
+  const heroImageUrl =
+    data.heroImageUrl ||
+    (heroImagePath && adminStorage ? `https://storage.googleapis.com/${adminStorage.name}/${heroImagePath}` : '') ||
+    data.imagePath ||
+    data.propertyImageData ||
+    '';
+  const heroImageUpdatedAt =
+    data.heroImageUpdatedAt && typeof data.heroImageUpdatedAt.toDate === 'function'
+      ? data.heroImageUpdatedAt.toDate().toISOString()
+      : data.heroImageUpdatedAt ?? null;
     return {
       id: doc.id,
       propertyCode: propertyCode || doc.id,
@@ -52,11 +67,85 @@ export async function listProperties(): Promise<PropertyConfig[]> {
       ownerEmails: Array.isArray(data.ownerEmails) ? data.ownerEmails : [],
       enabled: Boolean(data.enabled),
       facilityOpenDate: data.FACILITYOPENDATE ?? data.facilityOpenDate ?? '',
-      propertyImageData: data.propertyImageData ?? data.imagePath ?? '',
-      imagePath: data.imagePath ?? data.propertyImageData ?? '',
+      heroImageUrl,
+      heroImagePath,
+      heroImageUpdatedAt,
+      // legacy aliases to keep UI backward-compatible
+      propertyImageData: heroImageUrl,
+      imagePath: heroImagePath,
     } satisfies PropertyConfig;
   });
 }
+
+type DecodedImage = { buffer: Buffer; contentType: string; extension: string };
+
+const decodeImageData = (data: string): DecodedImage | null => {
+  if (!data || typeof data !== 'string') return null;
+  const dataUrlMatch = data.match(/^data:(.+?);base64,(.+)$/);
+  if (dataUrlMatch) {
+    const contentType = dataUrlMatch[1] || 'image/png';
+    const base64 = dataUrlMatch[2];
+    const buffer = Buffer.from(base64, 'base64');
+    const extension = contentType.split('/')[1] || 'png';
+    return { buffer, contentType, extension };
+  }
+  // plain base64 string (no prefix)
+  try {
+    const buffer = Buffer.from(data, 'base64');
+    return { buffer, contentType: 'image/png', extension: 'png' };
+  } catch {
+    return null;
+  }
+};
+
+const purgeHeroImages = async (propertyId: string, existingPath?: string | null): Promise<void> => {
+  if (!adminStorage) return;
+  const prefix = `daily-summary/${propertyId}/`;
+  try {
+    const [files] = await adminStorage.getFiles({ prefix });
+    const deletions = files.map((file) => file.delete({ ignoreNotFound: true }));
+    if (existingPath) {
+      deletions.push(adminStorage.file(existingPath).delete({ ignoreNotFound: true }));
+    }
+    await Promise.allSettled(deletions);
+  } catch (err) {
+    console.warn('[daily-summary] purge hero images failed', { propertyId, err });
+  }
+};
+
+const uploadHeroImage = async (
+  propertyId: string,
+  imageData: string,
+  existingPath?: string | null,
+): Promise<{ heroImageUrl: string; heroImagePath: string }> => {
+  if (!adminStorage) {
+    throw new Error('Firebase Storage is not configured.');
+  }
+  const decoded = decodeImageData(imageData);
+  if (!decoded) {
+    throw new Error('Invalid image data.');
+  }
+  await purgeHeroImages(propertyId, existingPath);
+  const objectPath = `daily-summary/${propertyId}/hero-image-${Date.now()}.${decoded.extension || 'png'}`;
+  const file = adminStorage.file(objectPath);
+  await file.save(decoded.buffer, {
+    contentType: decoded.contentType,
+    resumable: false,
+    public: true,
+    metadata: { cacheControl: 'public,max-age=60' },
+  });
+  const heroImageUrl = `https://storage.googleapis.com/${adminStorage.name}/${objectPath}`;
+  return { heroImageUrl, heroImagePath: objectPath };
+};
+
+const deleteHeroImage = async (path?: string | null): Promise<void> => {
+  if (!adminStorage || !path) return;
+  try {
+    await adminStorage.file(path).delete({ ignoreNotFound: true });
+  } catch (err) {
+    console.warn('[daily-summary] hero image delete failed', { path, err });
+  }
+};
 
 export async function upsertProperty(input: Partial<PropertyConfig>): Promise<PropertyConfig> {
   if (!adminDb) {
@@ -81,6 +170,9 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
       enabled: input.enabled ?? true,
       facilityOpenDate: input.facilityOpenDate ?? '',
+      heroImageUrl: input.heroImageUrl ?? '',
+      heroImagePath: input.heroImagePath ?? '',
+      heroImageUpdatedAt: input.heroImageUpdatedAt ?? null,
       propertyImageData: input.propertyImageData ?? input.imagePath ?? '',
       imagePath: input.imagePath ?? input.propertyImageData ?? '',
     };
@@ -92,34 +184,111 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     return payload;
   }
 
-  const propertyId =
-    (input.propertyId ?? input.tenantPropertyId ?? input.id ?? input.propertyCode ?? '').toString().trim() || undefined;
+  const docId =
+    (input.id ?? input.propertyId ?? input.tenantPropertyId ?? input.propertyCode ?? '').toString().trim() || undefined;
+  const propertyIdField =
+    (input.propertyId ?? input.tenantPropertyId ?? docId ?? input.propertyCode ?? '').toString().trim() || undefined;
   const normalizedCode =
-    input.propertyCode && input.propertyCode.trim().length > 0 ? input.propertyCode.trim().toLowerCase() : propertyId ?? undefined;
-  const docRef = propertyId
-    ? adminDb.collection(PROPS_COLLECTION).doc(propertyId)
-    : adminDb.collection(PROPS_COLLECTION).doc();
+    input.propertyCode && input.propertyCode.trim().length > 0
+      ? input.propertyCode.trim().toLowerCase()
+      : propertyIdField ?? docId ?? undefined;
+  const docRef = docId ? adminDb.collection(PROPS_COLLECTION).doc(docId) : adminDb.collection(PROPS_COLLECTION).doc();
 
   const propertyCode = (normalizedCode ?? docRef.id).toString().trim().toLowerCase();
 
-  const payload: PropertyConfig = {
+  const existing = await docRef.get();
+  const existingData = existing.exists ? existing.data() : {};
+  let heroImageUrl = existingData?.heroImageUrl ?? existingData?.imagePath ?? existingData?.propertyImageData ?? '';
+  let heroImagePath = existingData?.heroImagePath ?? existingData?.imagePath ?? '';
+  let heroImageUpdatedAt: string | null =
+    existingData?.heroImageUpdatedAt && typeof existingData.heroImageUpdatedAt.toDate === 'function'
+      ? existingData.heroImageUpdatedAt.toDate().toISOString()
+      : existingData?.heroImageUpdatedAt ?? null;
+
+  const shouldRemoveHeroImage = input.heroImageRemove === true;
+
+  if (shouldRemoveHeroImage) {
+    await purgeHeroImages(docRef.id, heroImagePath);
+    heroImageUrl = '';
+    heroImagePath = '';
+    heroImageUpdatedAt = new Date().toISOString();
+    await docRef.set(
+      {
+        heroImageUrl,
+        heroImagePath,
+        heroImageUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        propertyImageData: admin.firestore.FieldValue.delete(),
+        imagePath: admin.firestore.FieldValue.delete(),
+      },
+      { merge: true },
+    );
+  }
+
+  if (input.propertyImageData) {
+    try {
+      const upload = await uploadHeroImage(docRef.id, input.propertyImageData, heroImagePath);
+      heroImageUrl = upload.heroImageUrl;
+      heroImagePath = upload.heroImagePath;
+      heroImageUpdatedAt = new Date().toISOString();
+      await docRef.set(
+        {
+          heroImageUrl,
+          heroImagePath,
+          heroImageUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          propertyImageData: admin.firestore.FieldValue.delete(),
+          imagePath: admin.firestore.FieldValue.delete(),
+        },
+        { merge: true },
+      );
+    } catch (err) {
+      console.error('[daily-summary] hero image upload failed', err);
+    }
+  }
+
+  const docPayload: Record<string, unknown> = {
     id: docRef.id,
     propertyCode,
-    propertyId: propertyId ?? docRef.id,
+    propertyId: propertyIdField ?? docRef.id,
     name: input.name ?? 'Untitled property',
-    tenantPropertyId: input.tenantPropertyId ?? propertyId ?? docRef.id,
+    tenantPropertyId: input.tenantPropertyId ?? propertyIdField ?? docRef.id,
     timezone: input.timezone ?? 'America/Phoenix',
     sendTimeLocal: input.sendTimeLocal ?? input.sendTimeMst ?? '08:00',
     sendTimeMst: input.sendTimeMst ?? input.sendTimeLocal ?? '08:00',
     ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
     enabled: input.enabled ?? true,
     facilityOpenDate: input.facilityOpenDate ?? '',
-    propertyImageData: input.propertyImageData ?? input.imagePath ?? '',
-    imagePath: input.imagePath ?? input.propertyImageData ?? '',
+    heroImageUrl,
+    heroImagePath,
+    propertyImageData: admin.firestore.FieldValue.delete(),
+    imagePath: admin.firestore.FieldValue.delete(),
   };
 
-  await docRef.set(payload, { merge: true });
-  return payload;
+  if (input.propertyImageData) {
+    docPayload.heroImageUpdatedAt = admin.firestore.FieldValue.serverTimestamp();
+  }
+
+  await docRef.set(docPayload, { merge: true });
+
+  const result: PropertyConfig = {
+    id: docRef.id,
+    propertyCode,
+    propertyId: propertyIdField ?? docRef.id,
+    name: input.name ?? 'Untitled property',
+    tenantPropertyId: input.tenantPropertyId ?? propertyIdField ?? docRef.id,
+    timezone: input.timezone ?? 'America/Phoenix',
+    sendTimeLocal: input.sendTimeLocal ?? input.sendTimeMst ?? '08:00',
+    sendTimeMst: input.sendTimeMst ?? input.sendTimeLocal ?? '08:00',
+    ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
+    enabled: input.enabled ?? true,
+    facilityOpenDate: input.facilityOpenDate ?? '',
+    heroImageUrl,
+    heroImagePath,
+    heroImageUpdatedAt,
+    propertyImageData: heroImageUrl,
+    imagePath: heroImagePath,
+  };
+
+  return result;
 }
 
 export async function listRunStatuses(): Promise<DailyRunStatus[]> {

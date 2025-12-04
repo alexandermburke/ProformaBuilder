@@ -491,8 +491,9 @@ export async function POST(req: NextRequest) {
   }
 
   const zip = new PizZip(templateBuffer);
-  if (property.propertyImageData) {
-    const heroImage = await loadImageBufferFromData(property.propertyImageData);
+  const heroImageSource = property.propertyImageData || property.imagePath || property.heroImageUrl;
+  if (heroImageSource) {
+    const heroImage = await loadImageBufferFromData(heroImageSource);
     if (heroImage) {
       zip.file("ppt/media/image2.jpeg", heroImage);
     }

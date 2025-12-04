@@ -22,25 +22,33 @@ const getTodayMstDate = (): string => {
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
-const isAuthorized = (req: NextRequest): boolean => {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
+const isCronRequest = (req: NextRequest): boolean => req.headers.get("user-agent")?.toLowerCase().startsWith("vercel-cron") === true;
+
+const authorize = (req: NextRequest): boolean => {
   const header = req.headers.get("x-cron-secret");
-  return header != null && header === secret;
+  const secret = process.env.CRON_SECRET;
+  if (header != null) {
+    return !!secret && header === secret;
+  }
+  if (isCronRequest(req)) {
+    return true;
+  }
+  return false;
 };
 
-// Vercel Cron example:
-// - Path: /api/cron/daily-flash · Method: POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 15 16 * * * (09:15 MST)
-export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+type CronFlashBody = {
+  reportDate?: string;
+  propertyCodes?: string[];
+  sendEmails?: boolean | string;
+};
+
+const handle = async (request: NextRequest): Promise<NextResponse> => {
+  if (!authorize(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as {
-    reportDate?: string;
-    propertyCodes?: string[];
-    sendEmails?: boolean | string;
-  };
+  const body: CronFlashBody =
+    request.method === "POST" ? ((await request.json().catch(() => ({}))) as CronFlashBody) : {};
 
   const providedDate =
     typeof body.reportDate === "string" && isValidDate(body.reportDate.trim()) ? body.reportDate.trim() : null;
@@ -59,4 +67,14 @@ export async function POST(request: NextRequest) {
   });
 
   return runAutoFlash(proxyRequest);
+};
+
+// Vercel Cron example:
+// - Path: /api/cron/daily-flash · Method: GET/POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 15 16 * * * (09:15 MST)
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handle(request);
 }

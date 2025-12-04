@@ -25,6 +25,8 @@ type PropertyFormState = {
   ownerEmails: string;
   enabled: boolean;
   propertyImageData: string;
+  heroImagePath?: string;
+  heroImageRemove?: boolean;
 };
 
 const DEFAULT_TIME = '08:00';
@@ -38,6 +40,8 @@ const createEmptyForm = (): PropertyFormState => ({
   ownerEmails: '',
   enabled: true,
   propertyImageData: '',
+  heroImagePath: '',
+  heroImageRemove: false,
 });
 
 const statusMeta: Record<FlashStatus, { label: string; tone?: 'success' | 'warning' | 'danger'; dotClass: string }> = {
@@ -328,7 +332,7 @@ export default function DailySummaryPage() {
     reader.onload = () => {
       const result = reader.result;
       if (typeof result === 'string') {
-        setFormState((prev) => ({ ...prev, propertyImageData: result }));
+        setFormState((prev) => ({ ...prev, propertyImageData: result, heroImageRemove: false }));
       }
     };
     reader.readAsDataURL(file);
@@ -349,10 +353,12 @@ export default function DailySummaryPage() {
         name: prop.name,
         tenantPropertyId: prop.tenantPropertyId ?? prop.propertyId ?? prop.id,
         sendTimeLocal: prop.sendTimeLocal,
-        ownerEmails: prop.ownerEmails.join(', '),
-        enabled: prop.enabled,
-        propertyImageData: prop.propertyImageData ?? '',
-      });
+      ownerEmails: prop.ownerEmails.join(', '),
+      enabled: prop.enabled,
+      propertyImageData: prop.propertyImageData ?? prop.heroImageUrl ?? '',
+      heroImagePath: prop.heroImagePath ?? '',
+      heroImageRemove: false,
+    });
     } else {
       setFormState(createEmptyForm());
     }
@@ -394,6 +400,8 @@ export default function DailySummaryPage() {
           .filter(Boolean),
         enabled: draft.enabled,
         propertyImageData: draft.propertyImageData || '',
+        heroImagePath: draft.heroImagePath,
+        heroImageRemove: draft.heroImageRemove ?? false,
       };
 
       const res = await fetch('/api/daily-summary/properties', {
@@ -430,7 +438,9 @@ export default function DailySummaryPage() {
       sendTimeLocal: prop.sendTimeLocal,
       ownerEmails: prop.ownerEmails.join(', '),
       enabled: !prop.enabled,
-      propertyImageData: prop.propertyImageData ?? '',
+      propertyImageData: prop.propertyImageData ?? prop.heroImageUrl ?? '',
+      heroImagePath: prop.heroImagePath ?? '',
+      heroImageRemove: false,
     };
     await persistProperty(draft);
   };
@@ -946,9 +956,13 @@ export default function DailySummaryPage() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm">
-          <div className={`ios-card ios-animate-up w-full space-y-6 p-6 ${formState.propertyImageData ? 'max-w-4xl' : 'max-w-md'}`}>
-            <div className="flex items-start justify-between gap-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm">
+          <div
+            className={`ios-card ios-animate-up w-full max-h-[90vh] space-y-6 !overflow-y-auto overscroll-contain p-6 ${
+              formState.propertyImageData ? 'max-w-4xl' : 'max-w-md'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-4 ">
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-semibold">{formState.id ? 'Edit property' : 'Add property'}</h3>
                 {formState.id && (
@@ -1020,7 +1034,7 @@ export default function DailySummaryPage() {
                   required
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
                     Send time (MST)
@@ -1033,22 +1047,6 @@ export default function DailySummaryPage() {
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                     required
                   />
-                </div>
-                <div className="flex items-center gap-3 pt-5">
-                  <button
-                    type="button"
-                    className={toggleButtonClass(formState.enabled)}
-                    aria-pressed={formState.enabled}
-                    onClick={() =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        enabled: !prev.enabled,
-                      }))
-                    }
-                  >
-                    <span className={togglePillClass} />
-                  </button>
-                  <span className="text-sm font-semibold text-[color:var(--text-secondary)]">Enable daily emails</span>
                 </div>
               </div>
               <div className="flex flex-col gap-3">
@@ -1123,7 +1121,12 @@ export default function DailySummaryPage() {
                             className="ios-button px-2 py-1 text-[11px]"
                             data-variant="secondary"
                             onClick={() => {
-                              setFormState((prev) => ({ ...prev, propertyImageData: '' }));
+                              setFormState((prev) => ({
+                                ...prev,
+                                propertyImageData: '',
+                                heroImagePath: '',
+                                heroImageRemove: true,
+                              }));
                             }}
                           >
                             Remove

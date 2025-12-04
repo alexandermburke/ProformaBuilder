@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
           : [];
     const propertyId = (body.propertyId ?? body.tenantPropertyId ?? body.id ?? body.propertyCode ?? "").toString().trim();
     const propertyCode = (body.propertyCode ?? "").toString().trim();
+    const heroImageRemove =
+      body.heroImageRemove === true ||
+      (typeof (body as Record<string, unknown>).heroImageRemove === "string" &&
+        (body as Record<string, unknown>).heroImageRemove === "true");
+
     const payload: Partial<PropertyConfig> = {
       id: body.id ?? (propertyId || undefined),
       propertyCode: propertyCode || propertyId,
@@ -39,6 +44,8 @@ export async function POST(req: NextRequest) {
       enabled: body.enabled,
       propertyImageData: body.propertyImageData ?? body.imagePath,
       imagePath: body.imagePath ?? body.propertyImageData,
+      heroImagePath: body.heroImagePath,
+      heroImageRemove,
       facilityOpenDate: body.facilityOpenDate,
     };
     const saved = await upsertProperty(payload);

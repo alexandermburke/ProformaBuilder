@@ -84,7 +84,8 @@ export async function generateFlashFromMsr(
   const templateBuffer = await fs.readFile(templatePath);
   const zip = new PizZip(templateBuffer);
 
-  const imageData = options.propertyConfig?.propertyImageData || options.propertyConfig?.imagePath;
+  const imageData =
+    options.propertyConfig?.propertyImageData || options.propertyConfig?.imagePath || options.propertyConfig?.heroImageUrl;
   if (imageData) {
     const heroImage = await loadImageBufferFromData(imageData);
     if (heroImage) {

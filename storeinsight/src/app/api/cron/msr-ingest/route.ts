@@ -20,17 +20,22 @@ const getTodayMstDate = (): string => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
-const isAuthorized = (req: NextRequest): boolean => {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
+const isCronRequest = (req: NextRequest): boolean => req.headers.get("user-agent")?.toLowerCase().startsWith("vercel-cron") === true;
+
+const authorize = (req: NextRequest): boolean => {
   const header = req.headers.get("x-cron-secret");
-  return header != null && header === secret;
+  const secret = process.env.CRON_SECRET;
+  if (header != null) {
+    return !!secret && header === secret;
+  }
+  if (isCronRequest(req)) {
+    return true;
+  }
+  return false;
 };
 
-// Vercel Cron example:
-// - Path: /api/cron/msr-ingest · Method: POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 0 16 * * * (09:00 MST)
-export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+const handle = async (request: NextRequest): Promise<NextResponse> => {
+  if (!authorize(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -58,4 +63,14 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+};
+
+// Vercel Cron example:
+// - Path: /api/cron/msr-ingest · Method: GET/POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 0 16 * * * (09:00 MST)
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handle(request);
 }

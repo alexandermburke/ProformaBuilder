@@ -10,8 +10,13 @@ export type PropertyConfig = {
   ownerEmails: string[];
   enabled: boolean;
   facilityOpenDate?: string;
+  heroImageUrl?: string; // Firebase Storage URL/path
+  heroImagePath?: string; // Storage object path
+  heroImageUpdatedAt?: string | null;
+  // legacy fields kept for backward compatibility
   propertyImageData?: string;
   imagePath?: string;
+  heroImageRemove?: boolean;
 };
 
 export type DailyRunStatus = {
