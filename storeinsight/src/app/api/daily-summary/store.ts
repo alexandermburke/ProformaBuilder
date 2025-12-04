@@ -98,6 +98,14 @@ const decodeImageData = (data: string): DecodedImage | null => {
   }
 };
 
+const isBinaryImageString = (value: string): boolean => {
+  if (!value) return false;
+  if (value.startsWith('data:image/')) return true;
+  if (/^https?:\/\//i.test(value)) return false;
+  // naive base64 check (no URL characters and reasonable length)
+  return /^[A-Za-z0-9+/=]+$/.test(value.trim());
+};
+
 const purgeHeroImages = async (propertyId: string, existingPath?: string | null): Promise<void> => {
   if (!adminStorage) return;
   const prefix = `daily-summary/${propertyId}/`;
@@ -206,6 +214,8 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       : existingData?.heroImageUpdatedAt ?? null;
 
   const shouldRemoveHeroImage = input.heroImageRemove === true;
+  const incomingImageData = typeof input.propertyImageData === 'string' ? input.propertyImageData.trim() : '';
+  const shouldUploadImage = incomingImageData && isBinaryImageString(incomingImageData);
 
   if (shouldRemoveHeroImage) {
     await purgeHeroImages(docRef.id, heroImagePath);
@@ -224,9 +234,9 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     );
   }
 
-  if (input.propertyImageData) {
+  if (shouldUploadImage) {
     try {
-      const upload = await uploadHeroImage(docRef.id, input.propertyImageData, heroImagePath);
+      const upload = await uploadHeroImage(docRef.id, incomingImageData, heroImagePath);
       heroImageUrl = upload.heroImageUrl;
       heroImagePath = upload.heroImagePath;
       heroImageUpdatedAt = new Date().toISOString();
