@@ -69,6 +69,7 @@ const buildHtml = (opts: {
     opts.customBody && opts.customBody.trim()
       ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(opts.customBody.trim()).replace(/\n/g, "<br />")}</div>`
       : "";
+  const footer = `<p style="margin-top: 18px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a>.</p>`;
   return `
     <html>
       <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
@@ -78,6 +79,7 @@ const buildHtml = (opts: {
         <p style="margin-top: 16px; font-size: 11px; color: #666;">
           Daily Flash PPTX attached for download.
         </p>
+        ${footer}
       </body>
     </html>
   `;
