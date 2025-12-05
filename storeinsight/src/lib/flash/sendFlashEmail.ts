@@ -77,7 +77,7 @@ const buildHtml = (opts: {
         ${dateLabel}
         ${bodySection}
         <p style="margin-top: 16px; font-size: 11px; color: #666;">
-          Daily Flash PPTX attached for download.
+          Daily Flash PDF attached for download.
         </p>
         ${footer}
       </body>
