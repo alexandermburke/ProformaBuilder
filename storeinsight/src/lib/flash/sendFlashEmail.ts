@@ -88,10 +88,15 @@ export async function sendFlashEmail(options: {
   pptxBuffer: Buffer;
   pptxFilename: string;
   tokens?: TokenMap;
+  reportDateDisplay?: string;
   customBody?: string;
-  extraAttachments?: Mail.Attachment[];
   fromOverride?: string;
   slidePngBuffer?: Buffer;
+  pdfBuffer?: Buffer | null;
+  pdfFilename?: string | null;
+  pngBuffer?: Buffer | null;
+  pngFilename?: string | null;
+  attachPptx?: boolean;
 }): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
@@ -123,31 +128,43 @@ export async function sendFlashEmail(options: {
       (options.tokens?.FACILITYSHORTNAME as string) ||
       options.property.name ||
       options.property.id;
-    const reportDate = (options.tokens?.ASOFDATE as string) || "";
+    const reportDate = options.reportDateDisplay || (options.tokens?.ASOFDATE as string) || "";
     const subject = `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
     const htmlBody = buildHtml({ propertyLabel, reportDate, customBody: options.customBody });
+    const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
     const html =
-      options.slidePngBuffer && options.slidePngBuffer.length
+      inlinePng && inlinePng.length
         ? `${htmlBody}
         <div style="margin-top: 12px;">
           <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
         </div>`
         : htmlBody;
     const fromAddress = sanitizeFromAddress(options.fromOverride) || mailConfig.from;
-    const attachments: Mail.Attachment[] = [
-      {
+    const attachments: Mail.Attachment[] = [];
+
+    if (options.pdfBuffer && options.pdfBuffer.length) {
+      attachments.push({
+        filename: options.pdfFilename || "daily-flash.pdf",
+        content: options.pdfBuffer,
+        contentType: "application/pdf",
+      });
+    }
+
+    if (inlinePng && inlinePng.length) {
+      attachments.push({
+        filename: options.pngFilename || "daily-flash.png",
+        content: inlinePng,
+        contentType: "image/png",
+        cid: "flash-slide",
+      });
+    }
+
+    const shouldAttachPptx = options.attachPptx ?? !options.pdfBuffer;
+    if (shouldAttachPptx) {
+      attachments.push({
         filename: options.pptxFilename,
         content: options.pptxBuffer,
         contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      },
-      ...(options.extraAttachments ?? []),
-    ];
-    if (options.slidePngBuffer && options.slidePngBuffer.length) {
-      attachments.push({
-        filename: "daily-flash-slide.png",
-        content: options.slidePngBuffer,
-        contentType: "image/png",
-        cid: "flash-slide",
       });
     }
 
@@ -159,10 +176,22 @@ export async function sendFlashEmail(options: {
       attachments,
     });
 
+    const propertyCode =
+      (options.tokens?.FACILITYCODE as string) ||
+      options.property.propertyCode ||
+      options.property.tenantPropertyId ||
+      options.property.id;
     console.info("[flash-email] emailed flash report", {
       propertyId: options.property.id,
+      propertyCode,
+      reportDate: reportDate || options.reportDateDisplay,
       to: recipients,
       subject,
+      attachments: {
+        pdfIncluded: Boolean(options.pdfBuffer && options.pdfBuffer.length),
+        pngIncluded: Boolean(inlinePng && inlinePng.length),
+        pptxIncluded: shouldAttachPptx,
+      },
     });
     return true;
   } catch (err) {

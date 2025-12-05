@@ -1,50 +1,50 @@
 export type ConvertPptxParams = {
   convertUrl: string;
-  storageBucket: string;
-  pptxPath: string;
-  outputBasePath: string;
+  storageBucket?: string; // legacy support
+  pptxPath?: string; // legacy support
+  outputBasePath?: string; // legacy support
   pptxBuffer?: Buffer;
   pptxFilename?: string;
 };
 
 export type ConvertPptxResult = {
-  pdfPath?: string;
-  slidePngPaths?: string[];
-  pdfBuffer?: Buffer;
-  slidePngBuffers?: Buffer[];
+  pdfBuffer: Buffer | null;
+  pngBuffer: Buffer | null;
+  pdfFilename: string | null;
+  pngFilename: string | null;
 };
 
-function resolveConvertEndpoint(convertUrl: string): string {
+function resolveConvertEndpoints(convertUrl: string): { primary: string; fallback: string } {
   const trimmed = convertUrl.trim();
   if (!trimmed) {
     throw new Error("convertUrl is empty");
   }
   const normalized = trimmed.replace(/\/+$/, "");
   const lower = normalized.toLowerCase();
-  // Allow callers to pass the full endpoint (e.g., https://svc/convert or .../convert-pptx)
-  if (lower.endsWith("/convert-pptx") || lower.endsWith("/convert")) {
-    return normalized;
-  }
-  // Default to the service's /convert endpoint
-  return `${normalized}/convert`;
+  const primary = lower.endsWith("/convert-pptx") ? normalized : `${normalized}/convert-pptx`;
+  const fallback = normalized;
+  return { primary, fallback };
 }
 
+const emptyResult = (): ConvertPptxResult => ({
+  pdfBuffer: null,
+  pngBuffer: null,
+  pdfFilename: null,
+  pngFilename: null,
+});
+
 const normalizeResultFromJson = (data: unknown): ConvertPptxResult => {
-  if (!data || typeof data !== "object") return {};
+  if (!data || typeof data !== "object") return emptyResult();
   const obj = data as Record<string, unknown>;
-  const pdfPath = typeof obj.pdfPath === "string" ? obj.pdfPath : undefined;
-  const slidePngPaths = Array.isArray(obj.slidePngPaths)
-    ? (obj.slidePngPaths as unknown[]).filter((p): p is string => typeof p === "string")
-    : undefined;
   const pdfBase64 = typeof obj.pdfBase64 === "string" ? obj.pdfBase64 : undefined;
-  const slidePngBase64 = Array.isArray(obj.slidePngBase64)
-    ? (obj.slidePngBase64 as unknown[]).filter((p): p is string => typeof p === "string")
-    : undefined;
+  const pngBase64 = typeof obj.pngBase64 === "string" ? obj.pngBase64 : undefined;
+  const pdfFilename = typeof obj.pdfFilename === "string" ? obj.pdfFilename : null;
+  const pngFilename = typeof obj.pngFilename === "string" ? obj.pngFilename : null;
   return {
-    pdfPath,
-    slidePngPaths,
-    pdfBuffer: pdfBase64 ? Buffer.from(pdfBase64, "base64") : undefined,
-    slidePngBuffers: slidePngBase64?.map((b) => Buffer.from(b, "base64")),
+    pdfBuffer: pdfBase64 ? Buffer.from(pdfBase64, "base64") : null,
+    pngBuffer: pngBase64 ? Buffer.from(pngBase64, "base64") : null,
+    pdfFilename,
+    pngFilename,
   };
 };
 
@@ -84,28 +84,38 @@ async function convertViaUpload(params: ConvertPptxParams, endpoint: string): Pr
 
   const buffer = Buffer.from(await res.arrayBuffer());
   if (contentType.includes("application/pdf") || contentType.includes("application/octet-stream") || !contentType) {
-    return { pdfBuffer: buffer };
+    return { pdfBuffer: buffer, pngBuffer: null, pdfFilename: null, pngFilename: null };
   }
   if (contentType.includes("image/png")) {
-    return { slidePngBuffers: [buffer] };
+    return { pdfBuffer: null, pngBuffer: buffer, pdfFilename: null, pngFilename: null };
   }
 
   // Fallback: return raw buffer as PDF if content type is unexpected
-  return { pdfBuffer: buffer };
+  return { pdfBuffer: buffer, pngBuffer: null, pdfFilename: null, pngFilename: null };
 }
 
 export async function convertPptxRemote(params: ConvertPptxParams): Promise<ConvertPptxResult> {
-  const endpoint = resolveConvertEndpoint(params.convertUrl);
+  const { primary, fallback } = resolveConvertEndpoints(params.convertUrl);
   if (params.pptxBuffer && params.pptxBuffer.length > 0) {
+    // Try preferred endpoint first, then fallback if it fails
     try {
-      return await convertViaUpload(params, endpoint);
+      return await convertViaUpload(params, primary);
     } catch (uploadErr) {
-      // If upload mode fails, fall back to JSON (legacy converter) so callers still get an error message
-      console.warn("[convertPptxRemote] upload mode failed, attempting legacy body", uploadErr);
+      if (fallback !== primary) {
+        console.warn("[convertPptxRemote] upload primary failed, retrying fallback endpoint", uploadErr);
+        try {
+          return await convertViaUpload(params, fallback);
+        } catch (fallbackErr) {
+          console.warn("[convertPptxRemote] upload fallback failed, attempting legacy body", fallbackErr);
+        }
+      } else {
+        console.warn("[convertPptxRemote] upload failed, attempting legacy body", uploadErr);
+      }
     }
   }
 
-  const res = await fetch(endpoint, {
+  // Legacy JSON body path for older converter deployments
+  const res = await fetch(primary, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

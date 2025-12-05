@@ -17,6 +17,7 @@ export type GenerateFlashOptions = {
 export type GenerateFlashResult = {
   pptxPath?: string;
   pdfPath?: string;
+  pngPath?: string;
   slidePngPaths?: string[];
   status: "generated" | "failed";
   error?: string;
@@ -80,6 +81,7 @@ export async function generateFlashArtifacts(options: GenerateFlashOptions): Pro
 
   let pptxPath: string | undefined;
   let pdfPath: string | undefined;
+  let pngPath: string | undefined;
   let slidePngPaths: string[] = [];
 
   try {
@@ -96,28 +98,22 @@ export async function generateFlashArtifacts(options: GenerateFlashOptions): Pro
     if (convertUrl && storageBucketName) {
       try {
         const convertResult = await convertWithLibreService(storageBucketName, pptxPath, convertUrl, pptxBuffer, `${propertyCode}.pptx`);
-        pdfPath = convertResult.pdfPath;
-        slidePngPaths = convertResult.slidePngPaths ?? [];
-        if (!pdfPath && convertResult.pdfBuffer) {
-          pdfPath = pptxPath.replace(/\.pptx$/i, ".pdf");
+        if (convertResult.pdfBuffer) {
+          pdfPath = `msr_flash/${reportDate}/${propertyCode}.pdf`;
           await storage.file(pdfPath).save(convertResult.pdfBuffer, {
             contentType: "application/pdf",
             resumable: false,
             metadata: { cacheControl: "private,max-age=0" },
           });
         }
-        if ((!slidePngPaths || slidePngPaths.length === 0) && convertResult.slidePngBuffers?.length) {
-          slidePngPaths = [];
-          const base = pptxPath.replace(/\.pptx$/i, "");
-          for (let i = 0; i < convertResult.slidePngBuffers.length; i += 1) {
-            const dest = `${base}-${i + 1}.png`;
-            await storage.file(dest).save(convertResult.slidePngBuffers[i], {
-              contentType: "image/png",
-              resumable: false,
-              metadata: { cacheControl: "private,max-age=0" },
-            });
-            slidePngPaths.push(dest);
-          }
+        if (convertResult.pngBuffer) {
+          pngPath = `msr_flash/${reportDate}/${propertyCode}.png`;
+          await storage.file(pngPath).save(convertResult.pngBuffer, {
+            contentType: "image/png",
+            resumable: false,
+            metadata: { cacheControl: "private,max-age=0" },
+          });
+          slidePngPaths = [pngPath];
         }
       } catch (convertErr) {
         const message =
@@ -139,6 +135,7 @@ export async function generateFlashArtifacts(options: GenerateFlashOptions): Pro
       {
         pptxPath,
         pdfPath,
+        pngPath,
         slidePngPaths,
         flashStatus: "generated",
         flashError: admin.firestore.FieldValue.delete(),
@@ -147,7 +144,7 @@ export async function generateFlashArtifacts(options: GenerateFlashOptions): Pro
       { merge: true },
     );
 
-    return { pptxPath, pdfPath, status: "generated" };
+    return { pptxPath, pdfPath, pngPath, status: "generated" };
   } catch (err) {
     const message = err instanceof Error ? err.message : "PPTX generation failed";
     console.error("[flash-generate] failed", { docId, propertyCode, reportDate }, err);

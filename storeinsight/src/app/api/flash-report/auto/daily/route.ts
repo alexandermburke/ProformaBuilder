@@ -18,6 +18,11 @@ type MsrDoc = {
 };
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
+const formatReportDateDisplay = (value: string): string => {
+  if (!isValidDate(value)) return value;
+  const [year, month, day] = value.split("-");
+  return `${month}/${day}/${year}`;
+};
 
 const normalizeCode = (value: string | undefined | null): string => (value ?? "").toString().trim();
 const normalizeSlug = (value: string | undefined | null): string => normalizeCode(value).toLowerCase();
@@ -203,6 +208,7 @@ export async function POST(req: NextRequest) {
       });
 
       let pdfPath: string | undefined;
+      let pngPath: string | undefined;
       let slidePngPaths: string[] | undefined;
       let pdfBufferLocal: Buffer | undefined;
       let slidePngBuffer: Buffer | undefined;
@@ -213,54 +219,39 @@ export async function POST(req: NextRequest) {
         try {
           const convertResult = await convertPptxRemote({
             convertUrl,
-            storageBucket: bucketName,
-            pptxPath: flashPath,
-            outputBasePath: flashPath.replace(/\.pptx$/i, ""),
             pptxBuffer: generation.pptxBuffer,
             pptxFilename: generation.pptxFilename,
           });
-          pdfPath = convertResult.pdfPath;
-          slidePngPaths = convertResult.slidePngPaths;
-          if (!pdfPath && convertResult.pdfBuffer) {
-            const dest = flashPath.replace(/\.pptx$/i, ".pdf");
-            await storage.file(dest).save(convertResult.pdfBuffer, {
+          if (convertResult.pdfBuffer) {
+            pdfBufferLocal = convertResult.pdfBuffer;
+            pdfPath = `flash_reports/${reportDate}/${propertyCode}-${reportDate}.pdf`;
+            await storage.file(pdfPath).save(convertResult.pdfBuffer, {
               contentType: "application/pdf",
               resumable: false,
               metadata: { cacheControl: "private,max-age=0" },
             });
-            pdfPath = dest;
           }
-          if (convertResult.pdfBuffer) {
-            pdfBufferLocal = convertResult.pdfBuffer;
+          if (convertResult.pngBuffer) {
+            slidePngBuffer = convertResult.pngBuffer;
+            pngPath = `flash_reports/${reportDate}/${propertyCode}-${reportDate}.png`;
+            await storage.file(pngPath).save(convertResult.pngBuffer, {
+              contentType: "image/png",
+              resumable: false,
+              metadata: { cacheControl: "private,max-age=0" },
+            });
+            slidePngPaths = [pngPath];
           }
-          if ((!slidePngPaths || slidePngPaths.length === 0) && convertResult.slidePngBuffers?.length) {
-            slidePngPaths = [];
-            const base = flashPath.replace(/\.pptx$/i, "");
-            for (let i = 0; i < convertResult.slidePngBuffers.length; i += 1) {
-              const buffer = convertResult.slidePngBuffers[i];
-              const dest = `${base}-${i + 1}.png`;
-              await storage.file(dest).save(buffer, {
-                contentType: "image/png",
-                resumable: false,
-                metadata: { cacheControl: "private,max-age=0" },
-              });
-              slidePngPaths.push(dest);
-            }
-            slidePngBuffer = convertResult.slidePngBuffers[0];
-          }
+          console.info("[flash-report/auto] pptx convert ok", {
+            propertyCode,
+            reportDate,
+            pdfStored: Boolean(pdfPath),
+            pngStored: Boolean(pngPath),
+          });
         } catch (err) {
           console.warn("[flash-report/auto] pptx convert failed", { propertyCode, reportDate }, err);
         }
       }
 
-      if (slidePngPaths && slidePngPaths.length > 0) {
-        try {
-          const [pngBuffer] = await storage.file(slidePngPaths[0]).download();
-          slidePngBuffer = pngBuffer;
-        } catch (err) {
-          console.warn("[flash-report/email] unable to download slide png", { propertyCode, reportDate, slidePngPaths }, err);
-        }
-      }
       if (!slidePngBuffer) {
         if (hasSoffice) {
           try {
@@ -272,7 +263,21 @@ export async function POST(req: NextRequest) {
           console.warn("[flash-report/email] png not generated (no converter available)", { propertyCode, reportDate });
         }
       }
-      if (!pdfPath) {
+      if (slidePngBuffer && !pngPath) {
+        try {
+          pngPath = `flash_reports/${reportDate}/${propertyCode}-${reportDate}.png`;
+          await storage.file(pngPath).save(slidePngBuffer, {
+            contentType: "image/png",
+            resumable: false,
+            metadata: { cacheControl: "private,max-age=0" },
+          });
+          slidePngPaths = [pngPath];
+        } catch (err) {
+          console.warn("[flash-report/email] failed to store png", { propertyCode, reportDate }, err);
+        }
+      }
+
+      if (!pdfBufferLocal) {
         if (hasSoffice) {
           try {
             pdfBufferLocal = await convertPptxBufferToPdfLocal(generation.pptxBuffer);
@@ -283,6 +288,18 @@ export async function POST(req: NextRequest) {
           console.warn("[flash-report/email] pdf not generated (no converter available)", { propertyCode, reportDate });
         }
       }
+      if (pdfBufferLocal && !pdfPath) {
+        try {
+          pdfPath = `flash_reports/${reportDate}/${propertyCode}-${reportDate}.pdf`;
+          await storage.file(pdfPath).save(pdfBufferLocal, {
+            contentType: "application/pdf",
+            resumable: false,
+            metadata: { cacheControl: "private,max-age=0" },
+          });
+        } catch (err) {
+          console.warn("[flash-report/email] failed to store pdf", { propertyCode, reportDate }, err);
+        }
+      }
 
       if (sendEmails) {
         console.info("[flash-report/email] sending", {
@@ -291,34 +308,39 @@ export async function POST(req: NextRequest) {
           to: prop.ownerEmails ?? [],
           sendEmails,
         });
-        const extraAttachments = [];
-        if (pdfPath) {
+        const pdfFilename = `${propertyCode}-${reportDate}.pdf`;
+        const pngFilename = `${propertyCode}-${reportDate}.png`;
+        const pptxFilename = `${propertyCode}-${reportDate}.pptx`;
+        if (!pdfBufferLocal && pdfPath) {
           try {
             const [pdfBuffer] = await storage.file(pdfPath).download();
-            extraAttachments.push({
-              filename: `${propertyCode}-${reportDate}.pdf`,
-              content: pdfBuffer,
-              contentType: "application/pdf",
-            });
+            pdfBufferLocal = pdfBuffer;
           } catch (err) {
             console.warn("[flash-report/email] unable to download pdf attachment", { propertyCode, reportDate, pdfPath }, err);
           }
-        } else if (pdfBufferLocal) {
-          extraAttachments.push({
-            filename: `${propertyCode}-${reportDate}.pdf`,
-            content: pdfBufferLocal,
-            contentType: "application/pdf",
-          });
+        }
+        if (!slidePngBuffer && slidePngPaths && slidePngPaths.length > 0) {
+          try {
+            const [pngBuffer] = await storage.file(slidePngPaths[0]).download();
+            slidePngBuffer = pngBuffer;
+          } catch (err) {
+            console.warn("[flash-report/email] unable to download slide png", { propertyCode, reportDate, slidePngPaths }, err);
+          }
         }
         emailSent = await sendFlashEmail({
           property: prop,
           pptxBuffer: generation.pptxBuffer,
-          pptxFilename: generation.pptxFilename,
+          pptxFilename,
           tokens: generation.tokens,
           customBody: body.emailBody ?? "",
-          extraAttachments,
           fromOverride: process.env.SMTP_FROM || undefined,
           slidePngBuffer,
+          pdfBuffer: pdfBufferLocal,
+          pdfFilename,
+          pngBuffer: slidePngBuffer,
+          pngFilename,
+          reportDateDisplay: formatReportDateDisplay(reportDate),
+          attachPptx: !pdfBufferLocal,
         });
         if (!emailSent) {
           throw new Error("Email delivery failed or skipped");
