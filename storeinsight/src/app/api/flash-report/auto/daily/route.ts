@@ -64,10 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   const sendEmails = body.sendEmails === true || body.sendEmails === "true";
-  const respectSendTime =
-    body.respectSendTime === false || body.respectSendTime === "false"
-      ? false
-      : body.mode === "scheduled" || body.respectSendTime === true || body.respectSendTime === "true";
+  const respectSendTime = body.respectSendTime === true || body.respectSendTime === "true";
   const currentMstTime = getCurrentMstTime();
 
   console.info("[flash-report/auto] start", {
@@ -223,6 +220,16 @@ export async function POST(req: NextRequest) {
       }
 
       let emailSent = false;
+      let slidePngBuffer: Buffer | undefined;
+      if (slidePngPaths && slidePngPaths.length > 0) {
+        try {
+          const [pngBuffer] = await storage.file(slidePngPaths[0]).download();
+          slidePngBuffer = pngBuffer;
+        } catch (err) {
+          console.warn("[flash-report/email] unable to download slide png", { propertyCode, reportDate, slidePngPaths }, err);
+        }
+      }
+
       if (sendEmails) {
         console.info("[flash-report/email] sending", {
           reportDate,
@@ -230,12 +237,28 @@ export async function POST(req: NextRequest) {
           to: prop.ownerEmails ?? [],
           sendEmails,
         });
+        const extraAttachments = [];
+        if (pdfPath) {
+          try {
+            const [pdfBuffer] = await storage.file(pdfPath).download();
+            extraAttachments.push({
+              filename: `${propertyCode}-${reportDate}.pdf`,
+              content: pdfBuffer,
+              contentType: "application/pdf",
+            });
+          } catch (err) {
+            console.warn("[flash-report/email] unable to download pdf attachment", { propertyCode, reportDate, pdfPath }, err);
+          }
+        }
         emailSent = await sendFlashEmail({
           property: prop,
           pptxBuffer: generation.pptxBuffer,
           pptxFilename: generation.pptxFilename,
           tokens: generation.tokens,
           customBody: body.emailBody ?? "",
+          extraAttachments,
+          fromOverride: process.env.SMTP_FROM || process.env.SMTP_FROM_FLASH || undefined,
+          slidePngBuffer,
         });
         if (!emailSent) {
           throw new Error("Email delivery failed or skipped");

@@ -79,6 +79,9 @@ export async function sendFlashEmail(options: {
   pptxFilename: string;
   tokens?: TokenMap;
   customBody?: string;
+  extraAttachments?: Mail.Attachment[];
+  fromOverride?: string;
+  slidePngBuffer?: Buffer;
 }): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
@@ -111,19 +114,35 @@ export async function sendFlashEmail(options: {
       options.property.id;
     const reportDate = (options.tokens?.ASOFDATE as string) || "";
     const subject = `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
-    const html = buildHtml({ propertyLabel, reportDate, customBody: options.customBody });
-    const attachments: Mail.Attachment[] = [
-      {
-        filename: options.pptxFilename,
-        content: options.pptxBuffer,
-        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      },
-    ];
+  const htmlBody = buildHtml({ propertyLabel, reportDate, customBody: options.customBody });
+  const html =
+    options.slidePngBuffer && options.slidePngBuffer.length
+      ? `${htmlBody}
+        <div style="margin-top: 12px;">
+          <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
+        </div>`
+      : htmlBody;
+  const attachments: Mail.Attachment[] = [
+    {
+      filename: options.pptxFilename,
+      content: options.pptxBuffer,
+      contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    },
+    ...(options.extraAttachments ?? []),
+  ];
+  if (options.slidePngBuffer && options.slidePngBuffer.length) {
+    attachments.push({
+      filename: "daily-flash-slide.png",
+      content: options.slidePngBuffer,
+      contentType: "image/png",
+      cid: "flash-slide",
+    });
+  }
 
-    await transporter.sendMail({
-      from: mailConfig.from,
-      to: recipients,
-      subject,
+  await transporter.sendMail({
+    from: options.fromOverride || mailConfig.from,
+    to: recipients,
+    subject,
       html,
       attachments,
     });
