@@ -100,6 +100,14 @@ export async function POST(req: NextRequest) {
     return true;
   });
 
+  console.info("[flash-report/auto] resolved properties", {
+    reportDate,
+    count: baseProps.length,
+    propertyCodes: baseProps.map((p) => resolvePropertyCode(p)),
+    sendEmails,
+    respectSendTime,
+  });
+
   if (baseProps.length === 0) {
     console.warn("[flash-report/auto] no properties matched request", {
       reportDate,
@@ -157,6 +165,7 @@ export async function POST(req: NextRequest) {
     const sendTimeMst = prop.sendTimeMst ?? prop.sendTimeLocal;
 
     if (respectSendTime && !isTimeOnOrAfter(currentMstTime, sendTimeMst)) {
+      console.info("[flash-report/auto] skipping property before send time", { propertyCode, sendTimeMst, currentMstTime });
       propertiesSkipped.push({ propertyCode, propertyId, reason: "before_send_time" });
       continue;
     }
@@ -228,6 +237,8 @@ export async function POST(req: NextRequest) {
         if (!emailSent) {
           throw new Error("Email delivery failed or skipped");
         }
+      } else {
+        console.info("[flash-report/email] sendEmails=false, skipping send", { reportDate, propertyCode });
       }
 
       await recordFlashRunResult({
@@ -271,6 +282,15 @@ export async function POST(req: NextRequest) {
         console.warn("[flash-report/auto] status update failed (error)", { propertyCode, reportDate }, statusErr),
       );
     }
+  }
+
+  console.info("[flash-report/auto] processed summary", {
+    reportDate,
+    processedCount: propertiesProcessed.length,
+    skippedCount: propertiesSkipped.length,
+  });
+  if (propertiesProcessed.length === 0) {
+    console.warn("[flash-report/auto] no properties to process for reportDate", { reportDate });
   }
 
   return NextResponse.json({

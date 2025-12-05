@@ -93,6 +93,8 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
     const res = await runAutoFlash(proxyRequest);
     const durationMs = Date.now() - started;
 
+    const responseClone = res.clone();
+    const responseJson = await responseClone.json().catch(() => null);
     if (res.status >= 400) {
       let detail: unknown = null;
       try {
@@ -104,9 +106,22 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
           detail = null;
         }
       }
-      console.error("[cron/daily-flash] completed with error", { status: res.status, durationMs, detail });
+      console.error("[cron/daily-flash] completed with error", {
+        status: res.status,
+        durationMs,
+        detail,
+        reportDate: (responseJson as { reportDate?: string })?.reportDate,
+        propertiesProcessed: (responseJson as { propertiesProcessed?: unknown[] })?.propertiesProcessed?.length ?? null,
+        propertiesSkipped: (responseJson as { propertiesSkipped?: unknown[] })?.propertiesSkipped?.length ?? null,
+      });
     } else {
-      console.info("[cron/daily-flash] completed", { status: res.status, durationMs });
+      console.info("[cron/daily-flash] completed", {
+        status: res.status,
+        durationMs,
+        reportDate: (responseJson as { reportDate?: string })?.reportDate,
+        propertiesProcessed: (responseJson as { propertiesProcessed?: unknown[] })?.propertiesProcessed?.length ?? null,
+        propertiesSkipped: (responseJson as { propertiesSkipped?: unknown[] })?.propertiesSkipped?.length ?? null,
+      });
     }
     return res;
   } catch (err) {
