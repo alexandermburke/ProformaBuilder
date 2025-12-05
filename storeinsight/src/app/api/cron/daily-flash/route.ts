@@ -86,6 +86,7 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
         propertyCodes: Array.isArray(body.propertyCodes) ? body.propertyCodes : undefined,
         sendEmails,
         mode: "scheduled",
+        respectSendTime: false,
       }),
     });
 
