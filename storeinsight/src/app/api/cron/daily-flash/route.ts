@@ -3,22 +3,29 @@ import { POST as runAutoFlash } from "@/app/api/flash-report/auto/daily/route";
 
 export const runtime = "nodejs";
 
-const getTodayMstDate = (): string => {
-  const now = new Date();
+const addDays = (date: Date, days: number): Date => {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+};
+
+const getYesterdayMstDate = (): string => getTodayMstDateFor(addDays(new Date(), -1));
+
+function getTodayMstDateFor(date: Date): string {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Phoenix",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
-  const parts = formatter.formatToParts(now).reduce<Record<string, string>>((acc, part) => {
+  const parts = formatter.formatToParts(date).reduce<Record<string, string>>((acc, part) => {
     if (part.type === "year" || part.type === "month" || part.type === "day") {
       acc[part.type] = part.value;
     }
     return acc;
   }, {});
   return `${parts.year}-${parts.month}-${parts.day}`;
-};
+}
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
@@ -66,7 +73,9 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
 
     const providedDate =
       typeof body.reportDate === "string" && isValidDate(body.reportDate.trim()) ? body.reportDate.trim() : null;
-    const reportDate = providedDate || getTodayMstDate();
+
+    const reportDate = providedDate || getYesterdayMstDate();
+
     const sendEmails = body.sendEmails === undefined ? true : body.sendEmails === true || body.sendEmails === "true";
 
     const proxyRequest = new NextRequest(new URL("/api/flash-report/auto/daily", "http://localhost"), {

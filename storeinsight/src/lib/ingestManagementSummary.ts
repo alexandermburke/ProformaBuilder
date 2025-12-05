@@ -11,6 +11,7 @@ export type IngestedMsr = {
   ownerId: string;
   folderId: string;
   docId: string;
+  emailDate?: string;
 };
 
 const parseMetaFromUrl = (urlStr: string) => {
@@ -31,7 +32,7 @@ const parseMetaFromUrl = (urlStr: string) => {
 
 export async function ingestManagementSummariesFromViewer(
   viewerUrl: string,
-  options?: { propertyConfigs?: PropertyConfig[] },
+  options?: { propertyConfigs?: PropertyConfig[]; emailDate?: string },
 ): Promise<IngestedMsr[]> {
   if (!firestore || !storage) {
     throw new Error("Firebase is not initialized (firestore/storage missing). Check environment variables.");
@@ -204,6 +205,7 @@ export async function ingestManagementSummariesFromViewer(
     const sendTimeMst = propertyConfig?.sendTimeMst ?? propertyConfig?.sendTimeLocal;
     const propertyId = propertyConfig?.propertyId ?? propertyConfig?.tenantPropertyId ?? propertyConfig?.id;
     const propertyNameForStatus = propertyConfig?.name ?? propertyName;
+    const emailDate = options?.emailDate;
 
     try {
       const existing = await docRef.get();
@@ -213,8 +215,12 @@ export async function ingestManagementSummariesFromViewer(
           reportDate?: string;
           storagePath?: string;
           cloudfrontUrl?: string;
+          emailDate?: string;
         };
         const msrPath = data?.storagePath ?? storagePath;
+        if (emailDate && emailDate !== data?.emailDate) {
+          await docRef.set({ emailDate }, { merge: true }).catch(() => undefined);
+        }
         try {
           await recordMsrReceipt({
             propertyCode: data?.propertyCode ?? propertyCode,
@@ -232,6 +238,7 @@ export async function ingestManagementSummariesFromViewer(
           reportDate: data?.reportDate ?? reportDate,
           storagePath: msrPath ?? storagePath,
           cloudfrontUrl: data?.cloudfrontUrl ?? normalizedUrl,
+          emailDate: data?.emailDate ?? emailDate ?? reportDate,
           ownerId,
           folderId,
           docId,
@@ -258,6 +265,7 @@ export async function ingestManagementSummariesFromViewer(
         await docRef.create({
           propertyCode,
           reportDate,
+          emailDate: emailDate ?? reportDate,
           cloudfrontUrl: normalizedUrl,
           storagePath,
           ownerId,
@@ -293,6 +301,7 @@ export async function ingestManagementSummariesFromViewer(
             ownerId?: string;
             folderId?: string;
               docId?: string;
+              emailDate?: string;
             } | null;
             const msrPath = data?.storagePath ?? storagePath;
             try {
@@ -315,6 +324,7 @@ export async function ingestManagementSummariesFromViewer(
               ownerId: data?.ownerId ?? ownerId,
               folderId: data?.folderId ?? folderId,
               docId: data?.docId ?? docId,
+              emailDate: data?.emailDate ?? emailDate ?? reportDate,
             });
         } else {
           throw docErr;

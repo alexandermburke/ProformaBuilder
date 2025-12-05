@@ -47,6 +47,7 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
     const summary = await runDailyMsrIngestion({
       senderEmail,
       subjectPhrase,
+      processingDate: new Date(),
     });
 
     return NextResponse.json({

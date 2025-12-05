@@ -4,6 +4,7 @@ import { firestore } from "@/server/firebaseAdmin";
 export type MsrEmailRecord = {
   messageId: string;
   receivedAt: string;
+  receivedDateMst?: string;
   from: string;
   subject: string;
   viewerUrl: string;
@@ -21,6 +22,20 @@ type GraphMessage = {
 const viewerRegex =
   /https:\/\/reportviewer\.tenantinc\.com\/shared-reports\/owners\/[^\s"'<>]+\/folders\/[^\s"'<>]+/i;
 const trackingRegex = /https:\/\/track\.pstmrk\.it\/[^\s"'<>]+/i;
+
+const mstDateString = (date: Date): string => {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Phoenix",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date).reduce<Record<string, string>>((acc, part) => {
+    if (part.type === "year" || part.type === "month" || part.type === "day") acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
 
 async function getGraphAccessToken(): Promise<string> {
   const tenantId = process.env.MS_GRAPH_TENANT_ID;
@@ -135,9 +150,11 @@ export async function ingestMsrEmails(options: {
     const viewerUrl = viewerMatch[0];
 
     const receivedAt = message.receivedDateTime ?? new Date().toISOString();
+    const receivedDateMst = mstDateString(new Date(receivedAt));
     const record: MsrEmailRecord = {
       messageId,
       receivedAt,
+      receivedDateMst,
       from: message.from?.emailAddress?.address ?? "",
       subject: message.subject ?? "",
       viewerUrl,

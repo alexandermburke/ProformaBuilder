@@ -1037,7 +1037,7 @@ export default function DailySummaryPage() {
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                    Send time (MST)
+                    Send time gate (MST)
                   </label>
                   <input
                     type="time"
@@ -1047,6 +1047,9 @@ export default function DailySummaryPage() {
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                     required
                   />
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    Auto flash only runs for this property if the current MST time is at/after this gate when cron fires.
+                  </span>
                 </div>
               </div>
               <div className="flex flex-col gap-3">

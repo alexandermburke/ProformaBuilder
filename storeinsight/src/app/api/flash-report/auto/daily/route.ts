@@ -97,7 +97,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No properties matched the request." }, { status: 404 });
   }
 
-  const msrSnap = await firestore.collection("msrReports").where("reportDate", "==", reportDate).get();
+  let msrSnap = await firestore.collection("msrReports").where("emailDate", "==", reportDate).get();
+  if (msrSnap.empty) {
+    msrSnap = await firestore.collection("msrReports").where("reportDate", "==", reportDate).get();
+  }
+  if (msrSnap.empty) {
+    console.warn("[flash-report/auto] no msr found for reportDate", { reportDate });
+    return NextResponse.json(
+      {
+        error: "MSR not found for reportDate",
+        reportDate,
+        propertiesProcessed: [],
+        propertiesSkipped: baseProps.map((prop) => ({ propertyCode: resolvePropertyCode(prop), propertyId: prop.propertyId, reason: "msr_missing" })),
+        sendEmails,
+        mode: respectSendTime ? "scheduled" : "manual",
+      },
+      { status: 404 },
+    );
+  }
   const msrByCode = new Map<string, MsrDoc>();
   msrSnap.docs.forEach((doc) => {
     const data = doc.data() as MsrDoc;
