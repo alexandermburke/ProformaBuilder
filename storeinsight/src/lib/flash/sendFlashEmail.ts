@@ -11,12 +11,22 @@ type MailerConfig = {
   from: string;
 };
 
+const sanitizeFromAddress = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  let from = value.trim();
+  from = from.replace(/^SMTP_FROM=/i, "").trim();
+  if ((from.startsWith("\"") && from.endsWith("\"")) || (from.startsWith("'") && from.endsWith("'"))) {
+    from = from.slice(1, -1).trim();
+  }
+  return from || undefined;
+};
+
 const resolveMailerConfig = (): MailerConfig | null => {
   const host = process.env.SMTP_HOST;
   const portRaw = process.env.SMTP_PORT;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || user;
+  const from = sanitizeFromAddress(process.env.SMTP_FROM) || sanitizeFromAddress(user);
   if (!host || !portRaw || !from) {
     console.info("[flash-email] SMTP config missing; skipping email delivery");
     return null;
@@ -98,7 +108,7 @@ export async function sendFlashEmail(options: {
       to: recipients,
       host: mailConfig.host,
       port: mailConfig.port,
-      from: options.fromOverride || mailConfig.from,
+      from: sanitizeFromAddress(options.fromOverride) || mailConfig.from,
     });
 
     const transporter = nodemailer.createTransport({
@@ -115,33 +125,34 @@ export async function sendFlashEmail(options: {
       options.property.id;
     const reportDate = (options.tokens?.ASOFDATE as string) || "";
     const subject = `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
-  const htmlBody = buildHtml({ propertyLabel, reportDate, customBody: options.customBody });
-  const html =
-    options.slidePngBuffer && options.slidePngBuffer.length
-      ? `${htmlBody}
+    const htmlBody = buildHtml({ propertyLabel, reportDate, customBody: options.customBody });
+    const html =
+      options.slidePngBuffer && options.slidePngBuffer.length
+        ? `${htmlBody}
         <div style="margin-top: 12px;">
           <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
         </div>`
-      : htmlBody;
-  const attachments: Mail.Attachment[] = [
-    {
-      filename: options.pptxFilename,
-      content: options.pptxBuffer,
-      contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    },
-    ...(options.extraAttachments ?? []),
-  ];
-  if (options.slidePngBuffer && options.slidePngBuffer.length) {
-    attachments.push({
-      filename: "daily-flash-slide.png",
-      content: options.slidePngBuffer,
-      contentType: "image/png",
-      cid: "flash-slide",
-    });
-  }
+        : htmlBody;
+    const fromAddress = sanitizeFromAddress(options.fromOverride) || mailConfig.from;
+    const attachments: Mail.Attachment[] = [
+      {
+        filename: options.pptxFilename,
+        content: options.pptxBuffer,
+        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      },
+      ...(options.extraAttachments ?? []),
+    ];
+    if (options.slidePngBuffer && options.slidePngBuffer.length) {
+      attachments.push({
+        filename: "daily-flash-slide.png",
+        content: options.slidePngBuffer,
+        contentType: "image/png",
+        cid: "flash-slide",
+      });
+    }
 
     await transporter.sendMail({
-      from: options.fromOverride || mailConfig.from,
+      from: fromAddress,
       to: recipients,
       subject,
       html,

@@ -48,12 +48,22 @@ type MailerConfig = {
   from: string;
 };
 
+const sanitizeFromAddress = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  let from = value.trim();
+  from = from.replace(/^SMTP_FROM=/i, "").trim();
+  if ((from.startsWith("\"") && from.endsWith("\"")) || (from.startsWith("'") && from.endsWith("'"))) {
+    from = from.slice(1, -1).trim();
+  }
+  return from || undefined;
+};
+
 const resolveMailerConfig = (): MailerConfig | null => {
   const host = process.env.SMTP_HOST;
   const portRaw = process.env.SMTP_PORT;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || user;
+  const from = sanitizeFromAddress(process.env.SMTP_FROM) || sanitizeFromAddress(user);
   if (!host || !portRaw || !from) {
     console.info("[flash-report/manual] SMTP config missing; skipping email delivery");
     return null;
