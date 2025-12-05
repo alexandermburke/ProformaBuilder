@@ -216,9 +216,38 @@ export async function POST(req: NextRequest) {
             storageBucket: bucketName,
             pptxPath: flashPath,
             outputBasePath: flashPath.replace(/\.pptx$/i, ""),
+            pptxBuffer: generation.pptxBuffer,
+            pptxFilename: generation.pptxFilename,
           });
           pdfPath = convertResult.pdfPath;
           slidePngPaths = convertResult.slidePngPaths;
+          if (!pdfPath && convertResult.pdfBuffer) {
+            const dest = flashPath.replace(/\.pptx$/i, ".pdf");
+            await storage.file(dest).save(convertResult.pdfBuffer, {
+              contentType: "application/pdf",
+              resumable: false,
+              metadata: { cacheControl: "private,max-age=0" },
+            });
+            pdfPath = dest;
+          }
+          if (convertResult.pdfBuffer) {
+            pdfBufferLocal = convertResult.pdfBuffer;
+          }
+          if ((!slidePngPaths || slidePngPaths.length === 0) && convertResult.slidePngBuffers?.length) {
+            slidePngPaths = [];
+            const base = flashPath.replace(/\.pptx$/i, "");
+            for (let i = 0; i < convertResult.slidePngBuffers.length; i += 1) {
+              const buffer = convertResult.slidePngBuffers[i];
+              const dest = `${base}-${i + 1}.png`;
+              await storage.file(dest).save(buffer, {
+                contentType: "image/png",
+                resumable: false,
+                metadata: { cacheControl: "private,max-age=0" },
+              });
+              slidePngPaths.push(dest);
+            }
+            slidePngBuffer = convertResult.slidePngBuffers[0];
+          }
         } catch (err) {
           console.warn("[flash-report/auto] pptx convert failed", { propertyCode, reportDate }, err);
         }

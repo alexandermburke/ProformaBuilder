@@ -4,7 +4,7 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import admin from "firebase-admin";
 import { firestore, storage } from "@/server/firebaseAdmin";
-import { convertPptxRemote } from "@/lib/convertPptxRemote";
+import { convertPptxRemote, type ConvertPptxResult } from "@/lib/convertPptxRemote";
 
 export type GenerateFlashOptions = {
   tokens: Record<string, string | number>;
@@ -52,13 +52,17 @@ const convertWithLibreService = async (
   storageBucket: string,
   pptxPath: string,
   convertUrl: string,
-): Promise<{ pdfPath: string; slidePngPaths: string[] }> => {
+  pptxBuffer: Buffer,
+  pptxFilename: string,
+): Promise<ConvertPptxResult> => {
   const outputBasePath = pptxPath.replace(/\.pptx$/i, "");
   return convertPptxRemote({
     convertUrl,
     storageBucket,
     pptxPath,
     outputBasePath,
+    pptxBuffer,
+    pptxFilename,
   });
 };
 
@@ -91,9 +95,30 @@ export async function generateFlashArtifacts(options: GenerateFlashOptions): Pro
 
     if (convertUrl && storageBucketName) {
       try {
-        const convertResult = await convertWithLibreService(storageBucketName, pptxPath, convertUrl);
+        const convertResult = await convertWithLibreService(storageBucketName, pptxPath, convertUrl, pptxBuffer, `${propertyCode}.pptx`);
         pdfPath = convertResult.pdfPath;
-        slidePngPaths = convertResult.slidePngPaths;
+        slidePngPaths = convertResult.slidePngPaths ?? [];
+        if (!pdfPath && convertResult.pdfBuffer) {
+          pdfPath = pptxPath.replace(/\.pptx$/i, ".pdf");
+          await storage.file(pdfPath).save(convertResult.pdfBuffer, {
+            contentType: "application/pdf",
+            resumable: false,
+            metadata: { cacheControl: "private,max-age=0" },
+          });
+        }
+        if ((!slidePngPaths || slidePngPaths.length === 0) && convertResult.slidePngBuffers?.length) {
+          slidePngPaths = [];
+          const base = pptxPath.replace(/\.pptx$/i, "");
+          for (let i = 0; i < convertResult.slidePngBuffers.length; i += 1) {
+            const dest = `${base}-${i + 1}.png`;
+            await storage.file(dest).save(convertResult.slidePngBuffers[i], {
+              contentType: "image/png",
+              resumable: false,
+              metadata: { cacheControl: "private,max-age=0" },
+            });
+            slidePngPaths.push(dest);
+          }
+        }
       } catch (convertErr) {
         const message =
           convertErr instanceof Error ? convertErr.message : typeof convertErr === "string" ? convertErr : "Conversion failed";
