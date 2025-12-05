@@ -43,11 +43,16 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const senderEmail = process.env.MSR_DEV_DEFAULT_SENDER || "reports@tenantinc.com";
     const subjectPhrase = process.env.MSR_DEV_DEFAULT_SUBJECT || "Reports Delivery";
+    const allowedSenders = (process.env.MSR_ALLOWED_SENDERS || "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
 
     const summary = await runDailyMsrIngestion({
       senderEmail,
       subjectPhrase,
       processingDate: new Date(),
+      allowedSenders,
     });
 
     return NextResponse.json({

@@ -19,6 +19,7 @@ type IngestionOptions = {
   userId?: string;
   maxEmailsToProcess?: number;
   processingDate?: Date;
+  allowedSenders?: string[];
 };
 
 const mstDateString = (date: Date): string => {

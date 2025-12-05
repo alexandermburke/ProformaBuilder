@@ -110,6 +110,7 @@ export async function ingestMsrEmails(options: {
   subjectPhrase: string;
   maxMessages?: number;
   userId?: string;
+  allowedSenders?: string[];
 }): Promise<Array<Pick<MsrEmailRecord, "messageId" | "receivedAt" | "viewerUrl">>> {
   if (!firestore) {
     throw new Error("Firebase is not initialized (firestore missing). Check environment variables.");
@@ -119,16 +120,22 @@ export async function ingestMsrEmails(options: {
   const messages = await fetchMsrMessages({ userId: options.userId, maxMessages: options.maxMessages, accessToken });
 
   const created: Array<Pick<MsrEmailRecord, "messageId" | "receivedAt" | "viewerUrl">> = [];
-  const senderLower = options.senderEmail.toLowerCase();
+  const allowedSenders = new Set(
+    (options.allowedSenders ?? [])
+      .concat(options.senderEmail)
+      .map((s) => s?.toLowerCase().trim())
+      .filter(Boolean) as string[],
+  );
   const subjectPhraseLower = options.subjectPhrase.toLowerCase();
 
   for (const message of messages) {
     const messageId = message.id;
     if (!messageId) continue;
 
-    const fromAddress = message.from?.emailAddress?.address?.toLowerCase() ?? "";
+    const fromAddress = message.from?.emailAddress?.address?.toLowerCase().trim() ?? "";
     const subjectText = message.subject ?? "";
-    if (fromAddress !== senderLower) {
+    if (allowedSenders.size > 0 && !allowedSenders.has(fromAddress)) {
+      console.info("[msr-email] skipping due to sender mismatch", { id: messageId, from: fromAddress });
       continue;
     }
     if (subjectPhraseLower && !subjectText.toLowerCase().includes(subjectPhraseLower)) {
