@@ -336,6 +336,14 @@ export async function POST(req: NextRequest) {
             console.warn("[flash-report/email] unable to download slide png", { propertyCode, reportDate, slidePngPaths }, err);
           }
         }
+        if (!pdfBufferLocal) {
+          console.error("[flash-report/email] skipping send, pdf missing after conversion", {
+            propertyCode,
+            reportDate,
+            pdfPath,
+          });
+          throw new Error("PDF conversion failed; email not sent");
+        }
         emailSent = await sendFlashEmail({
           property: prop,
           pptxBuffer: generation.pptxBuffer,
@@ -349,7 +357,7 @@ export async function POST(req: NextRequest) {
           pngBuffer: slidePngBuffer,
           pngFilename,
           reportDateDisplay: formatReportDateDisplay(reportDate),
-          attachPptx: !pdfBufferLocal,
+          attachPptx: false,
         });
         if (!emailSent) {
           throw new Error("Email delivery failed or skipped");
