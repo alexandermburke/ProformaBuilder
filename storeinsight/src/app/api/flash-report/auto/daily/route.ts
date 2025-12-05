@@ -67,6 +67,13 @@ export async function POST(req: NextRequest) {
   const respectSendTime = body.mode === "scheduled" || body.respectSendTime === true || body.respectSendTime === "true";
   const currentMstTime = getCurrentMstTime();
 
+  console.info("[flash-report/auto] start", {
+    reportDate,
+    sendEmails,
+    respectSendTime,
+    propertyCodes: body.propertyCodes ?? [],
+  });
+
   const requestedCodes =
     Array.isArray(body.propertyCodes) && body.propertyCodes.length > 0
       ? new Set(
@@ -94,6 +101,12 @@ export async function POST(req: NextRequest) {
   });
 
   if (baseProps.length === 0) {
+    console.warn("[flash-report/auto] no properties matched request", {
+      reportDate,
+      sendEmails,
+      respectSendTime,
+      requestedCount: requestedCodes?.size ?? 0,
+    });
     return NextResponse.json({ error: "No properties matched the request." }, { status: 404 });
   }
 
@@ -123,6 +136,7 @@ export async function POST(req: NextRequest) {
     if (!slug) return;
     msrByCode.set(slug, { ...data, propertyCode: codeRaw });
   });
+  console.info("[flash-report/auto] msr docs resolved", { reportDate, count: msrByCode.size, keys: Array.from(msrByCode.keys()) });
 
   const propertiesProcessed: Array<{
     propertyCode: string;
@@ -198,6 +212,12 @@ export async function POST(req: NextRequest) {
 
       let emailSent = false;
       if (sendEmails) {
+        console.info("[flash-report/email] sending", {
+          reportDate,
+          propertyCode,
+          to: prop.ownerEmails ?? [],
+          sendEmails,
+        });
         emailSent = await sendFlashEmail({
           property: prop,
           pptxBuffer: generation.pptxBuffer,
