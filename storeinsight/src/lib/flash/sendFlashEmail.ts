@@ -98,6 +98,7 @@ export async function sendFlashEmail(options: {
       to: recipients,
       host: mailConfig.host,
       port: mailConfig.port,
+      from: options.fromOverride || mailConfig.from,
     });
 
     const transporter = nodemailer.createTransport({

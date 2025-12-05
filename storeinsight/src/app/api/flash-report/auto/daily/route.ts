@@ -6,6 +6,7 @@ import { generateFlashFromMsr } from "@/lib/flash/generateFlashFromMsr";
 import { recordFlashRunResult } from "@/lib/dailySummaryRuns";
 import { sendFlashEmail } from "@/lib/flash/sendFlashEmail";
 import { convertPptxRemote } from "@/lib/convertPptxRemote";
+import { convertPptxBufferToPdfLocal, convertPptxBufferToPngLocal } from "@/lib/flash/convertPptxLocal";
 
 export const runtime = "nodejs";
 
@@ -186,6 +187,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      let emailSent = false;
       const [msrBuffer] = await storage.file(msrDoc.storagePath).download();
       const generation = await generateFlashFromMsr(Buffer.from(msrBuffer), {
         propertyCode,
@@ -202,6 +204,8 @@ export async function POST(req: NextRequest) {
 
       let pdfPath: string | undefined;
       let slidePngPaths: string[] | undefined;
+      let pdfBufferLocal: Buffer | undefined;
+      let slidePngBuffer: Buffer | undefined;
       const convertUrl = process.env.PPTX_CONVERT_URL || process.env.LIBRE_CONVERT_URL;
       const bucketName = process.env.FIREBASE_STORAGE_BUCKET || storage.name;
       if (convertUrl && bucketName) {
@@ -219,14 +223,26 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      let emailSent = false;
-      let slidePngBuffer: Buffer | undefined;
       if (slidePngPaths && slidePngPaths.length > 0) {
         try {
           const [pngBuffer] = await storage.file(slidePngPaths[0]).download();
           slidePngBuffer = pngBuffer;
         } catch (err) {
           console.warn("[flash-report/email] unable to download slide png", { propertyCode, reportDate, slidePngPaths }, err);
+        }
+      }
+      if (!slidePngBuffer) {
+        try {
+          slidePngBuffer = await convertPptxBufferToPngLocal(generation.pptxBuffer);
+        } catch (err) {
+          console.warn("[flash-report/email] local png render failed", { propertyCode, reportDate }, err);
+        }
+      }
+      if (!pdfPath) {
+        try {
+          pdfBufferLocal = await convertPptxBufferToPdfLocal(generation.pptxBuffer);
+        } catch (err) {
+          console.warn("[flash-report/email] local pdf render failed", { propertyCode, reportDate }, err);
         }
       }
 
@@ -249,6 +265,12 @@ export async function POST(req: NextRequest) {
           } catch (err) {
             console.warn("[flash-report/email] unable to download pdf attachment", { propertyCode, reportDate, pdfPath }, err);
           }
+        } else if (pdfBufferLocal) {
+          extraAttachments.push({
+            filename: `${propertyCode}-${reportDate}.pdf`,
+            content: pdfBufferLocal,
+            contentType: "application/pdf",
+          });
         }
         emailSent = await sendFlashEmail({
           property: prop,
@@ -257,7 +279,7 @@ export async function POST(req: NextRequest) {
           tokens: generation.tokens,
           customBody: body.emailBody ?? "",
           extraAttachments,
-          fromOverride: process.env.SMTP_FROM || process.env.SMTP_FROM_FLASH || undefined,
+          fromOverride: process.env.SMTP_FROM || undefined,
           slidePngBuffer,
         });
         if (!emailSent) {
