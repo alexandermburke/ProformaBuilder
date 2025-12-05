@@ -64,7 +64,10 @@ export async function POST(req: NextRequest) {
   }
 
   const sendEmails = body.sendEmails === true || body.sendEmails === "true";
-  const respectSendTime = body.mode === "scheduled" || body.respectSendTime === true || body.respectSendTime === "true";
+  const respectSendTime =
+    body.respectSendTime === false || body.respectSendTime === "false"
+      ? false
+      : body.mode === "scheduled" || body.respectSendTime === true || body.respectSendTime === "true";
   const currentMstTime = getCurrentMstTime();
 
   console.info("[flash-report/auto] start", {
