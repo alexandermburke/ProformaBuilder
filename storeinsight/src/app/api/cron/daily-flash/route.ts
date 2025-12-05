@@ -82,7 +82,23 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
 
     console.info("[cron/daily-flash] dispatching", { reportDate, sendEmails, propertyCodes: body.propertyCodes ?? [] });
     const res = await runAutoFlash(proxyRequest);
-    console.info("[cron/daily-flash] completed", { status: res.status, durationMs: Date.now() - started });
+    const durationMs = Date.now() - started;
+
+    if (res.status >= 400) {
+      let detail: unknown = null;
+      try {
+        detail = await res.clone().json();
+      } catch {
+        try {
+          detail = await res.clone().text();
+        } catch {
+          detail = null;
+        }
+      }
+      console.error("[cron/daily-flash] completed with error", { status: res.status, durationMs, detail });
+    } else {
+      console.info("[cron/daily-flash] completed", { status: res.status, durationMs });
+    }
     return res;
   } catch (err) {
     console.error("[cron/daily-flash] failed", err);
