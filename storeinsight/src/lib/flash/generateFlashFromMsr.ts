@@ -37,6 +37,7 @@ export type FlashGenerationOptions = {
   reportDate: string; // YYYY-MM-DD
   propertyConfig?: PropertyConfig;
   templatePath?: string;
+  asOfDateOverride?: string;
 };
 
 export type FlashGenerationResult = {
@@ -73,6 +74,9 @@ export async function generateFlashFromMsr(
   const facilityOpenDate = options.propertyConfig?.facilityOpenDate;
   if (facilityOpenDate) {
     tokens.FACILITYOPENDATE = facilityOpenDate;
+  }
+  if (options.asOfDateOverride) {
+    tokens.ASOFDATE = options.asOfDateOverride;
   }
 
   const [arAgingChartJpeg, occupancyChartJpeg] = await Promise.all([

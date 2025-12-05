@@ -15,6 +15,7 @@ type MsrDoc = {
   cloudfrontUrl?: string;
   propertyCode?: string;
   reportDate?: string;
+  emailDate?: string;
 };
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -190,6 +191,13 @@ export async function POST(req: NextRequest) {
       propertiesSkipped.push({ propertyCode, propertyId, reason: "msr_missing" });
       continue;
     }
+    console.info("[flash-report/auto] msr report chosen", {
+      reportDate,
+      propertyCode,
+      msrEmailDate: msrDoc.emailDate ?? null,
+      msrReportDate: msrDoc.reportDate ?? null,
+      msrPath: msrDoc.storagePath,
+    });
 
     try {
       let emailSent = false;
@@ -198,6 +206,7 @@ export async function POST(req: NextRequest) {
         propertyCode,
         reportDate,
         propertyConfig: prop,
+        asOfDateOverride: formatReportDateDisplay(reportDate),
       });
 
       const flashPath = `flash_reports/${reportDate}/${generation.pptxFilename}`;
