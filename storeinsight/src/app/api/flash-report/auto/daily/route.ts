@@ -6,7 +6,7 @@ import { generateFlashFromMsr } from "@/lib/flash/generateFlashFromMsr";
 import { recordFlashRunResult } from "@/lib/dailySummaryRuns";
 import { sendFlashEmail } from "@/lib/flash/sendFlashEmail";
 import { convertPptxRemote } from "@/lib/convertPptxRemote";
-import { convertPptxBufferToPdfLocal, convertPptxBufferToPngLocal } from "@/lib/flash/convertPptxLocal";
+import { convertPptxBufferToPdfLocal, convertPptxBufferToPngLocal, resolveSofficePath } from "@/lib/flash/convertPptxLocal";
 
 export const runtime = "nodejs";
 
@@ -208,6 +208,7 @@ export async function POST(req: NextRequest) {
       let slidePngBuffer: Buffer | undefined;
       const convertUrl = process.env.PPTX_CONVERT_URL || process.env.LIBRE_CONVERT_URL;
       const bucketName = process.env.FIREBASE_STORAGE_BUCKET || storage.name;
+      const hasSoffice = Boolean(resolveSofficePath());
       if (convertUrl && bucketName) {
         try {
           const convertResult = await convertPptxRemote({
@@ -232,17 +233,25 @@ export async function POST(req: NextRequest) {
         }
       }
       if (!slidePngBuffer) {
-        try {
-          slidePngBuffer = await convertPptxBufferToPngLocal(generation.pptxBuffer);
-        } catch (err) {
-          console.warn("[flash-report/email] local png render failed", { propertyCode, reportDate }, err);
+        if (hasSoffice) {
+          try {
+            slidePngBuffer = await convertPptxBufferToPngLocal(generation.pptxBuffer);
+          } catch (err) {
+            console.warn("[flash-report/email] local png render failed", { propertyCode, reportDate }, err);
+          }
+        } else {
+          console.warn("[flash-report/email] png not generated (no converter available)", { propertyCode, reportDate });
         }
       }
       if (!pdfPath) {
-        try {
-          pdfBufferLocal = await convertPptxBufferToPdfLocal(generation.pptxBuffer);
-        } catch (err) {
-          console.warn("[flash-report/email] local pdf render failed", { propertyCode, reportDate }, err);
+        if (hasSoffice) {
+          try {
+            pdfBufferLocal = await convertPptxBufferToPdfLocal(generation.pptxBuffer);
+          } catch (err) {
+            console.warn("[flash-report/email] local pdf render failed", { propertyCode, reportDate }, err);
+          }
+        } else {
+          console.warn("[flash-report/email] pdf not generated (no converter available)", { propertyCode, reportDate });
         }
       }
 

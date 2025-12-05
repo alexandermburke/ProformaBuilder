@@ -4,9 +4,9 @@ import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const resolveSofficePath = (): string => {
+export const resolveSofficePath = (): string | null => {
   const envPath = process.env.LIBREOFFICE_PATH;
-  if (envPath) return envPath;
+  if (envPath && fs.existsSync(envPath)) return envPath;
   if (process.platform === "win32") {
     const candidates = [
       "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
@@ -23,7 +23,7 @@ const resolveSofficePath = (): string => {
       if (fs.existsSync(candidate)) return candidate;
     }
   }
-  return "soffice";
+  return null;
 };
 
 export async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Buffer> {
@@ -31,6 +31,9 @@ export async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Bu
     throw new Error("PPTX buffer is empty");
   }
   const sofficePath = resolveSofficePath();
+  if (!sofficePath) {
+    throw new Error("LibreOffice (soffice) not found on this host");
+  }
   const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "flash-ppt-"));
   const pptPath = path.join(tempDir, "flash.pptx");
   try {
@@ -66,6 +69,9 @@ export async function convertPptxBufferToPdfLocal(pptBuffer: Buffer): Promise<Bu
     throw new Error("PPTX buffer is empty");
   }
   const sofficePath = resolveSofficePath();
+  if (!sofficePath) {
+    throw new Error("LibreOffice (soffice) not found on this host");
+  }
   const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "flash-pdf-"));
   const pptPath = path.join(tempDir, "flash.pptx");
   try {

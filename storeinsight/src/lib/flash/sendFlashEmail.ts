@@ -140,10 +140,10 @@ export async function sendFlashEmail(options: {
     });
   }
 
-  await transporter.sendMail({
-    from: options.fromOverride || mailConfig.from,
-    to: recipients,
-    subject,
+    await transporter.sendMail({
+      from: options.fromOverride || mailConfig.from,
+      to: recipients,
+      subject,
       html,
       attachments,
     });
