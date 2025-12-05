@@ -57,31 +57,17 @@ const escapeHtml = (value: string): string =>
     }
   });
 
-const buildHtml = (opts: {
+const buildHtmlContent = (opts: {
   propertyLabel: string;
-  reportDate?: string;
   customBody?: string;
 }): string => {
-  const dateLabel = opts.reportDate
-    ? `<p style="margin: 4px 0 12px 0; font-size: 11px; color: #4b5563;">As of ${escapeHtml(opts.reportDate)}</p>`
-    : "";
   const bodySection =
     opts.customBody && opts.customBody.trim()
       ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(opts.customBody.trim()).replace(/\n/g, "<br />")}</div>`
       : "";
-  const footer = `<p style="margin-top: 18px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a>.</p>`;
   return `
-    <html>
-      <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
-        <h2 style="margin: 0 0 4px 0;">Daily Flash - ${escapeHtml(opts.propertyLabel)}</h2>
-        ${dateLabel}
-        ${bodySection}
-        <p style="margin-top: 16px; font-size: 11px; color: #666;">
-          Daily Flash PDF attached for download.
-        </p>
-        ${footer}
-      </body>
-    </html>
+    <h2 style="margin: 0 0 4px 0;">Daily Flash - ${escapeHtml(opts.propertyLabel)}</h2>
+    ${bodySection}
   `;
 };
 
@@ -132,15 +118,24 @@ export async function sendFlashEmail(options: {
       options.property.id;
     const reportDate = options.reportDateDisplay || (options.tokens?.ASOFDATE as string) || "";
     const subject = `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
-    const htmlBody = buildHtml({ propertyLabel, reportDate, customBody: options.customBody });
     const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
-    const html =
+    const baseContent = buildHtmlContent({ propertyLabel, customBody: options.customBody });
+    const note = `<p style="margin-top: 16px; font-size: 11px; color: #666;">Daily Flash PDF attached for download.</p>`;
+    const footer = `<p style="margin-top: 12px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a>.</p>`;
+    const pngBlock =
       inlinePng && inlinePng.length
-        ? `${htmlBody}
-        <div style="margin-top: 12px;">
-          <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
-        </div>`
-        : htmlBody;
+        ? `<div style="margin-top: 12px;"><img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" /></div>`
+        : "";
+    const html = `
+      <html>
+        <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
+          ${baseContent}
+          ${pngBlock}
+          ${note}
+          ${footer}
+        </body>
+      </html>
+    `;
     const fromAddress = sanitizeFromAddress(options.fromOverride) || mailConfig.from;
     const attachments: Mail.Attachment[] = [];
 
