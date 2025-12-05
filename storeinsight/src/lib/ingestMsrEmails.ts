@@ -120,12 +120,23 @@ export async function ingestMsrEmails(options: {
   const messages = await fetchMsrMessages({ userId: options.userId, maxMessages: options.maxMessages, accessToken });
 
   const created: Array<Pick<MsrEmailRecord, "messageId" | "receivedAt" | "viewerUrl">> = [];
-  const allowedSenders = new Set(
-    (options.allowedSenders ?? [])
+  const envAllowed = (process.env.MSR_ALLOWED_SENDERS || "")
+    .split(",")
+    .map((s) => s.toLowerCase().trim())
+    .filter(Boolean);
+  const defaultAllowed = ["info@tenantinc.com", "info@storestorage.com"];
+  const allowedList =
+    (options.allowedSenders && options.allowedSenders.length > 0
+      ? options.allowedSenders
+      : envAllowed.length > 0
+        ? envAllowed
+        : defaultAllowed
+    )
       .concat(options.senderEmail)
       .map((s) => s?.toLowerCase().trim())
-      .filter(Boolean) as string[],
-  );
+      .filter(Boolean);
+  const allowedSenders = new Set(allowedList);
+  console.info("[msr-email] allowed senders", { allowedSenders: Array.from(allowedSenders) });
   const subjectPhraseLower = options.subjectPhrase.toLowerCase();
 
   for (const message of messages) {
@@ -135,7 +146,11 @@ export async function ingestMsrEmails(options: {
     const fromAddress = message.from?.emailAddress?.address?.toLowerCase().trim() ?? "";
     const subjectText = message.subject ?? "";
     if (allowedSenders.size > 0 && !allowedSenders.has(fromAddress)) {
-      console.info("[msr-email] skipping due to sender mismatch", { id: messageId, from: fromAddress });
+      console.info("[msr-email] skipping due to sender mismatch", {
+        id: messageId,
+        from: fromAddress,
+        allowedSenders: Array.from(allowedSenders),
+      });
       continue;
     }
     if (subjectPhraseLower && !subjectText.toLowerCase().includes(subjectPhraseLower)) {
