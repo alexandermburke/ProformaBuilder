@@ -58,7 +58,7 @@ async function convertViaUpload(params: ConvertPptxParams, endpoint: string): Pr
     (params.pptxPath ? params.pptxPath.split("/").pop() || "flash.pptx" : "flash.pptx");
 
   const form = new FormData();
-  const blob = new Blob([params.pptxBuffer], {
+  const blob = new Blob([new Uint8Array(params.pptxBuffer)], {
     type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   });
   form.append("file", blob, fileName);
