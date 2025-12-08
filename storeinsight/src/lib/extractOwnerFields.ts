@@ -248,6 +248,15 @@ export function extractOwnerFields(buffer: Buffer, filename = "report.xlsx"): Ow
           case "NET_SQFT_MTD":
             out.NET_SQFT_MTD = toNumber(neighbor);
             break;
+          case "MOVEINS":
+            out.MOVEINS = toNumber(neighbor);
+            break;
+          case "INSURPER":
+            out.INSURPER = toNumber(neighbor);
+            break;
+          case "OVERALLPER":
+            out.OVERALLPER = toNumber(neighbor);
+            break;
           default:
             out[key] = String(neighbor ?? "");
         }
