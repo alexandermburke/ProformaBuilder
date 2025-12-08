@@ -1657,7 +1657,7 @@ export default function OwnerReportsPage() {
                             PPC Performance sheets (.csv/.xlsx)
                           </p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Upload up to two marketing sheets (e.g., "STORE Management PPC Report_PPC Performance_Table.csv") to fill Impressions, Clicks, Conversions, and Cost/Conversion.
+                            Upload up to two marketing sheets (e.g., &quot;STORE Management PPC Report_PPC Performance_Table.csv&quot;) to fill Impressions, Clicks, Conversions, and Cost/Conversion.
                           </p>
                         </div>
                       </div>

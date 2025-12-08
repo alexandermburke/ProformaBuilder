@@ -26,7 +26,7 @@ export function extractPpcPerformanceTokens(workbookBuffers: Buffer[], identifie
   let impressionsSum = 0;
   let clicksSum = 0;
   let conversionsSum = 0;
-  let costPerConvValues: number[] = [];
+  const costPerConvValues: number[] = [];
 
   for (const workbookBuffer of workbookBuffers) {
     let workbook: XLSX.WorkBook;
