@@ -25,6 +25,9 @@ export type OwnerFields = {
   MOVEINS_SQFT_MTD: number;
   MOVEOUTS_SQFT_MTD: number;
   NET_SQFT_MTD: number;
+  MOVEINS: number;
+  INSURPER: number;
+  OVERALLPER: number;
 };
 
 export const DEFAULT_OWNER_FIELDS: OwnerFields = {
@@ -54,6 +57,9 @@ export const DEFAULT_OWNER_FIELDS: OwnerFields = {
   MOVEINS_SQFT_MTD: 0,
   MOVEOUTS_SQFT_MTD: 0,
   NET_SQFT_MTD: 0,
+  MOVEINS: 0,
+  INSURPER: 0,
+  OVERALLPER: 0,
 };
 
 export const FIELD_LABELS: Record<keyof OwnerFields, string[]> = {
@@ -83,4 +89,7 @@ export const FIELD_LABELS: Record<keyof OwnerFields, string[]> = {
   MOVEINS_SQFT_MTD: ["move-ins sqft mtd", "moveins sqft mtd", "move-ins square feet mtd"],
   MOVEOUTS_SQFT_MTD: ["move-outs sqft mtd", "moveouts sqft mtd", "move-outs square feet mtd"],
   NET_SQFT_MTD: ["net sqft mtd", "net square feet mtd"],
+  MOVEINS: ["move-ins", "move ins"],
+  INSURPER: ["insurance penetration", "insur pen", "insur %", "insurance %"],
+  OVERALLPER: ["overall penetration", "overall pen", "overall %"],
 };

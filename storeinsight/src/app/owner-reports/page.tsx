@@ -469,6 +469,7 @@ export default function OwnerReportsPage() {
   const [properties, setProperties] = useState<PropertyConfig[]>([]);
   const [propertyLoadError, setPropertyLoadError] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [sendOwnerEmail, setSendOwnerEmail] = useState(false);
   const performanceRequestRef = useRef(0);
 
   const resetReportLog = useCallback(() => {
@@ -973,6 +974,32 @@ export default function OwnerReportsPage() {
     () => (selectedProperty?.ownerEmails ?? []).filter((email) => email && email.trim().length > 0),
     [selectedProperty],
   );
+  useEffect(() => {
+    if (!fields) return;
+    const facilityDate = selectedProperty?.facilityOpenDate?.toString().trim();
+    if (!facilityDate) return;
+    const current = (overrides.ACQUIREDDATE ?? fields.ACQUIREDDATE ?? "").toString().trim();
+    if (current) return;
+    setOverrides((prev) => {
+      if (Object.prototype.hasOwnProperty.call(prev, "ACQUIREDDATE")) return prev;
+      return { ...prev, ACQUIREDDATE: facilityDate };
+    });
+  }, [fields, overrides.ACQUIREDDATE, selectedProperty?.facilityOpenDate]);
+  const emailStatusMessage = useMemo(() => {
+    if (!sendOwnerEmail) {
+      return "Owner emails turned off for this export; the PPTX will only download locally.";
+    }
+    if (!selectedProperty) {
+      return "Select a property to send owner emails after generation.";
+    }
+    if (!selectedProperty.enabled) {
+      return "Property email delivery disabled for this property.";
+    }
+    if (emailRecipients.length === 0) {
+      return "No owner emails configured; file will only download locally.";
+    }
+    return `Emails: ${emailRecipients.join(", ")}`;
+  }, [emailRecipients, selectedProperty, sendOwnerEmail]);
 
   async function onUpload(f: File) {
     setFile(f);
@@ -1123,6 +1150,7 @@ export default function OwnerReportsPage() {
         form.append("inventoryTokens", JSON.stringify(performanceTokens));
       }
       form.append("auditDelinquency", delinquencyAudit ? "true" : "false");
+      form.append("sendEmail", sendOwnerEmail ? "true" : "false");
       if (selectedPropertyId) {
         form.append("propertyId", selectedPropertyId);
       }
@@ -1359,6 +1387,7 @@ export default function OwnerReportsPage() {
     setBudgetLoading(false);
     setBudgetPage(0);
     setBudgetDebugLog([]);
+    setSendOwnerEmail(false);
     resetReportLog();
     setLogFilter("");
     setLogWrap(false);
@@ -2158,10 +2187,37 @@ export default function OwnerReportsPage() {
                       <div>
                         <p className="text-sm font-semibold text-[color:var(--text-primary)]">Automatic owner email</p>
                         <p className="text-xs text-[color:var(--text-secondary)]">
-                          We&apos;ll email enabled properties with configured owner emails. Otherwise, the PPTX is only saved locally.
+                          Control whether we email configured owner contacts after generation or just download the PPTX locally.
                         </p>
                       </div>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--border-soft)]/80 bg-white/80 px-3 py-2">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                              Email owners automatically
+                            </p>
+                            <p className="text-[11px] text-[color:var(--text-secondary)]">
+                              Turn off to skip emailing owners for this export.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSendOwnerEmail((prev) => !prev)}
+                            className={`relative inline-flex h-9 w-16 shrink-0 items-center justify-start overflow-hidden rounded-full border transition-colors duration-200 ease-out ${
+                              sendOwnerEmail
+                                ? "bg-[#2563EB] border-[#1D4ED8]"
+                                : "bg-white border-[color:var(--border-soft)]"
+                            }`}
+                            aria-pressed={sendOwnerEmail}
+                            aria-label={sendOwnerEmail ? "Disable owner emails" : "Enable owner emails"}
+                          >
+                            <span
+                              className={`inline-block h-7 w-7 transform rounded-full bg-white shadow transition-transform duration-200 ease-out ${
+                                sendOwnerEmail ? "translate-x-7" : "translate-x-1"
+                              }`}
+                            />
+                          </button>
+                        </div>
                         <select
                           className="rounded-md border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-sm focus:border-[#2563EB] focus:outline-none"
                           value={selectedPropertyId}
@@ -2178,15 +2234,9 @@ export default function OwnerReportsPage() {
                         {propertyLoadError && (
                           <span className="text-xs text-[#B91C1C]">{propertyLoadError}</span>
                         )}
-                        {selectedProperty && (
-                          <span className="text-xs text-[color:var(--text-secondary)]">
-                            {selectedProperty.enabled
-                              ? emailRecipients.length > 0
-                                ? `Emails: ${emailRecipients.join(", ")}`
-                                : "No owner emails configured; file will only download locally."
-                              : "Property email delivery disabled for this property."}
-                          </span>
-                        )}
+                        <span className="text-xs text-[color:var(--text-secondary)]">
+                          {emailStatusMessage}
+                        </span>
                       </div>
                     </div>
                   </div>

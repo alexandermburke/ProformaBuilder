@@ -132,6 +132,11 @@ const fmtCurrency = (value: number): string =>
   });
 
 const fmtBudgetPercent = (value: number): string => `${Number(value).toFixed(1)}%`;
+const fmtPercentWholeNumber = (n: number): string => {
+  if (!Number.isFinite(n)) return "";
+  const value = Math.abs(n) <= 1 ? n * 100 : n;
+  return Math.round(value).toLocaleString("en-US");
+};
 
 function massageForTemplate(fields: OwnerFields): Record<string, string> {
   return {
@@ -161,6 +166,9 @@ function massageForTemplate(fields: OwnerFields): Record<string, string> {
     MOVEINS_SQFT_MTD: fmtNumber(fields.MOVEINS_SQFT_MTD),
     MOVEOUTS_SQFT_MTD: fmtNumber(fields.MOVEOUTS_SQFT_MTD),
     NET_SQFT_MTD: fmtNumber(fields.NET_SQFT_MTD),
+    MOVEINS: fmtNumber(fields.MOVEINS),
+    INSURPER: fmtPercentWholeNumber(fields.INSURPER),
+    OVERALLPER: fmtOwnerPercent(fields.OVERALLPER),
   };
 }
 

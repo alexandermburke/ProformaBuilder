@@ -148,6 +148,9 @@ const CELL_FALLBACKS: Partial<
   MOVEINS_SQFT_MTD: { ref: "L12", kind: "number" },
   MOVEOUTS_SQFT_MTD: { ref: "L13", kind: "number" },
   NET_SQFT_MTD: { ref: "L14", kind: "number" },
+  MOVEINS: { ref: "J12", kind: "number" },
+  INSURPER: { ref: "S34", kind: "number" },
+  OVERALLPER: { ref: "T34", kind: "number" },
 };
 
 export function extractOwnerFields(buffer: Buffer, filename = "report.xlsx"): OwnerFields {
