@@ -51,6 +51,20 @@ const isTimeOnOrAfter = (current: string, target?: string | null): boolean => {
   return false;
 };
 
+const getFlashDevMode = async (): Promise<boolean> => {
+  if (!firestore) return false;
+  try {
+    const doc = await firestore.collection("config").doc("flashSettings").get();
+    const data = doc.data();
+    if (data && typeof data.flashDevMode === "boolean") {
+      return data.flashDevMode;
+    }
+  } catch (err) {
+    console.warn("[flash-report/auto] unable to read flash dev mode", err);
+  }
+  return false;
+};
+
 export async function POST(req: NextRequest) {
   if (!firestore || !storage) {
     return NextResponse.json({ error: "Firebase is not initialized (firestore/storage missing)." }, { status: 500 });
@@ -73,12 +87,14 @@ export async function POST(req: NextRequest) {
   const sendEmails = body.sendEmails === true || body.sendEmails === "true";
   const respectSendTime = body.respectSendTime === true || body.respectSendTime === "true";
   const currentMstTime = getCurrentMstTime();
+  const flashDevMode = await getFlashDevMode();
 
   console.info("[flash-report/auto] start", {
     reportDate,
     sendEmails,
     respectSendTime,
     propertyCodes: body.propertyCodes ?? [],
+    devMode: flashDevMode,
   });
 
   const requestedCodes =
@@ -316,6 +332,7 @@ export async function POST(req: NextRequest) {
           propertyCode,
           to: prop.ownerEmails ?? [],
           sendEmails,
+          devMode: flashDevMode,
         });
         const pdfFilename = `${propertyCode}-${reportDate}.pdf`;
         const pngFilename = `${propertyCode}-${reportDate}.png`;
@@ -358,6 +375,7 @@ export async function POST(req: NextRequest) {
           pngFilename,
           reportDateDisplay: formatReportDateDisplay(reportDate),
           attachPptx: false,
+          devModeOverride: flashDevMode,
         });
         if (!emailSent) {
           throw new Error("Email delivery failed or skipped");

@@ -85,11 +85,17 @@ export async function sendFlashEmail(options: {
   pngBuffer?: Buffer | null;
   pngFilename?: string | null;
   attachPptx?: boolean;
+  devModeOverride?: boolean;
 }): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
 
-  const recipients = (options.property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
+  const devRecipient = "alex@storestorage.com";
+  const recipientsRaw = (options.property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
+  const recipients =
+    options.devModeOverride === true
+      ? [devRecipient]
+      : recipientsRaw;
   if (recipients.length === 0) {
     console.info("[flash-email] no ownerEmails configured; skipping email delivery", options.property.id);
     return false;
@@ -102,6 +108,7 @@ export async function sendFlashEmail(options: {
       host: mailConfig.host,
       port: mailConfig.port,
       from: sanitizeFromAddress(options.fromOverride) || mailConfig.from,
+      devMode: options.devModeOverride === true,
     });
 
     const transporter = nodemailer.createTransport({

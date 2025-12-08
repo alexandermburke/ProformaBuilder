@@ -11,7 +11,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
-import { usePreferences } from '@/components/PreferencesProvider';
 
 type FeatureTone = 'blue' | 'purple' | 'green';
 type FeatureIconKey = 'document' | 'layers' | 'globe';
@@ -165,7 +164,10 @@ export default function DirectoryPage(): JSX.Element {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
-  const { delinquencyAudit, toggleDelinquencyAudit } = usePreferences();
+  const [flashDevMode, setFlashDevMode] = useState(false);
+  const [devModeLoading, setDevModeLoading] = useState(true);
+  const [devModeSaving, setDevModeSaving] = useState(false);
+  const [devModeError, setDevModeError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
@@ -203,6 +205,28 @@ export default function DirectoryPage(): JSX.Element {
     };
   }, [router]);
 
+  useEffect(() => {
+    let active = true;
+    const fetchDevMode = async () => {
+      setDevModeLoading(true);
+      setDevModeError(null);
+      try {
+        const res = await fetch('/api/flash-report/dev-mode', { cache: 'no-store' });
+        if (!res.ok) throw new Error(await res.text());
+        const json = (await res.json()) as { flashDevMode?: boolean };
+        if (active) setFlashDevMode(Boolean(json.flashDevMode));
+      } catch (err) {
+        if (active) setDevModeError(err instanceof Error ? err.message : 'Unable to load development mode');
+      } finally {
+        if (active) setDevModeLoading(false);
+      }
+    };
+    fetchDevMode();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleLogout = async () => {
     setActionStatus('Signing out...');
     try {
@@ -223,6 +247,25 @@ export default function DirectoryPage(): JSX.Element {
   };
 
   const toggleDarkMode = () => toggleTheme();
+  const toggleFlashDevMode = async () => {
+    const next = !flashDevMode;
+    setDevModeSaving(true);
+    setDevModeError(null);
+    try {
+      const res = await fetch('/api/flash-report/dev-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flashDevMode: next }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const json = (await res.json()) as { flashDevMode?: boolean };
+      setFlashDevMode(Boolean(json.flashDevMode));
+    } catch (err) {
+      setDevModeError(err instanceof Error ? err.message : 'Unable to update development mode');
+    } finally {
+      setDevModeSaving(false);
+    }
+  };
   const openSettings = () => setIsSettingsOpen(true);
   const closeSettings = () => setIsSettingsOpen(false);
 
@@ -474,18 +517,20 @@ export default function DirectoryPage(): JSX.Element {
               </div>
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold text-[color:var(--text-primary)]">
-                    Audit Console
-                  </div>
+                  <div className="text-sm font-semibold text-[color:var(--text-primary)]">Development Mode</div>
                   <p className="text-xs text-[color:var(--text-secondary)]">
-                    Surface the ESR delinquency audit workspace in this app and append the PPT audit slide on export.
+                    When enabled, Daily Flash automation emails only alex@storestorage.com instead of owner recipients.
                   </p>
+                  {devModeError ? (
+                    <p className="text-xs text-red-500">Error: {devModeError}</p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
-                  onClick={toggleDelinquencyAudit}
-                  aria-pressed={delinquencyAudit}
-                  className={toggleButtonClass(delinquencyAudit)}
+                  onClick={toggleFlashDevMode}
+                  aria-pressed={flashDevMode}
+                  disabled={devModeLoading || devModeSaving}
+                  className={toggleButtonClass(flashDevMode)}
                 >
                   <span className={togglePillClass} />
                 </button>

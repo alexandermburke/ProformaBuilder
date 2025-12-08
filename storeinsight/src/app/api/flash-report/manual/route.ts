@@ -13,6 +13,7 @@ import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin }
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
+import { firestore } from "@/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -74,6 +75,23 @@ const resolveMailerConfig = (): MailerConfig | null => {
     return null;
   }
   return { host, port, user: user || undefined, pass: pass || undefined, from };
+};
+
+const getFlashDevMode = async (): Promise<boolean> => {
+  if (process.env.FLASH_DEV_MODE === "true" || process.env.NEXT_PUBLIC_FLASH_DEV_MODE === "true") {
+    return true;
+  }
+  if (!firestore) return false;
+  try {
+    const doc = await firestore.collection("config").doc("flashSettings").get();
+    const data = doc.data();
+    if (data && typeof data.flashDevMode === "boolean") {
+      return data.flashDevMode;
+    }
+  } catch (err) {
+    console.warn("[flash-report/manual] unable to read flash dev mode", err);
+  }
+  return false;
 };
 
 function resolveSofficePath(): string {
@@ -360,10 +378,13 @@ async function sendFlashReportEmail(
   slidePngBuffer: Buffer | null,
   pdfBuffer: Buffer | null,
   customBody: string,
+  devModeOverride: boolean,
 ): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
-  const recipients = (property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
+  const recipients = devModeOverride
+    ? ["alex@storestorage.com"]
+    : (property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
   if (recipients.length === 0) {
     console.info("[flash-report/manual] no ownerEmails configured; skipping email delivery", property.id);
     return false;
@@ -374,6 +395,7 @@ async function sendFlashReportEmail(
       to: recipients,
       host: mailConfig.host,
       port: mailConfig.port,
+      devMode: devModeOverride,
     });
     const transporter = nodemailer.createTransport({
       host: mailConfig.host,
@@ -529,7 +551,8 @@ export async function POST(req: NextRequest) {
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
 
   try {
-    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer, pdfBuffer, emailBody);
+    const devMode = await getFlashDevMode();
+    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer, pdfBuffer, emailBody, devMode);
   } catch (err) {
     console.error("[flash-report/manual] email delivery failed (non-fatal)", err);
   }
