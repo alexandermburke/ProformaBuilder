@@ -443,6 +443,8 @@ export default function OwnerReportsPage() {
   const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
   const [iprcFile, setIprcFile] = useState<File | null>(null);
   const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
+  const [ppcFile, setPpcFile] = useState<File | null>(null);
+  const [ppcFile2, setPpcFile2] = useState<File | null>(null);
   const [currentMonthOverride] = useState("");
   const [includeCurrentMonth] = useState(true);
   const [performanceTokens, setPerformanceTokens] = useState<OwnerPerformanceTokenValues | null>(null);
@@ -1091,6 +1093,12 @@ export default function OwnerReportsPage() {
       if (availableSpacesFile) {
         form.append("availableSpacesFile", availableSpacesFile);
       }
+      if (ppcFile) {
+        form.append("ppcFile", ppcFile);
+      }
+      if (ppcFile2) {
+        form.append("ppcFile2", ppcFile2);
+      }
       const performanceOptionsPayload = {
         currentMonthOverride: currentMonthOverride.trim() || undefined,
         includeCurrentMonthInTrailing: includeCurrentMonth,
@@ -1640,6 +1648,55 @@ export default function OwnerReportsPage() {
                       <p className="text-[11px] text-[color:var(--text-muted)]">
                         Optional: only used for the Web column on the Pricing slide.
                       </p>
+                    </div>
+
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                            PPC Performance sheets (.csv/.xlsx)
+                          </p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Upload up to two marketing sheets (e.g., "STORE Management PPC Report_PPC Performance_Table.csv") to fill Impressions, Clicks, Conversions, and Cost/Conversion.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2 rounded-xl border border-[color:var(--border-soft)] bg-white/70 p-3">
+                          <input
+                            type="file"
+                            accept=".csv,.xlsx,.xls"
+                            className="text-sm text-[color:var(--text-primary)]"
+                            onChange={(event) => {
+                              const nextFile = event.target.files?.[0] ?? null;
+                              setPpcFile(nextFile);
+                              event.target.value = "";
+                            }}
+                          />
+                          {ppcFile && (
+                            <p className="text-xs text-[color:var(--text-secondary)]">
+                              Selected: <span className="font-medium text-[color:var(--text-primary)]">{ppcFile.name}</span>
+                            </p>
+                          )}
+                        </div>
+                        <div className="space-y-2 rounded-xl border border-[color:var(--border-soft)] bg-white/70 p-3">
+                          <input
+                            type="file"
+                            accept=".csv,.xlsx,.xls"
+                            className="text-sm text-[color:var(--text-primary)]"
+                            onChange={(event) => {
+                              const nextFile = event.target.files?.[0] ?? null;
+                              setPpcFile2(nextFile);
+                              event.target.value = "";
+                            }}
+                          />
+                          {ppcFile2 && (
+                            <p className="text-xs text-[color:var(--text-secondary)]">
+                              Selected: <span className="font-medium text-[color:var(--text-primary)]">{ppcFile2.name}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {performanceLoading && (

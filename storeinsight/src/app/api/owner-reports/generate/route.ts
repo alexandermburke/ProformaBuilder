@@ -19,6 +19,7 @@ import { REQUIRED_DELINQUENCY_TOKENS } from "@/lib/pptTokens";
 import type { OwnerFields } from "@/types/ownerReport";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
+import { extractPpcPerformanceTokens } from "@/lib/extractPpcPerformance";
 
 export const runtime = "nodejs";
 
@@ -180,6 +181,8 @@ export async function POST(req: NextRequest) {
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
   const auditDelinquencyRaw = form.get("auditDelinquency");
+  const ppcFile = form.get("ppcFile");
+  const ppcFile2 = form.get("ppcFile2");
 
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
@@ -211,6 +214,13 @@ export async function POST(req: NextRequest) {
   let availableSpacesBuffer: Buffer | undefined;
   if (availableSpaces instanceof Blob) {
     availableSpacesBuffer = Buffer.from(await availableSpaces.arrayBuffer());
+  }
+  const ppcBuffers: Buffer[] = [];
+  if (ppcFile instanceof Blob) {
+    ppcBuffers.push(Buffer.from(await ppcFile.arrayBuffer()));
+  }
+  if (ppcFile2 instanceof Blob) {
+    ppcBuffers.push(Buffer.from(await ppcFile2.arrayBuffer()));
   }
 
   let budgetTokens: Record<string, number> | undefined;
@@ -281,7 +291,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const templatePath = path.join(process.cwd(), "public", "MICROTEMPLATE.pptx");
+  const templatePath = path.join(process.cwd(), "public", "OWNERTEMPLATE.pptx");
   const templateBuffer = await fs.readFile(templatePath);
   const templateTokens = listPptxTokens(templateBuffer);
 
@@ -349,6 +359,25 @@ export async function POST(req: NextRequest) {
   const budgetTokensNumeric = budgetTokens ?? {};
   console.log("[budget] detected", Object.keys(budgetTokensNumeric).length, "numeric tokens");
 
+  // PPC performance tokens (IMPRE, CLICKS, CONV, COSCON) from the marketing sheet
+  let ppcTokens: Record<string, string | number> | undefined;
+  try {
+    const identifiers: string[] = [];
+    if (propertyKey) identifiers.push(propertyKey);
+    if (data?.ADDRESS) identifiers.push(String(data.ADDRESS));
+    if (data?.OWNERGROUP) identifiers.push(String(data.OWNERGROUP));
+    const buffersForPpc = ppcBuffers.length > 0 ? ppcBuffers : [buffer];
+    const ppcNumeric = extractPpcPerformanceTokens(buffersForPpc, identifiers);
+    if (ppcNumeric && Object.keys(ppcNumeric).length > 0) {
+      ppcTokens = {};
+      for (const [key, value] of Object.entries(ppcNumeric)) {
+        ppcTokens[key] = typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(2)) : value;
+      }
+    }
+  } catch (err) {
+    console.warn("[owner-reports] PPC extraction failed", err);
+  }
+
   const auditDelinquencyPref =
     typeof auditDelinquencyRaw === "string"
       ? auditDelinquencyRaw === "true" || auditDelinquencyRaw === "1"
@@ -364,7 +393,10 @@ export async function POST(req: NextRequest) {
     budgetBuffer: budgetBuffer ?? null,
     availableSpacesBuffer: availableSpacesBuffer ?? null,
     availableSpacesTokens,
-    performanceTokens,
+    performanceTokens: {
+      ...(performanceTokens ?? {}),
+      ...(ppcTokens ?? {}),
+    },
     delinquencyAudit,
     enableDelinquencyAudit: auditDelinquencyPref,
   });

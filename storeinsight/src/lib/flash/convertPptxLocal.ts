@@ -41,7 +41,7 @@ export async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Bu
     await new Promise<void>((resolve, reject) => {
       execFile(
         sofficePath,
-        ["--headless", "--convert-to", "png", "--outdir", tempDir, pptPath],
+        ["--headless", "-env:UserInstallation=file:///tmp/lo-profile", "--convert-to", "png:draw_png_Export", "--outdir", tempDir, pptPath],
         (error, stdout, stderr) => {
           if (error) {
             error.message += `; stdout: ${stdout}; stderr: ${stderr}`;
@@ -79,7 +79,7 @@ export async function convertPptxBufferToPdfLocal(pptBuffer: Buffer): Promise<Bu
     await new Promise<void>((resolve, reject) => {
       execFile(
         sofficePath,
-        ["--headless", "--convert-to", "pdf", "--outdir", tempDir, pptPath],
+        ["--headless", "-env:UserInstallation=file:///tmp/lo-profile", "--convert-to", "pdf:impress_pdf_Export", "--outdir", tempDir, pptPath],
         (error, stdout, stderr) => {
           if (error) {
             error.message += `; stdout: ${stdout}; stderr: ${stderr}`;

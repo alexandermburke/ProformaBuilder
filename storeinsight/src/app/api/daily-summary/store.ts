@@ -146,15 +146,6 @@ const uploadHeroImage = async (
   return { heroImageUrl, heroImagePath: objectPath };
 };
 
-const deleteHeroImage = async (path?: string | null): Promise<void> => {
-  if (!adminStorage || !path) return;
-  try {
-    await adminStorage.file(path).delete({ ignoreNotFound: true });
-  } catch (err) {
-    console.warn('[daily-summary] hero image delete failed', { path, err });
-  }
-};
-
 export async function upsertProperty(input: Partial<PropertyConfig>): Promise<PropertyConfig> {
   if (!adminDb) {
     const existingIndex = fallbackProperties.findIndex((p) => p.id === input.id);

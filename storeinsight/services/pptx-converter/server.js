@@ -18,8 +18,11 @@ const ensureDir = async (dir) => {
 
 const runSoffice = async (inputPath, outputDir) => {
   await ensureDir(outputDir);
-  await execFileAsync("soffice", ["--headless", "--convert-to", "pdf", "--outdir", outputDir, inputPath]);
-  await execFileAsync("soffice", ["--headless", "--convert-to", "png", "--outdir", outputDir, inputPath]);
+  const userInstall = `-env:UserInstallation=file:///tmp/lo-profile`;
+  const pdfArgs = ["--headless", userInstall, "--convert-to", "pdf:impress_pdf_Export", "--outdir", outputDir, inputPath];
+  const pngArgs = ["--headless", userInstall, "--convert-to", "png:draw_png_Export", "--outdir", outputDir, inputPath];
+  await execFileAsync("soffice", pdfArgs);
+  await execFileAsync("soffice", pngArgs);
 };
 
 const uploadOutputs = async (bucket, outputDir, outputBasePath, baseName) => {

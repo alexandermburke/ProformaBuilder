@@ -79,6 +79,13 @@ const formatDateTime = (value?: string): string => {
   });
 };
 
+const formatDateOnly = (value?: string): string => {
+  if (!value) return '--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
 export default function DailySummaryPage() {
   const [properties, setProperties] = useState<PropertyConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -716,38 +723,21 @@ export default function DailySummaryPage() {
             </div>
 
             <div className="mb-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-              <div className={statTileClass}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                  Healthy
-                </p>
-                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
-                  {cloudStatusCounts.success}
-                </p>
-              </div>
-              <div className={statTileClass}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                  Pending
-                </p>
-                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
-                  {cloudStatusCounts.pending}
-                </p>
-              </div>
-              <div className={statTileClass}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                  Failed
-                </p>
-                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
-                  {cloudStatusCounts.failed}
-                </p>
-              </div>
-              <div className={statTileClass}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                  Awaiting MSR
-                </p>
-                <p className="text-xl font-semibold text-[color:var(--text-primary)] tabular-nums">
-                  {cloudStatusCounts.no_msr}
-                </p>
-              </div>
+              {[
+                { label: 'Healthy', value: cloudStatusCounts.success, tone: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' },
+                { label: 'Pending', value: cloudStatusCounts.pending, tone: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200' },
+                { label: 'Failed', value: cloudStatusCounts.failed, tone: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200' },
+                { label: 'Awaiting MSR', value: cloudStatusCounts.no_msr, tone: 'bg-slate-100 text-slate-800 dark:bg-slate-800/60 dark:text-slate-200' },
+              ].map((item) => (
+                <div key={item.label} className={`${statTileClass} flex items-center gap-3`}>
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-semibold tabular-nums ${item.tone}`}>
+                    {item.value}
+                  </span>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    {item.label}
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div
@@ -792,13 +782,28 @@ export default function DailySummaryPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            {formatDateTime(entry.lastMsrReceivedAt)}
+                            <span className="block text-[13px] text-[color:var(--text-primary)]">
+                              {formatDateOnly(entry.lastMsrReceivedAt)}
+                            </span>
+                            <span className="text-[11px] text-[color:var(--text-secondary)]">
+                              {formatDateTime(entry.lastMsrReceivedAt)}
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            {formatDateTime(entry.lastRunAt)}
+                            <span className="block text-[13px] text-[color:var(--text-primary)]">
+                              {formatDateOnly(entry.lastRunAt)}
+                            </span>
+                            <span className="text-[11px] text-[color:var(--text-secondary)]">
+                              {formatDateTime(entry.lastRunAt)}
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            {formatDateTime(entry.nextRunAt)}
+                            <span className="block text-[13px] text-[color:var(--text-primary)]">
+                              {formatDateOnly(entry.nextRunAt)}
+                            </span>
+                            <span className="text-[11px] text-[color:var(--text-secondary)]">
+                              {formatDateTime(entry.nextRunAt)}
+                            </span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-col gap-1">

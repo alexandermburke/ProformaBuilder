@@ -241,7 +241,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
 
   const templateBuffer =
     providedTemplateBuffer ??
-    (await fs.readFile(path.join(process.cwd(), "public", "MICROTEMPLATE.pptx")));
+    (await fs.readFile(path.join(process.cwd(), "public", "OWNERTEMPLATE.pptx")));
 
   const tokenScan = await scanPptTokens({ templateBuffer });
   console.log(`[pptx] template sha256 ${tokenScan.sha256}`);
@@ -252,8 +252,8 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   );
   if (missingDelinquencyTokens.length > 0) {
     const message = [
-      `public/MICROTEMPLATE.pptx is missing delinquency placeholders: ${missingDelinquencyTokens.join(", ")}`,
-      "The desktop PPTX may differ from public/MICROTEMPLATE.pptx. Replace the file with the version that contains all 9 {{DELIN…}} placeholders and re-run.",
+      `public/OWNERTEMPLATE.pptx is missing delinquency placeholders: ${missingDelinquencyTokens.join(", ")}`,
+      "The desktop PPTX may differ from public/OWNERTEMPLATE.pptx. Replace the file with the version that contains all 9 {{DELIN…}} placeholders and re-run.",
     ].join("\n");
     throw new Error(message);
   }

@@ -62,6 +62,8 @@ async function convertViaUpload(params: ConvertPptxParams, endpoint: string): Pr
     type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   });
   form.append("file", blob, fileName);
+  form.append("quality", "high");
+  form.append("exportProfile", "impress_pdf_Export");
 
   const res = await fetch(endpoint, {
     method: "POST",

@@ -31,7 +31,7 @@ export const REQUIRED_DELINQUENCY_TOKENS = [
   "DELINDOL61",
 ] as const;
 
-const MICROTEMPLATE_PATH = path.join(process.cwd(), "public", "MICROTEMPLATE.pptx");
+const MICROTEMPLATE_PATH = path.join(process.cwd(), "public", "OWNERTEMPLATE.pptx");
 const TOKEN_FILE_PATTERN = /^ppt\/(slides|slideMasters|slideLayouts)\//;
 const PLACEHOLDER_PATTERN = /\{\{([^{}]+)\}\}/g;
 const TAG_PATTERN = /<[^>]+>/g;

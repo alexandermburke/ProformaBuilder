@@ -67,17 +67,6 @@ const computeNextRunAt = (reportDate: string, sendTimeMst?: string | null): stri
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-async function listStorageFiles(prefix: string): Promise<string[]> {
-  if (!storage) return [];
-  try {
-    const [files] = await storage.bucket().getFiles({ prefix });
-    return files.map((f) => f.name);
-  } catch (err) {
-    console.warn("[cloud-status] unable to list storage files", { prefix }, err);
-    return [];
-  }
-}
-
 export async function getCloudStatus(targetDate?: string): Promise<CloudStatusResponse> {
   const asOfDate = targetDate ?? getCurrentMstDate();
   const properties = await listProperties();
@@ -89,18 +78,20 @@ export async function getCloudStatus(targetDate?: string): Promise<CloudStatusRe
     if (key) statusMap.set(key, status);
   });
 
-  // Fallback to storage signals if no run statuses are present
-  let msrFiles: FileInfo[] = [];
-  let flashFiles: FileInfo[] = [];
-  let pdfFiles: FileInfo[] = [];
-  let pngFiles: FileInfo[] = [];
-  if (runStatuses.length === 0) {
-    msrFiles = await getFileInfos(`msr_raw/${asOfDate}/`);
-    const flashList = await getFileInfos(`flash_reports/${asOfDate}/`);
-    flashFiles = flashList.filter((f) => f.name.toLowerCase().endsWith(".pptx"));
-    pdfFiles = flashList.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
-    pngFiles = flashList.filter((f) => f.name.toLowerCase().endsWith(".png"));
-  }
+  // Always pull storage signals so we can show timestamps even if run status docs are missing
+  const msrFiles = await getFileInfos(`msr_raw/${asOfDate}/`);
+  const flashList = await getFileInfos(`flash_reports/${asOfDate}/`);
+  const flashFiles = flashList.filter((f) => f.name.toLowerCase().endsWith(".pptx"));
+  const pdfFiles = flashList.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+  const pngFiles = flashList.filter((f) => f.name.toLowerCase().endsWith(".png"));
+
+  const latestUpdated = (list: FileInfo[]) =>
+    list
+      .map((f) => f.updated)
+      .filter(Boolean)
+      .map((u) => new Date(u!))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime())[0];
 
   const rows: CloudRunStatusRow[] = properties.map((prop) => {
     const code = (prop.propertyCode ?? prop.id ?? prop.tenantPropertyId ?? "").toLowerCase();
@@ -110,44 +101,38 @@ export async function getCloudStatus(targetDate?: string): Promise<CloudStatusRe
     let msrReceivedAt: string | null = statusDoc?.msrReceivedAt ?? null;
     let lastRunAt: string | null = statusDoc?.lastRunAt ?? null;
     let nextRunAt: string | null = statusDoc?.nextRunAt ?? null;
-    let errorMessage: string | null = statusDoc?.errorMessage ?? null;
+    const errorMessage: string | null = statusDoc?.errorMessage ?? null;
 
+    const msrHit = msrFiles.filter((file) => matchByCode(file.name, code));
+    const pdfHit = pdfFiles.filter((file) => matchByCode(file.name, code));
+    const pngHit = pngFiles.filter((file) => matchByCode(file.name, code));
+    const pptxHit = flashFiles.filter((file) => matchByCode(file.name, code));
+
+    const msrDate = msrHit.length > 0 ? latestUpdated(msrHit) : undefined;
+    const pdfDate = pdfHit.length > 0 ? latestUpdated(pdfHit) : undefined;
+    const pngDate = pngHit.length > 0 ? latestUpdated(pngHit) : undefined;
+    const pptxDate = pptxHit.length > 0 ? latestUpdated(pptxHit) : undefined;
+
+    // Prefer recorded status, but backfill timestamps from storage where missing
     if (statusDoc) {
       rowStatus = normalizeStatus(statusDoc.status);
-    } else if (runStatuses.length === 0) {
-      const msrHit = msrFiles.filter((file) => matchByCode(file.name, code));
-      const pdfHit = pdfFiles.filter((file) => matchByCode(file.name, code));
-      const pngHit = pngFiles.filter((file) => matchByCode(file.name, code));
-      const pptxHit = flashFiles.filter((file) => matchByCode(file.name, code));
-
-      const latestUpdated = (list: FileInfo[]) =>
-        list
-          .map((f) => f.updated)
-          .filter(Boolean)
-          .map((u) => new Date(u!))
-          .filter((d) => !Number.isNaN(d.getTime()))
-          .sort((a, b) => b.getTime() - a.getTime())[0];
-
-      const msrDate = latestUpdated(msrHit);
-      const pdfDate = latestUpdated(pdfHit);
-      const pngDate = latestUpdated(pngHit);
-      const pptxDate = latestUpdated(pptxHit);
-
+      if (!msrReceivedAt && msrDate) msrReceivedAt = msrDate.toISOString();
+      if (!lastRunAt) {
+        const latest = [pdfDate, pngDate, pptxDate].filter((d): d is Date => Boolean(d)).sort((a, b) => b.getTime() - a.getTime())[0];
+        lastRunAt = latest ? latest.toISOString() : null;
+      }
+    } else {
       if (pdfHit.length > 0 || (pptxHit.length > 0 && pngHit.length > 0)) {
         rowStatus = "healthy";
-        msrReceivedAt = msrDate ? msrDate.toISOString() : null;
-        lastRunAt = [pdfDate, pptxDate, pngDate]
-          .filter((d): d is Date => Boolean(d))
-          .sort((a, b) => b.getTime() - a.getTime())[0]
-          ?.toISOString() ?? null;
+        msrReceivedAt = msrReceivedAt ?? (msrDate ? msrDate.toISOString() : null);
+        const latest = [pdfDate, pptxDate, pngDate].filter((d): d is Date => Boolean(d)).sort((a, b) => b.getTime() - a.getTime())[0];
+        lastRunAt = latest ? latest.toISOString() : null;
       } else if (msrHit.length > 0) {
         rowStatus = "pending";
-        msrReceivedAt = msrDate ? msrDate.toISOString() : null;
+        msrReceivedAt = msrReceivedAt ?? (msrDate ? msrDate.toISOString() : null);
       } else {
         rowStatus = "awaiting_msr";
       }
-    } else {
-      rowStatus = "awaiting_msr";
     }
 
     if (!nextRunAt) {
