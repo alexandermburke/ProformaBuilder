@@ -13,7 +13,7 @@ import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin }
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
-import { firestore } from "@/server/firebaseAdmin";
+import { firestore, storage } from "@/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -237,30 +237,30 @@ function escapeHtml(value: string): string {
   });
 }
 
-function buildFlashEmailHtmlFromPng(tokens: TokenMap, customBody?: string): string {
-  const propertyName =
-    (tokens.PROPERTYDISPLAYNAME as string) ||
-    (tokens.FACILITYSHORTNAME as string) ||
-    (tokens.FACILITYCODE as string) ||
-    "";
-  const reportDate = (tokens.ASOFDATE as string) || "";
-  const dateLabel = reportDate
-    ? `<p style="margin: 4px 0 12px 0; font-size: 11px; color: #4b5563;">As of ${escapeHtml(reportDate)}</p>`
-    : "";
+function buildFlashEmailHtmlFromPng(
+  tokens: TokenMap,
+  customBody?: string,
+  options?: { pdfUrl?: string | null; includeImage?: boolean },
+): string {
   const bodySection =
     customBody && customBody.trim()
       ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(customBody.trim()).replace(/\n/g, "<br />")}</div>`
       : "";
+  const pdfUrl = options?.pdfUrl?.replace(/"/g, "%22");
+  const pdfButton = pdfUrl
+    ? `<div style="margin: 14px 0 8px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; background: linear-gradient(150deg, #0b5bd3, #0a4cb4); color: #0d6efd; text-decoration: none; font-weight: 800; font-size: 12px; letter-spacing: 0.01em; border: 1px solid #0d6efd; box-shadow: 0 10px 18px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.12); font-family: 'Segoe UI','Helvetica Neue',Arial,sans-serif;">Download full PDF</a></div>`
+    : `<p style="margin: 10px 0 14px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
+  const includeImage = options?.includeImage !== false;
+  const imageBlock = includeImage
+    ? `<div style="margin-top: 8px;"><img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" /></div>`
+    : "";
   return `
     <html>
       <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
-        <h2 style="margin: 0 0 4px 0;">Daily Flash — ${propertyName}</h2>
-        ${dateLabel}
         ${bodySection}
-        <img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" />
-        <p style="margin-top: 16px; font-size: 11px; color: #666;">
-          Full PDF attached for download.
-        </p>
+        ${imageBlock}
+        <p style="margin-top: 12px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a>.</p>
+        ${pdfButton}
       </body>
     </html>
   `;
@@ -371,12 +371,11 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
 
 async function sendFlashReportEmail(
   property: PropertyConfig,
-  pptxBuffer: Buffer,
   pptxFilename: string,
   asOfDate: string,
   tokens: TokenMap,
   slidePngBuffer: Buffer | null,
-  pdfBuffer: Buffer | null,
+  pdfUrl: string | null,
   customBody: string,
   devModeOverride: boolean,
 ): Promise<boolean> {
@@ -410,22 +409,11 @@ async function sendFlashReportEmail(
       property.id;
     const reportDate = (tokens.ASOFDATE as string) || asOfDate || "Latest";
     const subject = `Daily Flash - ${propertyLabel} (${reportDate})`;
-    const html = buildFlashEmailHtmlFromPng(tokens, customBody);
-    const pdfFilename = pptxFilename.replace(/\.pptx$/i, ".pdf");
+    const html = buildFlashEmailHtmlFromPng(tokens, customBody, {
+      pdfUrl,
+      includeImage: Boolean(slidePngBuffer),
+    });
     const attachments: Mail.Attachment[] = [];
-    if (pdfBuffer) {
-      attachments.push({
-        filename: pdfFilename,
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      });
-    } else {
-      attachments.push({
-        filename: pptxFilename,
-        content: pptxBuffer,
-        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      });
-    }
     if (slidePngBuffer) {
       attachments.push({
         filename: "daily-flash-slide.png",
@@ -444,6 +432,11 @@ async function sendFlashReportEmail(
       propertyId: property.id,
       to: recipients,
       subject,
+      pptxFilename,
+      attachments: {
+        pdfLinked: Boolean(pdfUrl),
+        pngIncluded: Boolean(slidePngBuffer),
+      },
     });
     return true;
   } catch (err) {
@@ -544,15 +537,46 @@ export async function POST(req: NextRequest) {
   try {
     pdfBuffer = await convertPptxBufferToPdfLocal(rendered);
   } catch (err) {
-    console.error("[flash-report/manual] unable to convert PPTX to PDF (non-fatal, will attach PPTX)", err);
+    console.error("[flash-report/manual] unable to convert PPTX to PDF (non-fatal, link will be unavailable)", err);
   }
 
   const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
+  const safeAsOfSegment = (asOfDate || "latest").replace(/[^0-9A-Za-z._-]+/g, "_");
+  let pdfDownloadUrl: string | null = null;
+  if (pdfBuffer) {
+    if (storage) {
+      const pdfPath = `flash_reports/${safeAsOfSegment}/${safePropertyId}-${safeAsOfSegment}.pdf`;
+      try {
+        await storage.file(pdfPath).save(pdfBuffer, {
+          contentType: "application/pdf",
+          resumable: false,
+          metadata: { cacheControl: "private,max-age=0" },
+        });
+        const [signedUrl] = await storage
+          .file(pdfPath)
+          .getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+        pdfDownloadUrl = signedUrl;
+      } catch (err) {
+        console.warn("[flash-report/manual] unable to store or sign pdf", { pdfPath }, err);
+      }
+    } else {
+      console.warn("[flash-report/manual] storage not configured; cannot host pdf");
+    }
+  }
 
   try {
     const devMode = await getFlashDevMode();
-    await sendFlashReportEmail(property, rendered, filename, asOfDate, tokens, slidePngBuffer, pdfBuffer, emailBody, devMode);
+    await sendFlashReportEmail(
+      property,
+      filename,
+      asOfDate,
+      tokens,
+      slidePngBuffer,
+      pdfDownloadUrl,
+      emailBody,
+      devMode,
+    );
   } catch (err) {
     console.error("[flash-report/manual] email delivery failed (non-fatal)", err);
   }

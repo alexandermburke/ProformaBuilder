@@ -60,13 +60,13 @@ const escapeHtml = (value: string): string =>
 const buildHtmlContent = (opts: {
   propertyLabel: string;
   customBody?: string;
+  pdfUrl?: string | null;
 }): string => {
   const bodySection =
     opts.customBody && opts.customBody.trim()
       ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(opts.customBody.trim()).replace(/\n/g, "<br />")}</div>`
       : "";
   return `
-    <h2 style="margin: 0 0 4px 0;">Daily Flash - ${escapeHtml(opts.propertyLabel)}</h2>
     ${bodySection}
   `;
 };
@@ -86,6 +86,7 @@ export async function sendFlashEmail(options: {
   pngFilename?: string | null;
   attachPptx?: boolean;
   devModeOverride?: boolean;
+  pdfUrl?: string | null;
 }): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
@@ -126,8 +127,11 @@ export async function sendFlashEmail(options: {
     const reportDate = options.reportDateDisplay || (options.tokens?.ASOFDATE as string) || "";
     const subject = `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
     const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
-    const baseContent = buildHtmlContent({ propertyLabel, customBody: options.customBody });
-    const note = `<p style="margin-top: 16px; font-size: 11px; color: #666;">Daily Flash PDF attached for download.</p>`;
+    const baseContent = buildHtmlContent({ propertyLabel, customBody: options.customBody, pdfUrl: options.pdfUrl });
+    const pdfUrlSafe = options.pdfUrl?.replace(/"/g, "%22");
+    const downloadButton = pdfUrlSafe
+      ? `<div style="margin: 14px 0 8px 0;"><a href="${pdfUrlSafe}" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; background: linear-gradient(150deg, #0b5bd3, #0a4cb4); color: #0d6efd; text-decoration: none; font-weight: 800; font-size: 12px; letter-spacing: 0.01em; border: 1px solid #0d6efd; box-shadow: 0 10px 18px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.12); font-family: 'Segoe UI','Helvetica Neue',Arial,sans-serif;">Download full PDF</a></div>`
+      : `<p style="margin: 10px 0 12px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
     const footer = `<p style="margin-top: 12px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a>.</p>`;
     const pngBlock =
       inlinePng && inlinePng.length
@@ -138,21 +142,13 @@ export async function sendFlashEmail(options: {
         <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
           ${baseContent}
           ${pngBlock}
-          ${note}
           ${footer}
+          ${downloadButton}
         </body>
       </html>
     `;
     const fromAddress = sanitizeFromAddress(options.fromOverride) || mailConfig.from;
     const attachments: Mail.Attachment[] = [];
-
-    if (options.pdfBuffer && options.pdfBuffer.length) {
-      attachments.push({
-        filename: options.pdfFilename || "daily-flash.pdf",
-        content: options.pdfBuffer,
-        contentType: "application/pdf",
-      });
-    }
 
     if (inlinePng && inlinePng.length) {
       attachments.push({
@@ -163,7 +159,7 @@ export async function sendFlashEmail(options: {
       });
     }
 
-    const shouldAttachPptx = options.attachPptx ?? !options.pdfBuffer;
+    const shouldAttachPptx = options.attachPptx === true;
     if (shouldAttachPptx) {
       attachments.push({
         filename: options.pptxFilename,
@@ -192,7 +188,7 @@ export async function sendFlashEmail(options: {
       to: recipients,
       subject,
       attachments: {
-        pdfIncluded: Boolean(options.pdfBuffer && options.pdfBuffer.length),
+        pdfLinked: Boolean(options.pdfUrl),
         pngIncluded: Boolean(inlinePng && inlinePng.length),
         pptxIncluded: shouldAttachPptx,
       },

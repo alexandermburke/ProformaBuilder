@@ -374,7 +374,6 @@ export async function POST(req: NextRequest) {
           sendEmails,
           devMode: flashDevMode,
         });
-        const pdfFilename = `${propertyCode}-${reportDate}.pdf`;
         const pngFilename = `${propertyCode}-${reportDate}.png`;
         const pptxFilename = `${propertyCode}-${reportDate}.pptx`;
         if (!pdfBufferLocal && pdfPath) {
@@ -401,6 +400,17 @@ export async function POST(req: NextRequest) {
           });
           throw new Error("PDF conversion failed; email not sent");
         }
+        let pdfDownloadUrl: string | null = null;
+        if (pdfPath) {
+          try {
+            const [signedUrl] = await storage
+              .file(pdfPath)
+              .getSignedUrl({ action: "read", expires: Date.now() + 7 * 24 * 60 * 60 * 1000 });
+            pdfDownloadUrl = signedUrl;
+          } catch (err) {
+            console.warn("[flash-report/email] unable to generate signed pdf url", { propertyCode, reportDate, pdfPath }, err);
+          }
+        }
         emailSent = await sendFlashEmail({
           property: prop,
           pptxBuffer: generation.pptxBuffer,
@@ -409,13 +419,12 @@ export async function POST(req: NextRequest) {
           customBody: body.emailBody ?? "",
           fromOverride: process.env.SMTP_FROM || undefined,
           slidePngBuffer,
-          pdfBuffer: pdfBufferLocal,
-          pdfFilename,
           pngBuffer: slidePngBuffer,
           pngFilename,
           reportDateDisplay: formatReportDateDisplay(reportDate),
           attachPptx: false,
           devModeOverride: flashDevMode,
+          pdfUrl: pdfDownloadUrl,
         });
         if (!emailSent) {
           throw new Error("Email delivery failed or skipped");

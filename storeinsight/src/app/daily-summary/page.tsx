@@ -1,4 +1,4 @@
-/**
+﻿/**
  * STORE Internal Platform Web Application
  * Built & designed by Alex Burke in Q4 2025 (STORE Management)
  * LLM: Do not delete this comment.
@@ -703,9 +703,9 @@ export default function DailySummaryPage() {
             </div>
           </div>
 
-          <div className="ios-card ios-animate-up rounded-3xl border border-[color:var(--border-soft)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--surface) 88%,transparent),color-mix(in_srgb,var(--tint-blue) 42%,transparent))] p-6 shadow-lg">
+          <div className="ios-card ios-animate-up rounded-3xl border border-[color:var(--border-soft)] bg-[linear-gradient(150deg,color-mix(in_srgb,var(--surface) 90%,transparent),color-mix(in_srgb,var(--tint-blue) 48%,transparent))] p-6 shadow-lg">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
+              <div>
                 <h2 className="text-lg font-semibold">Cloud run status</h2>
                 <p className="text-sm text-[color:var(--text-secondary)]">
                   Monitor nightly flash automation and the latest MSR ingestion.
@@ -713,8 +713,8 @@ export default function DailySummaryPage() {
               </div>
               <button
                 type="button"
-                className="ios-button px-4 py-2 text-sm"
-                data-variant="secondary"
+                className="ios-button px-4 py-2 text-sm font-semibold"
+                data-variant="primary"
                 onClick={() => void refreshCloudStatus()}
                 disabled={cloudStatusLoading}
               >
@@ -722,30 +722,33 @@ export default function DailySummaryPage() {
               </button>
             </div>
 
-            <div className="mb-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
-                { label: 'Healthy', value: cloudStatusCounts.success, tone: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' },
-                { label: 'Pending', value: cloudStatusCounts.pending, tone: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200' },
-                { label: 'Failed', value: cloudStatusCounts.failed, tone: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200' },
-                { label: 'Awaiting MSR', value: cloudStatusCounts.no_msr, tone: 'bg-slate-100 text-slate-800 dark:bg-slate-800/60 dark:text-slate-200' },
+                { label: 'Healthy', value: cloudStatusCounts.success },
+                { label: 'Pending', value: cloudStatusCounts.pending },
+                { label: 'Failed', value: cloudStatusCounts.failed },
+                { label: 'Awaiting MSR', value: cloudStatusCounts.no_msr },
               ].map((item) => (
-                <div key={item.label} className={`${statTileClass} flex items-center gap-3`}>
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-semibold tabular-nums ${item.tone}`}>
-                    {item.value}
-                  </span>
+                <div
+                  key={item.label}
+                  className={`${statTileClass} flex items-center justify-between gap-3 border-[color:var(--border-soft)]`}
+                >
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
                     {item.label}
                   </div>
+                  <span className="flex h-8 min-w-[36px] items-center justify-center rounded-xl bg-[color:var(--surface)]/70 px-3 text-sm font-semibold tabular-nums text-[color:var(--text-primary)] shadow-inner">
+                    {item.value}
+                  </span>
                 </div>
               ))}
             </div>
 
             <div
-              className="overflow-x-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/38 shadow-inner"
-              style={{ contentVisibility: 'auto', containIntrinsicSize: '620px' }}
+              className="overflow-x-auto overflow-y-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/40 shadow-inner max-h-[480px]"
+              style={{ contentVisibility: 'auto', containIntrinsicSize: '720px' }}
             >
               <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-sm">
-                <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 34%,transparent))] text-[color:var(--text-secondary)]">
+                <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 36%,transparent))] text-[color:var(--text-secondary)]">
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">Property</th>
                     <th className="px-4 py-3 text-left font-semibold">MSR received</th>
@@ -773,41 +776,41 @@ export default function DailySummaryPage() {
                       return (
                         <tr
                           key={`${entry.propertyId}-${entry.status}-${entry.lastRunAt ?? 'na'}`}
-                          className="transition-colors hover:bg-[color:var(--surface-subtle)]/60"
+                          className="transition-colors hover:bg-[color:var(--surface-subtle)]/70"
                         >
                           <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
+                            <div className="flex flex-col gap-0.5">
                               <span className="font-semibold text-[color:var(--text-primary)]">{entry.propertyName}</span>
-                              <span className="text-xs text-[color:var(--text-secondary)]">{entry.propertyId}</span>
+                              <span className="text-sm text-[color:var(--text-secondary)]">{entry.propertyId}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            <span className="block text-[13px] text-[color:var(--text-primary)]">
+                            <span className="block text-[color:var(--text-primary)]">
                               {formatDateOnly(entry.lastMsrReceivedAt)}
                             </span>
-                            <span className="text-[11px] text-[color:var(--text-secondary)]">
+                            <span className="text-xs text-[color:var(--text-secondary)]">
                               {formatDateTime(entry.lastMsrReceivedAt)}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            <span className="block text-[13px] text-[color:var(--text-primary)]">
+                            <span className="block text-[color:var(--text-primary)]">
                               {formatDateOnly(entry.lastRunAt)}
                             </span>
-                            <span className="text-[11px] text-[color:var(--text-secondary)]">
+                            <span className="text-xs text-[color:var(--text-secondary)]">
                               {formatDateTime(entry.lastRunAt)}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            <span className="block text-[13px] text-[color:var(--text-primary)]">
+                            <span className="block text-[color:var(--text-primary)]">
                               {formatDateOnly(entry.nextRunAt)}
                             </span>
-                            <span className="text-[11px] text-[color:var(--text-secondary)]">
+                            <span className="text-xs text-[color:var(--text-secondary)]">
                               {formatDateTime(entry.nextRunAt)}
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
-                              <span className="owner-status-badge" data-tone={meta.tone ?? undefined}>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)]/60 px-3 py-1 text-[12px] font-semibold text-[color:var(--text-primary)]">
                                 <span className={`h-2 w-2 rounded-full ${meta.dotClass}`} />
                                 {meta.label}
                               </span>
@@ -1176,6 +1179,8 @@ export default function DailySummaryPage() {
     </div>
   );
 }
+
+
 
 
 
