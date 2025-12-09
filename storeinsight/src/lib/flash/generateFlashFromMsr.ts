@@ -3,7 +3,8 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import PizZip from "pizzip";
 import { createCanvas } from "canvas";
-import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin } from "chart.js";
+import { Chart, registerables, type ChartConfiguration, type Plugin } from "chart.js";
+import "@/lib/chartFonts";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 
@@ -24,13 +25,14 @@ const whiteBackgroundPlugin: Plugin<"bar"> = {
   },
 };
 
-ChartJS.register(...registerables, whiteBackgroundPlugin);
-ChartJS.defaults.responsive = false;
-ChartJS.defaults.animation = false;
-ChartJS.defaults.devicePixelRatio = chartPixelRatio;
-ChartJS.defaults.font.size = 18;
-ChartJS.defaults.font.family = 'Arial, "Helvetica Neue", sans-serif';
-ChartJS.defaults.color = "#111827";
+Chart.register(...registerables, whiteBackgroundPlugin);
+Chart.defaults.responsive = false;
+Chart.defaults.animation = false;
+Chart.defaults.devicePixelRatio = chartPixelRatio;
+Chart.defaults.font.size = 18;
+Chart.defaults.font.family = "Inter";
+Chart.defaults.color = "#111827";
+console.log("[flash-charts] Chart font family:", Chart.defaults.font.family);
 
 export type FlashGenerationOptions = {
   propertyCode: string;
@@ -131,7 +133,7 @@ function renderChartBuffer(configuration: ChartConfiguration<"bar", number[], st
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  new ChartJS(ctx as unknown as CanvasRenderingContext2D, configuration);
+  new Chart(ctx as unknown as CanvasRenderingContext2D, configuration);
   return mimeType === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg");
 }
 
