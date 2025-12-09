@@ -38,7 +38,7 @@ ChartJS.defaults.responsive = false;
 ChartJS.defaults.animation = false;
 ChartJS.defaults.devicePixelRatio = chartPixelRatio;
 ChartJS.defaults.font.size = 18;
-ChartJS.defaults.font.family = 'Arial, "Helvetica Neue", sans-serif';
+ChartJS.defaults.font.family = "DejaVu Sans";
 ChartJS.defaults.color = "#111827";
 
 type MailerConfig = {

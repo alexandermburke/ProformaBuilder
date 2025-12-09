@@ -161,6 +161,54 @@ const PERCENT_SUFFIXES = new Set<BudgetSuffix>(["VARPER", "YTDVARPER"]);
 
 const BUDGET_BASES = Array.from(new Set(RAW_LABEL_MAP.map(([, base]) => base)));
 
+// Manual cell-level mappings for the Owner's Report Budget Comparison sheet.
+// These override or supplement the label-based extraction to ensure the exact
+// cells/formulas are used for the PPTX tokens.
+const OWNER_REPORT_CELL_MAP: Record<
+  string,
+  { sheet: string; ref: string; mode?: "sum"; note?: string }
+> = {
+  DISCCM: { sheet: "Budget Comparison", ref: "C12" },
+  DISCYTD: { sheet: "Budget Comparison", ref: "G12" },
+  DISCYTDBUD: { sheet: "Budget Comparison", ref: "H12" },
+  TOTRENINCVAR: { sheet: "Budget Comparison", ref: "E14" },
+  TOTRENINCVARPER: { sheet: "Budget Comparison", ref: "F14" },
+  ADMFEEYTD: { sheet: "Budget Comparison", ref: "G15" },
+  ADMFEEVARPER: { sheet: "Budget Comparison", ref: "F15" },
+  RETSALVAR: { sheet: "Budget Comparison", ref: "E19" },
+  TOTALINCVARPER: { sheet: "Budget Comparison", ref: "F21" },
+  ADVERVAR: { sheet: "Budget Comparison", ref: "E24" },
+  ADVERYTD: { sheet: "Budget Comparison", ref: "G24" },
+  AUCTVAR: { sheet: "Budget Comparison", ref: "E25" },
+  CAMVAR: { sheet: "Budget Comparison", ref: "E27" },
+  CAMYTD: { sheet: "Budget Comparison", ref: "G27" },
+  CCMPTD: { sheet: "Budget Comparison", ref: "D28" },
+  CCMYTD: { sheet: "Budget Comparison", ref: "G28" },
+  DUESCM: { sheet: "Budget Comparison", ref: "C29" },
+  FIRECM: { sheet: "Budget Comparison", ref: "C31" },
+  MGMTCM: { sheet: "Budget Comparison", ref: "C35" },
+  MGMTSTFYTDVARPER: { sheet: "Budget Comparison", ref: "J36" },
+  OFFSUPYTD: { sheet: "Budget Comparison", ref: "G37" },
+  RETAYTD: { sheet: "Budget Comparison", ref: "G42" },
+  SECCM: { sheet: "Budget Comparison", ref: "C43" },
+  SOFTYTD: { sheet: "Budget Comparison", ref: "G44" },
+  INTERVAR: { sheet: "Budget Comparison", ref: "E46" },
+  UTILPTD: { sheet: "Budget Comparison", ref: "D47:D49", mode: "sum", note: "SUM(D47:D49)" },
+  UTILYTDBUD: { sheet: "Budget Comparison", ref: "H47:H49", mode: "sum", note: "SUM(H47:H49)" },
+  TOTALPROPYTDBUD: { sheet: "Budget Comparison", ref: "H51" },
+  TOTALPROPYTDVARPER: { sheet: "Budget Comparison", ref: "J51" },
+  INTINCCM: { sheet: "Budget Comparison", ref: "C58" },
+  INTINCYTD: { sheet: "Budget Comparison", ref: "G58" },
+  NETINCCM: { sheet: "Budget Comparison", ref: "C60" },
+  NETINCPTD: { sheet: "Budget Comparison", ref: "D60" },
+  NETINCVAR: { sheet: "Budget Comparison", ref: "E60" },
+  NETINCVARPER: { sheet: "Budget Comparison", ref: "F60" },
+  NETINCYTD: { sheet: "Budget Comparison", ref: "G60" },
+  NETINCYTDBUD: { sheet: "Budget Comparison", ref: "H60" },
+  NETINCYTDVAR: { sheet: "Budget Comparison", ref: "I60" },
+  NETINCYTDVARPER: { sheet: "Budget Comparison", ref: "J60" },
+};
+
 export function buildAllExpectedBudgetKeys(): string[] {
   return BUDGET_BASES.flatMap((base) => SUFFIX_ORDER.map((suffix) => `${base}${suffix}`));
 }
@@ -322,6 +370,33 @@ const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number
   return result;
 };
 
+const readCellValue = (sheet: XLSX.WorkSheet | undefined, ref: string): CellValue => {
+  if (!sheet) return undefined;
+  const cell = sheet[ref];
+  if (!cell) return undefined;
+  if ("v" in cell && cell.v !== undefined) return cell.v as CellValue;
+  if ("w" in cell && cell.w !== undefined) return cell.w as CellValue;
+  return undefined;
+};
+
+const sumRange = (sheet: XLSX.WorkSheet | undefined, rangeRef: string): number => {
+  if (!sheet) return Number.NaN;
+  let total = 0;
+  let found = false;
+  const range = XLSX.utils.decode_range(rangeRef);
+  for (let r = range.s.r; r <= range.e.r; r += 1) {
+    for (let c = range.s.c; c <= range.e.c; c += 1) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+      const raw = readCellValue(sheet, cellRef);
+      const numeric = parseNumber(raw, { isPercent: false });
+      if (!Number.isFinite(numeric)) continue;
+      total += numeric;
+      found = true;
+    }
+  }
+  return found ? total : Number.NaN;
+};
+
 const columnIndexToLetter = (index: number): string => {
   let dividend = index + 1;
   let columnLabel = "";
@@ -350,6 +425,47 @@ const normalizeZero = (value: number): number => (Object.is(value, -0) ? 0 : val
 
 const hasValue = (meta?: RowValueMeta): meta is RowValueMeta & { value: number } =>
   Boolean(meta && meta.value !== undefined && Number.isFinite(meta.value));
+
+const isPercentTokenKey = (token: string): boolean => /(VARPER|YTDVARPER)$/i.test(token);
+
+const applyOwnerReportOverrides = (
+  workbook: XLSX.WorkBook,
+  tokens: Record<string, number>,
+  details: Record<string, BudgetTokenDetail>,
+  debug: string[],
+): void => {
+  for (const [rawToken, mapping] of Object.entries(OWNER_REPORT_CELL_MAP)) {
+    const token = rawToken.trim().toUpperCase();
+    if (!token) continue;
+    const sheet = workbook.Sheets[mapping.sheet];
+    if (!sheet) continue;
+
+    const numeric = mapping.mode === "sum"
+      ? sumRange(sheet, mapping.ref)
+      : parseNumber(readCellValue(sheet, mapping.ref), { isPercent: isPercentTokenKey(token) });
+
+    if (!Number.isFinite(numeric)) continue;
+
+    const isPercent = isPercentTokenKey(token);
+    const value = normalizeZero(isPercent ? roundPercent(numeric) : roundMoney(numeric));
+
+    tokens[token] = value;
+
+    const note = mapping.note ? `manual mapping; ${mapping.note}` : "manual mapping";
+    details[token] = {
+      value,
+      sheet: mapping.sheet,
+      cell: mapping.note ?? mapping.ref,
+      note,
+    };
+
+    const pretty = isPercent ? pctFmt(value) : moneyFmt(value);
+    const origin = `${mapping.sheet}!${mapping.note ?? mapping.ref}`;
+    const message = `  ${pretty} from ${origin} applied --> {{${token}}} (${note})`;
+    console.log(message);
+    debug.push(message);
+  }
+};
 
 const ensureMeta = (
   row: RowState,
@@ -562,6 +678,8 @@ export async function extractBudgetTableFields(
     computeDerivedValues(row, header);
     applyTokensAndLogs(row, tokens, details, debug);
   }
+
+  applyOwnerReportOverrides(workbook, tokens, details, debug);
 
   const applied = Object.keys(tokens).length;
   const expected = TOTAL_BUDGET_TOKENS; // 272
