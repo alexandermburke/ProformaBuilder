@@ -196,6 +196,7 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
   const labels = ["Sqft", "Spaces", "Projected"];
   const data = [tokens.OCCPCT_SQFT, tokens.OCCPCT_SPACES, tokens.OCCPCT_ECON].map(Number);
 
+  // Ensure Occupancy title matches the manual flash report and does not wrap as "Occupanc\ny".
   const configuration: ChartConfiguration<"bar", number[], string> = {
     type: "bar",
     data: {
@@ -214,7 +215,12 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
       responsive: false,
       plugins: {
         legend: { display: false },
-        title: { display: false },
+        title: {
+          display: true,
+          text: "Occupancy",
+          font: { size: 14 },
+          padding: { top: 4, bottom: 4 },
+        },
       },
       layout: { padding: { top: 40, right: 32, bottom: 24, left: 60 } },
       scales: {
