@@ -10,6 +10,7 @@ import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
 import { createCanvas } from "canvas";
 import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin } from "chart.js";
+import "@/lib/chartFonts";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
@@ -38,7 +39,7 @@ ChartJS.defaults.responsive = false;
 ChartJS.defaults.animation = false;
 ChartJS.defaults.devicePixelRatio = chartPixelRatio;
 ChartJS.defaults.font.size = 18;
-ChartJS.defaults.font.family = "DejaVu Sans";
+ChartJS.defaults.font.family = "Inter";
 ChartJS.defaults.color = "#111827";
 
 type MailerConfig = {
