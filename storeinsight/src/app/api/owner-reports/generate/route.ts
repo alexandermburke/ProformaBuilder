@@ -172,10 +172,19 @@ export async function POST(req: NextRequest) {
   const budgetOverridesRaw = form.get("budgetOverrides");
   const inventory = form.get("inventory");
   const propertyIdRaw = form.get("propertyId");
+  const sendEmailRaw = form.get("sendEmail");
   const propertyKey =
     typeof propertyIdRaw === "string" && propertyIdRaw.trim().length > 0
       ? propertyIdRaw.trim()
       : null;
+  let propertyForEmail: PropertyConfig | null = null;
+  if (propertyKey) {
+    try {
+      propertyForEmail = await resolveProperty(propertyKey);
+    } catch (err) {
+      console.error("[owner-reports] unable to resolve property for email", err);
+    }
+  }
   const iprc = form.get("iprc");
   const availableSpaces = form.get("availableSpacesFile");
   const inventoryTokensRaw = form.get("inventoryTokens");
@@ -187,6 +196,16 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
   }
+
+  const loadFallbackBudget = async (): Promise<Buffer | null> => {
+    try {
+      const fallbackPath = path.join(process.cwd(), "public", "Budget.xlsx");
+      const data = await fs.readFile(fallbackPath);
+      return data;
+    } catch {
+      return null;
+    }
+  };
 
   const blobWithName = file as Blob & { name?: string };
   const filename = typeof blobWithName.name === "string" ? blobWithName.name : "report.xlsx";
@@ -304,6 +323,19 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("[owner-reports] Unable to re-parse budget workbook on server", err);
     }
+  } else {
+    const fallback = await loadFallbackBudget();
+    if (fallback) {
+      try {
+        const extraction = await extractBudgetTableFields(fallback, undefined);
+        budgetTokens = extraction.tokens;
+        budgetDetails = extraction.details;
+        budgetBuffer = fallback;
+        console.info("[owner-reports] applied fallback budget workbook from public/Budget.xlsx");
+      } catch (err) {
+        console.error("[owner-reports] Unable to parse fallback budget workbook", err);
+      }
+    }
   }
 
   if (inventoryBuffer && iprcText) {
@@ -383,6 +415,13 @@ export async function POST(req: NextRequest) {
       ? auditDelinquencyRaw === "true" || auditDelinquencyRaw === "1"
       : Boolean(process.env.AUDIT_DELINQ && process.env.AUDIT_DELINQ.toLowerCase() === "true");
 
+  if (propertyForEmail?.facilityOpenDate) {
+    const acquired = String(propertyForEmail.facilityOpenDate).trim();
+    if (acquired && (!data.ACQUIREDDATE || String(data.ACQUIREDDATE).trim().length === 0)) {
+      data = { ...data, ACQUIREDDATE: acquired };
+    }
+  }
+
   const pptx = await buildOwnerPptx({
     templateBuffer,
     ownerValues: data,
@@ -402,19 +441,27 @@ export async function POST(req: NextRequest) {
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 
-  if (propertyKey) {
-    try {
-      const property = await resolveProperty(propertyKey);
-      if (property) {
-        await sendOwnerReportEmail(property, pptx, outName, data);
+  const sendEmail =
+    typeof sendEmailRaw === "string"
+      ? ["true", "1", "yes", "on"].includes(sendEmailRaw.trim().toLowerCase())
+      : true;
+
+  if (sendEmail) {
+    if (propertyKey) {
+      if (propertyForEmail) {
+        try {
+          await sendOwnerReportEmail(propertyForEmail, pptx, outName, data);
+        } catch (err) {
+          console.error("[owner-reports] owner email send failed (non-fatal)", err);
+        }
       } else {
         console.info("[owner-reports] propertyId provided but not found; skipping email", propertyKey);
       }
-    } catch (err) {
-      console.error("[owner-reports] owner email send failed (non-fatal)", err);
+    } else {
+      console.info("[owner-reports] no propertyId provided; owner email not attempted");
     }
   } else {
-    console.info("[owner-reports] no propertyId provided; owner email not attempted");
+    console.info("[owner-reports] owner email delivery disabled by request", { propertyId: propertyKey });
   }
 
   const pptxBytes = new Uint8Array(pptx);

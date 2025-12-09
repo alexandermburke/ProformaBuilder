@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 
 type MsrDoc = {
   storagePath?: string;
+  msrPath?: string;
   cloudfrontUrl?: string;
   propertyCode?: string;
   reportDate?: string;
@@ -63,6 +64,42 @@ const getFlashDevMode = async (): Promise<boolean> => {
     console.warn("[flash-report/auto] unable to read flash dev mode", err);
   }
   return false;
+};
+
+const loadMsrDocs = async (
+  reportDate: string,
+): Promise<{ source: string; docs: Array<{ id: string; data: MsrDoc }> }> => {
+  if (!firestore) return { source: "none", docs: [] };
+  try {
+    let snap = await firestore.collection("msrReports").where("emailDate", "==", reportDate).get();
+    if (snap.empty) {
+      snap = await firestore.collection("msrReports").where("reportDate", "==", reportDate).get();
+    }
+    if (!snap.empty) {
+      return {
+        source: "msrReports",
+        docs: snap.docs.map((doc) => ({ id: doc.id, data: doc.data() as MsrDoc })),
+      };
+    }
+  } catch (err) {
+    console.warn("[flash-report/auto] msrReports query failed", { reportDate }, err);
+  }
+
+  // Fallback: dailySummaryRuns/{reportDate}/properties
+  try {
+    const altPath = `dailySummaryRuns/${reportDate}/properties`;
+    const altSnap = await firestore.collection(altPath).get();
+    if (!altSnap.empty) {
+      return {
+        source: altPath,
+        docs: altSnap.docs.map((doc) => ({ id: doc.id, data: doc.data() as MsrDoc })),
+      };
+    }
+  } catch (err) {
+    console.warn("[flash-report/auto] fallback dailySummaryRuns query failed", { reportDate }, err);
+  }
+
+  return { source: "none", docs: [] };
 };
 
 export async function POST(req: NextRequest) {
@@ -141,11 +178,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No properties matched the request." }, { status: 404 });
   }
 
-  let msrSnap = await firestore.collection("msrReports").where("emailDate", "==", reportDate).get();
-  if (msrSnap.empty) {
-    msrSnap = await firestore.collection("msrReports").where("reportDate", "==", reportDate).get();
-  }
-  if (msrSnap.empty) {
+  const { source: msrSource, docs: msrDocs } = await loadMsrDocs(reportDate);
+  if (msrDocs.length === 0) {
     console.warn("[flash-report/auto] no msr found for reportDate", { reportDate });
     return NextResponse.json(
       {
@@ -160,14 +194,20 @@ export async function POST(req: NextRequest) {
     );
   }
   const msrByCode = new Map<string, MsrDoc>();
-  msrSnap.docs.forEach((doc) => {
-    const data = doc.data() as MsrDoc;
+  msrDocs.forEach((doc) => {
+    const data = doc.data;
     const codeRaw = normalizeCode(data.propertyCode ?? doc.id.split("_")[0]);
     const slug = normalizeSlug(codeRaw);
     if (!slug) return;
-    msrByCode.set(slug, { ...data, propertyCode: codeRaw });
+    msrByCode.set(slug, {
+      ...data,
+      propertyCode: codeRaw,
+      storagePath: data.storagePath ?? data.msrPath,
+      reportDate: data.reportDate ?? reportDate,
+      emailDate: data.emailDate ?? data.reportDate ?? reportDate,
+    });
   });
-  console.info("[flash-report/auto] msr docs resolved", { reportDate, count: msrByCode.size, keys: Array.from(msrByCode.keys()) });
+  console.info("[flash-report/auto] msr docs resolved", { reportDate, source: msrSource, count: msrByCode.size, keys: Array.from(msrByCode.keys()) });
 
   const propertiesProcessed: Array<{
     propertyCode: string;

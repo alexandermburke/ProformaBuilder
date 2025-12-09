@@ -32,6 +32,22 @@ const MAPPING_ALIASES: Record<string, string> = {
   SFTOC: "OCCUPIEDAREAPERCENT",
 };
 
+const BUDGET_ALIAS_BASES: Record<string, string> = {
+  OTHEXP: "OTHEREXP",
+  TOTOTHEXP: "TOTOTHEREXP",
+};
+
+const BUDGET_SUFFIXES = [
+  "CM",
+  "PTD",
+  "VAR",
+  "VARPER",
+  "YTD",
+  "YTDBUD",
+  "YTDVAR",
+  "YTDVARPER",
+] as const;
+
 const PPT_XML_FILE_PATTERN = /^ppt\/(slides|slideLayouts|slideMasters)\/.*\.xml$/;
 
 type TemplateValue = string | number;
@@ -386,6 +402,27 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
       cell: existing?.cell ?? "-",
       note: existing?.note ? `${existing.note}; manual override` : "manual override",
     };
+  }
+
+  for (const [aliasBase, sourceBase] of Object.entries(BUDGET_ALIAS_BASES)) {
+    for (const suffix of BUDGET_SUFFIXES) {
+      const sourceKey = `${sourceBase}${suffix}`;
+      const aliasKey = `${aliasBase}${suffix}`;
+
+      if (budgetTokens[sourceKey] !== undefined && budgetTokens[aliasKey] === undefined) {
+        budgetTokens[aliasKey] = budgetTokens[sourceKey];
+      }
+      if (budgetOverrides[sourceKey] !== undefined && budgetOverrides[aliasKey] === undefined) {
+        budgetOverrides[aliasKey] = budgetOverrides[sourceKey];
+      }
+      if (appliedNumeric[sourceKey] !== undefined && appliedNumeric[aliasKey] === undefined) {
+        appliedNumeric[aliasKey] = appliedNumeric[sourceKey];
+      }
+      const detail = effectiveDetails[sourceKey];
+      if (detail && !effectiveDetails[aliasKey]) {
+        effectiveDetails[aliasKey] = { ...detail };
+      }
+    }
   }
 
   const templateTokenSet = new Set<string>(scannedTokenSet);

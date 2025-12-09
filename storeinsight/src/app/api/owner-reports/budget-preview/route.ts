@@ -2,15 +2,26 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { extractBudgetTableFields } from "@/lib/extractBudget";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const budget = form.get("budget");
-  if (!(budget instanceof Blob)) {
+  const budgetBuffer =
+    budget instanceof Blob
+      ? Buffer.from(await budget.arrayBuffer())
+      : await (async () => {
+          try {
+            return await fs.readFile(path.join(process.cwd(), "public", "Budget.xlsx"));
+          } catch {
+            return null;
+          }
+        })();
+
+  if (!budgetBuffer) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'budget'." }, { status: 400 });
   }
-
-  const budgetBuffer = Buffer.from(await budget.arrayBuffer());
 
   try {
     const result = await extractBudgetTableFields(budgetBuffer, undefined);
