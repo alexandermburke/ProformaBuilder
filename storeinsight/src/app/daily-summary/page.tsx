@@ -65,7 +65,7 @@ const cloudToFlashStatus: Record<CloudRunState, FlashStatus> = {
 const mapCloudState = (state: CloudRunState): FlashStatus => cloudToFlashStatus[state] ?? 'pending';
 
 const statTileClass =
-  'rounded-2xl border border-[color:var(--border-soft)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--surface) 86%,transparent),color-mix(in_srgb,var(--tint-blue) 62%,transparent))] px-3 py-3 shadow-[0_14px_36px_rgba(3,7,18,0.14)] backdrop-blur';
+  'rounded-2xl border border-[color:var(--border-soft)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--surface) 86%,transparent),color-mix(in_srgb,var(--tint-blue) 62%,transparent))] px-3 py-4 shadow-[0_14px_36px_rgba(3,7,18,0.14)] backdrop-blur flex flex-col items-center justify-center gap-2 text-center';
 
 const formatDateTime = (value?: string): string => {
   if (!value) return '--';
@@ -731,12 +731,12 @@ export default function DailySummaryPage() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className={`${statTileClass} flex items-center justify-between gap-3 border-[color:var(--border-soft)]`}
+                  className={`${statTileClass} border-[color:var(--border-soft)]`}
                 >
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-secondary)] leading-tight">
                     {item.label}
                   </div>
-                  <span className="flex h-8 min-w-[36px] items-center justify-center rounded-xl bg-[color:var(--surface)]/70 px-3 text-sm font-semibold tabular-nums text-[color:var(--text-primary)] shadow-inner">
+                  <span className="inline-flex h-10 min-w-[46px] items-center justify-center rounded-xl bg-[color:var(--surface)]/80 px-3 text-base font-semibold tabular-nums text-[color:var(--text-primary)] shadow-inner">
                     {item.value}
                   </span>
                 </div>
@@ -784,29 +784,35 @@ export default function DailySummaryPage() {
                               <span className="text-sm text-[color:var(--text-secondary)]">{entry.propertyId}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            <span className="block text-[color:var(--text-primary)]">
-                              {formatDateOnly(entry.lastMsrReceivedAt)}
-                            </span>
-                            <span className="text-xs text-[color:var(--text-secondary)]">
-                              {formatDateTime(entry.lastMsrReceivedAt)}
-                            </span>
+                          <td className="px-4 py-3 align-top text-[color:var(--text-secondary)]">
+                            <div className="flex flex-col whitespace-nowrap leading-tight">
+                              <span className="font-medium text-[color:var(--text-primary)]">
+                                {formatDateOnly(entry.lastMsrReceivedAt)}
+                              </span>
+                              <span className="text-xs text-[color:var(--text-secondary)]">
+                                {formatDateTime(entry.lastMsrReceivedAt)}
+                              </span>
+                            </div>
                           </td>
-                          <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            <span className="block text-[color:var(--text-primary)]">
-                              {formatDateOnly(entry.lastRunAt)}
-                            </span>
-                            <span className="text-xs text-[color:var(--text-secondary)]">
-                              {formatDateTime(entry.lastRunAt)}
-                            </span>
+                          <td className="px-4 py-3 align-top text-[color:var(--text-secondary)]">
+                            <div className="flex flex-col whitespace-nowrap leading-tight">
+                              <span className="font-medium text-[color:var(--text-primary)]">
+                                {formatDateOnly(entry.lastRunAt)}
+                              </span>
+                              <span className="text-xs text-[color:var(--text-secondary)]">
+                                {formatDateTime(entry.lastRunAt)}
+                              </span>
+                            </div>
                           </td>
-                          <td className="px-4 py-3 text-[color:var(--text-secondary)]">
-                            <span className="block text-[color:var(--text-primary)]">
-                              {formatDateOnly(entry.nextRunAt)}
-                            </span>
-                            <span className="text-xs text-[color:var(--text-secondary)]">
-                              {formatDateTime(entry.nextRunAt)}
-                            </span>
+                          <td className="px-4 py-3 align-top text-[color:var(--text-secondary)]">
+                            <div className="flex flex-col whitespace-nowrap leading-tight min-w-[140px]">
+                              <span className="font-medium text-[color:var(--text-primary)]">
+                                {formatDateOnly(entry.nextRunAt)}
+                              </span>
+                              <span className="text-xs text-[color:var(--text-secondary)]">
+                                {formatDateTime(entry.nextRunAt)}
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-col gap-1.5">

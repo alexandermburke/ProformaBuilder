@@ -248,7 +248,7 @@ function buildFlashEmailHtmlFromPng(
       : "";
   const pdfUrl = options?.pdfUrl?.replace(/"/g, "%22");
   const pdfButton = pdfUrl
-    ? `<div style="margin: 14px 0 8px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; background: linear-gradient(150deg, #0b5bd3, #0a4cb4); color: #0d6efd; text-decoration: none; font-weight: 800; font-size: 12px; letter-spacing: 0.01em; border: 1px solid #0d6efd; box-shadow: 0 10px 18px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(255,255,255,0.12); font-family: 'Segoe UI','Helvetica Neue',Arial,sans-serif;">Download full PDF</a></div>`
+    ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">Download full PDF</a></div>`
     : `<p style="margin: 10px 0 14px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
   const includeImage = options?.includeImage !== false;
   const imageBlock = includeImage
@@ -259,7 +259,7 @@ function buildFlashEmailHtmlFromPng(
       <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
         ${bodySection}
         ${imageBlock}
-        <p style="margin-top: 12px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a>.</p>
+        <p style="margin-top: 12px; margin-bottom: 10px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a></p>
         ${pdfButton}
       </body>
     </html>
