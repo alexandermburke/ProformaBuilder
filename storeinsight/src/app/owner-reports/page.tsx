@@ -294,7 +294,7 @@ const ALL_BUDGET_TOKENS = BUDGET_LINES.flatMap((line) =>
   BUDGET_COLUMNS.map((column) => `${line.baseKey}${column.suffix}`),
 );
 
-const LOG_DASH_CHARACTER = "\u2013";
+const LOG_DASH_CHARACTER = "-";
 const LOG_BLANK_LITERALS = new Set(["", "NaN", "undefined"]);
 const LOG_MAPPING_ALIASES: Record<string, string> = {
   TOTALINCOME: "TOTALINCCM",
@@ -998,7 +998,7 @@ export default function OwnerReportsPage() {
     if (emailRecipients.length === 0) {
       return "No owner emails configured; file will only download locally.";
     }
-    return `Emails: ${emailRecipients.join(", ")}`;
+    return "Owner emails turned on for this export; the PPTX will be sent out via email.";
   }, [emailRecipients, selectedProperty, sendOwnerEmail]);
 
   async function onUpload(f: File) {
@@ -2202,16 +2202,22 @@ export default function OwnerReportsPage() {
                           </div>
                           <button
                             type="button"
+                            role="switch"
+                            aria-checked={sendOwnerEmail}
                             onClick={() => setSendOwnerEmail((prev) => !prev)}
                             className={`relative inline-flex h-9 w-16 min-w-[64px] shrink-0 items-center justify-start rounded-full border p-1 transition-all duration-200 ease-out ${
                               sendOwnerEmail
-                                ? "justify-end bg-[#2563EB] border-[#1D4ED8]"
-                                : "justify-start bg-[rgba(148,163,255,0.18)] border-[color:var(--border-soft)]"
+                                ? "bg-[#2563EB] border-[#1D4ED8]"
+                                : "bg-[rgba(148,163,255,0.18)] border-[color:var(--border-soft)]"
                             }`}
                             aria-pressed={sendOwnerEmail}
                             aria-label={sendOwnerEmail ? "Disable owner emails" : "Enable owner emails"}
                           >
-                            <span className="inline-block h-7 w-7 rounded-full bg-white shadow transition-transform duration-200 ease-out" />
+                            <span
+                              className={`inline-block h-7 w-7 rounded-full bg-white shadow transition-transform duration-200 ease-out ${
+                                sendOwnerEmail ? "translate-x-7" : "translate-x-0"
+                              }`}
+                            />
                           </button>
                         </div>
                         <select

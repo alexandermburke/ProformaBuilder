@@ -17,6 +17,8 @@ export type BudgetTokenDetail = {
   sheet: string;
   cell: string;
   note?: string;
+  source?: string;
+  rawValue?: CellValue;
 };
 
 export type BudgetExtraction = {
@@ -173,6 +175,8 @@ const OWNER_REPORT_CELL_MAP: Record<
   DISCYTDBUD: { sheet: "Budget Comparison", ref: "H12" },
   TOTRENINCVAR: { sheet: "Budget Comparison", ref: "E14" },
   TOTRENINCVARPER: { sheet: "Budget Comparison", ref: "F14" },
+  TOTRENVAR: { sheet: "Budget Comparison", ref: "E14" },
+  TOTRENVARPER: { sheet: "Budget Comparison", ref: "F14" },
   ADMFEEYTD: { sheet: "Budget Comparison", ref: "G15" },
   ADMFEEVARPER: { sheet: "Budget Comparison", ref: "F15" },
   RETSALVAR: { sheet: "Budget Comparison", ref: "E19" },
@@ -180,25 +184,40 @@ const OWNER_REPORT_CELL_MAP: Record<
   ADVERVAR: { sheet: "Budget Comparison", ref: "E24" },
   ADVERYTD: { sheet: "Budget Comparison", ref: "G24" },
   AUCTVAR: { sheet: "Budget Comparison", ref: "E25" },
+  AUCTVARPER: { sheet: "Budget Comparison", ref: "F25" },
+  AUCTYTDVARPER: { sheet: "Budget Comparison", ref: "J25" },
   CAMVAR: { sheet: "Budget Comparison", ref: "E27" },
+  CAMVARPER: { sheet: "Budget Comparison", ref: "F27" },
   CAMYTD: { sheet: "Budget Comparison", ref: "G27" },
   CCMPTD: { sheet: "Budget Comparison", ref: "D28" },
   CCMYTD: { sheet: "Budget Comparison", ref: "G28" },
   DUESCM: { sheet: "Budget Comparison", ref: "C29" },
   FIRECM: { sheet: "Budget Comparison", ref: "C31" },
+  FIREVARPER: { sheet: "Budget Comparison", ref: "F31" },
+  FIREYTDVARPER: { sheet: "Budget Comparison", ref: "J31" },
+  PERMVARPER: { sheet: "Budget Comparison", ref: "F34" },
+  PERMYTDVARPER: { sheet: "Budget Comparison", ref: "J34" },
   MGMTCM: { sheet: "Budget Comparison", ref: "C35" },
   MGMTSTFYTDVARPER: { sheet: "Budget Comparison", ref: "J36" },
   OFFSUPYTD: { sheet: "Budget Comparison", ref: "G37" },
   RETAYTD: { sheet: "Budget Comparison", ref: "G42" },
   SECCM: { sheet: "Budget Comparison", ref: "C43" },
+  SECVARPER: { sheet: "Budget Comparison", ref: "F43" },
   SOFTYTD: { sheet: "Budget Comparison", ref: "G44" },
   INTERVAR: { sheet: "Budget Comparison", ref: "E46" },
   UTILPTD: { sheet: "Budget Comparison", ref: "D47:D49", mode: "sum", note: "SUM(D47:D49)" },
   UTILYTDBUD: { sheet: "Budget Comparison", ref: "H47:H49", mode: "sum", note: "SUM(H47:H49)" },
   TOTALPROPYTDBUD: { sheet: "Budget Comparison", ref: "H51" },
   TOTALPROPYTDVARPER: { sheet: "Budget Comparison", ref: "J51" },
+  TOTALPROPYTDPER: { sheet: "Budget Comparison", ref: "J51" },
+  OTHEREXPVARPER: { sheet: "Budget Comparison", ref: "F53" },
+  OTHEREXPYTDVARPER: { sheet: "Budget Comparison", ref: "J53" },
+  TOTOTHEREXPVARPER: { sheet: "Budget Comparison", ref: "F55" },
+  TOTOTHEREXPYTDVARPER: { sheet: "Budget Comparison", ref: "J55" },
   INTINCCM: { sheet: "Budget Comparison", ref: "C58" },
   INTINCYTD: { sheet: "Budget Comparison", ref: "G58" },
+  INTINCVARPER: { sheet: "Budget Comparison", ref: "F58" },
+  INTINCYTDVARPER: { sheet: "Budget Comparison", ref: "J58" },
   NETINCCM: { sheet: "Budget Comparison", ref: "C60" },
   NETINCPTD: { sheet: "Budget Comparison", ref: "D60" },
   NETINCVAR: { sheet: "Budget Comparison", ref: "E60" },
@@ -440,9 +459,12 @@ const applyOwnerReportOverrides = (
     const sheet = workbook.Sheets[mapping.sheet];
     if (!sheet) continue;
 
+    const cellRef = mapping.note ?? mapping.ref;
+    const cellValue = mapping.mode === "sum" ? undefined : readCellValue(sheet, mapping.ref);
+
     const numeric = mapping.mode === "sum"
       ? sumRange(sheet, mapping.ref)
-      : parseNumber(readCellValue(sheet, mapping.ref), { isPercent: isPercentTokenKey(token) });
+      : parseNumber(cellValue, { isPercent: isPercentTokenKey(token) });
 
     if (!Number.isFinite(numeric)) continue;
 
@@ -455,15 +477,23 @@ const applyOwnerReportOverrides = (
     details[token] = {
       value,
       sheet: mapping.sheet,
-      cell: mapping.note ?? mapping.ref,
+      cell: cellRef,
       note,
+      source: "owner-report-cell-map",
+      rawValue: cellValue,
     };
 
     const pretty = isPercent ? pctFmt(value) : moneyFmt(value);
-    const origin = `${mapping.sheet}!${mapping.note ?? mapping.ref}`;
+    const origin = `${mapping.sheet}!${cellRef}`;
     const message = `  ${pretty} from ${origin} applied --> {{${token}}} (${note})`;
     console.log(message);
     debug.push(message);
+    console.log("[budget] applied override", {
+      tokenName: token,
+      sheetName: mapping.sheet,
+      cell: cellRef,
+      value,
+    });
   }
 };
 
