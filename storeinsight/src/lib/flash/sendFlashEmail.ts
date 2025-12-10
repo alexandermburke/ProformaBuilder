@@ -130,7 +130,7 @@ export async function sendFlashEmail(options: {
     const baseContent = buildHtmlContent({ propertyLabel, customBody: options.customBody, pdfUrl: options.pdfUrl });
     const pdfUrlSafe = options.pdfUrl?.replace(/"/g, "%22");
     const downloadButton = pdfUrlSafe
-      ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrlSafe}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">Download full PDF</a></div>`
+      ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrlSafe}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">View full PDF</a></div>`
       : `<p style="margin: 10px 0 12px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
     const footer = `<p style="margin-top: 12px; margin-bottom: 10px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a></p>`;
     const pngBlock =

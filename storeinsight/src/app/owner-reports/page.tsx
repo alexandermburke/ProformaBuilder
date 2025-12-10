@@ -2203,19 +2203,15 @@ export default function OwnerReportsPage() {
                           <button
                             type="button"
                             onClick={() => setSendOwnerEmail((prev) => !prev)}
-                            className={`relative inline-flex h-9 w-16 shrink-0 items-center justify-start overflow-hidden rounded-full border transition-colors duration-200 ease-out ${
+                            className={`relative inline-flex h-9 w-16 min-w-[64px] shrink-0 items-center justify-start rounded-full border p-1 transition-all duration-200 ease-out ${
                               sendOwnerEmail
-                                ? "bg-[#2563EB] border-[#1D4ED8]"
-                                : "bg-white border-[color:var(--border-soft)]"
+                                ? "justify-end bg-[#2563EB] border-[#1D4ED8]"
+                                : "justify-start bg-[rgba(148,163,255,0.18)] border-[color:var(--border-soft)]"
                             }`}
                             aria-pressed={sendOwnerEmail}
                             aria-label={sendOwnerEmail ? "Disable owner emails" : "Enable owner emails"}
                           >
-                            <span
-                              className={`inline-block h-7 w-7 transform rounded-full bg-white shadow transition-transform duration-200 ease-out ${
-                                sendOwnerEmail ? "translate-x-7" : "translate-x-1"
-                              }`}
-                            />
+                            <span className="inline-block h-7 w-7 rounded-full bg-white shadow transition-transform duration-200 ease-out" />
                           </button>
                         </div>
                         <select

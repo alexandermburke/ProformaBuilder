@@ -249,7 +249,7 @@ function buildFlashEmailHtmlFromPng(
       : "";
   const pdfUrl = options?.pdfUrl?.replace(/"/g, "%22");
   const pdfButton = pdfUrl
-    ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">Download full PDF</a></div>`
+    ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">View full PDF</a></div>`
     : `<p style="margin: 10px 0 14px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
   const includeImage = options?.includeImage !== false;
   const imageBlock = includeImage
