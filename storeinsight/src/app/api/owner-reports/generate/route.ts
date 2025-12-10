@@ -11,7 +11,6 @@ import { extractBudgetTableFields, type BudgetTokenDetail } from "@/lib/extractB
 import {
   extractDelinquencyMetrics,
   type DelinquencyTokens,
-  type DelinquencyTokenProvenance,
 } from "@/lib/extractDelinquency";
 import { extractWebRateTokensFromAvailableSpaces } from "@/lib/extractAvailableSpaces";
 import { computeOwnerPerformance, type OwnerPerformanceOptions } from "@/lib/ownerPerformance";
@@ -189,7 +188,6 @@ export async function POST(req: NextRequest) {
   const availableSpaces = form.get("availableSpacesFile");
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
-  const auditDelinquencyRaw = form.get("auditDelinquency");
   const ppcFile = form.get("ppcFile");
   const ppcFile2 = form.get("ppcFile2");
 
@@ -365,21 +363,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let delinquencyAudit:
-    | {
-        tokens: DelinquencyTokens;
-        provenance: DelinquencyTokenProvenance;
-      }
-    | undefined;
-
   try {
     const delinquency = extractDelinquencyMetrics(buffer);
     if (delinquency.ok) {
       performanceTokens = { ...(performanceTokens ?? {}), ...delinquency.tokens };
-      delinquencyAudit = {
-        tokens: delinquency.tokens,
-        provenance: delinquency.provenance,
-      };
       logDelinquencyTokens(delinquency.tokens);
     } else {
       console.warn("[delinquency]", delinquency.message);
@@ -410,11 +397,6 @@ export async function POST(req: NextRequest) {
     console.warn("[owner-reports] PPC extraction failed", err);
   }
 
-  const auditDelinquencyPref =
-    typeof auditDelinquencyRaw === "string"
-      ? auditDelinquencyRaw === "true" || auditDelinquencyRaw === "1"
-      : Boolean(process.env.AUDIT_DELINQ && process.env.AUDIT_DELINQ.toLowerCase() === "true");
-
   if (propertyForEmail?.facilityOpenDate) {
     const acquired = String(propertyForEmail.facilityOpenDate).trim();
     if (acquired && (!data.ACQUIREDDATE || String(data.ACQUIREDDATE).trim().length === 0)) {
@@ -436,8 +418,6 @@ export async function POST(req: NextRequest) {
       ...(performanceTokens ?? {}),
       ...(ppcTokens ?? {}),
     },
-    delinquencyAudit,
-    enableDelinquencyAudit: auditDelinquencyPref,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 
