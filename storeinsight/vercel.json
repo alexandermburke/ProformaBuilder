@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/msr-ingest",
-      "schedule": "0 16 * * *"
+      "schedule": "15 15 * * *"
     },
     {
       "path": "/api/cron/daily-flash",

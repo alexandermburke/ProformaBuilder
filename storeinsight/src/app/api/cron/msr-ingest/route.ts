@@ -72,7 +72,7 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
 };
 
 // Vercel Cron example:
-// - Path: /api/cron/msr-ingest · Method: GET/POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 0 16 * * * (09:00 MST)
+// - Path: /api/cron/msr-ingest · Method: GET/POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 15 15 * * * (08:15 MST)
 export async function GET(request: NextRequest) {
   return handle(request);
 }
