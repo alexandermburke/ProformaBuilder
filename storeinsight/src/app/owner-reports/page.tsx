@@ -4,7 +4,6 @@
  * LLM: Do not delete this comment.
  */
 
-// Presentation on hero page via Javascript - think Apple like presentation to update David & Mark on changes like UI, Logic, etc. 
 
 "use client";
 
@@ -17,6 +16,7 @@ import {
   Download,
   WrapText,
   X,
+  Info,
 } from "lucide-react";
 import {
   useCallback,
@@ -289,6 +289,45 @@ const BUDGET_PAGES = [
   { page: 1, title: "{{CURRENTMONTH}} Data (continued)" },
 ];
 
+const UPLOAD_FIELD_HINTS = {
+  executiveSummary: [
+    "Current date/month and property address",
+    "Owner group and acquired date",
+    "Total units and rentable square feet",
+    "Rental income, total income, total expenses, net income",
+    "Occupied area square feet, occupancy by units, occupancy percent",
+    "Move-ins/move-outs today, MTD, YTD plus net",
+    "Move-ins/move-outs square feet MTD and net square feet MTD",
+    "Insurance penetration and overall penetration",
+  ],
+  budgetComparison: [
+    "Rental Income, Discounts, Total Rental Income, Admin/Late/Insurance/Other tenant income",
+    "Retail Sales and Total Income lines",
+    "Expense lines: Advertising, Auction, CAM, Credit Card Fees, Dues, Fire, Insurance, Licenses/Permits, Management Fees (+ staff), Office Supplies, Professional Fees, Repairs & Maintenance, Retail Products, Security, Software, Building Supplies, Telephone & Internet, Utilities",
+    "Totals for Property/Other/All Expenses, Interest Income, and Net Income (actual, budget, variance, % variance, YTD)",
+  ],
+  moveActivity: [
+    "Move-ins and move-outs counts with net for the current month",
+    "Trailing 3/6/12 month move activity",
+    "Move-in/out square footage and rent per square foot metrics",
+    "Promo counts/percent and length-of-stay averages",
+  ],
+  iprcChangeHistory: [
+    "Letters repriced / units touched",
+    "Total square feet repriced",
+    "Base revenue vs new revenue and total increase",
+    "Average percent increase for repriced units",
+  ],
+  availableSpaces: [
+    "Web rates for 5x5, 10x5, 10x10, 10x15, 10x20, 15x5, 20x15 (ground/elevator when available)",
+  ],
+  ppcPerformance: [
+    "Impressions and clicks",
+    "Conversions",
+    "Cost per conversion (averaged from uploaded sheets)",
+  ],
+} as const;
+
 const TOTAL_BUDGET_TOKENS = BUDGET_LINES.length * BUDGET_COLUMNS.length;
 const ALL_BUDGET_TOKENS = BUDGET_LINES.flatMap((line) =>
   BUDGET_COLUMNS.map((column) => `${line.baseKey}${column.suffix}`),
@@ -395,6 +434,36 @@ function InventoryPreviewTable({ rows, dense = false }: InventoryPreviewTablePro
           </table>
         </div>
       ))}
+    </div>
+  );
+}
+
+type UploadFieldHintProps = {
+  title: string;
+  fields: readonly string[];
+};
+
+function UploadFieldHint({ title, fields }: UploadFieldHintProps) {
+  return (
+    <div className="group relative inline-flex">
+      <button
+        type="button"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[color:var(--border-soft)] bg-white text-[color:var(--accent-strong)] shadow-sm transition hover:border-[color:var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-strong)]/30 focus:ring-offset-1"
+        aria-label={`Show fields filled by ${title}`}
+      >
+        <Info size={14} aria-hidden />
+      </button>
+      <div className="absolute left-1/2 top-full z-30 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-[color:var(--border-soft)] bg-white p-3 text-[11px] text-[color:var(--text-secondary)] shadow-xl transition duration-150 group-hover:block group-focus-within:block">
+        <p className="text-[11px] font-semibold text-[color:var(--text-primary)]">{title}</p>
+        <ul className="mt-1 space-y-1">
+          {fields.map((field) => (
+            <li key={field} className="flex items-start gap-2 leading-snug">
+              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[color:var(--accent-strong)]" aria-hidden />
+              <span>{field}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -1435,7 +1504,7 @@ export default function OwnerReportsPage() {
             </Link>
           </aside>
 
-          <main className="ios-card ios-animate-up space-y-6 p-8">
+          <main className="ios-card ios-animate-up space-y-6 p-8" style={{ overflow: "visible" }}>
             <div className="flex flex-col gap-6">
               <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1.5">
@@ -1492,7 +1561,10 @@ export default function OwnerReportsPage() {
 
               {step === 1 && (
                 <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
-                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 1 - Upload</h2>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold text-[color:var(--text-primary)]">
+                    <span>Step 1 - Upload</span>
+                    <UploadFieldHint title="Executive Summary fields" fields={UPLOAD_FIELD_HINTS.executiveSummary} />
+                  </h2>
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
                     Drop your <span className="font-bold">Executive Summary Report</span> (.xlsx) below. Only the first sheet is parsed for now.
                   </p>
@@ -1528,8 +1600,11 @@ export default function OwnerReportsPage() {
                   <div className="mt-6 space-y-6">
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Budget Comparison (.xlsx)</p>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Budget Comparison (.xlsx)</p>
+                            <UploadFieldHint title="Budget table tokens" fields={UPLOAD_FIELD_HINTS.budgetComparison} />
+                          </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">Recommended for Budget Variance autofill</p>
                         </div>
                         {budgetFile && (
@@ -1564,8 +1639,11 @@ export default function OwnerReportsPage() {
 
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Move-In/Move-Out Activity (.xlsx)</p>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Move-In/Move-Out Activity (.xlsx)</p>
+                            <UploadFieldHint title="Move activity fields" fields={UPLOAD_FIELD_HINTS.moveActivity} />
+                          </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload the Hummingbird Move-In/Move-Out Activity report (.xlsx) to capture move counts, promo %, and $/SqFt metrics.
                           </p>
@@ -1601,8 +1679,11 @@ export default function OwnerReportsPage() {
 
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">IPRC Change History (.csv)</p>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">IPRC Change History (.csv)</p>
+                            <UploadFieldHint title="Rate management fields" fields={UPLOAD_FIELD_HINTS.iprcChangeHistory} />
+                          </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload the Shows In Place Rate Changes export (.csv) to populate Rate Management (letters, sqft, revenue, avg % increase).
                           </p>
@@ -1638,10 +1719,13 @@ export default function OwnerReportsPage() {
 
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
-                            Available Spaces by Attribute (.xlsx)
-                          </p>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                              Available Spaces by Attribute (.xlsx)
+                            </p>
+                            <UploadFieldHint title="Web rate fields" fields={UPLOAD_FIELD_HINTS.availableSpaces} />
+                          </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload the SSM Available Spaces by Attribute export to fill Web rates on Rate Management.
                           </p>
@@ -1681,10 +1765,13 @@ export default function OwnerReportsPage() {
 
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
-                            PPC Performance sheets (.csv/.xlsx)
-                          </p>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                              PPC Performance sheets (.csv/.xlsx)
+                            </p>
+                            <UploadFieldHint title="PPC performance fields" fields={UPLOAD_FIELD_HINTS.ppcPerformance} />
+                          </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload up to two marketing sheets (e.g., &quot;STORE Management PPC Report_PPC Performance_Table.csv&quot;) to fill Impressions, Clicks, Conversions, and Cost/Conversion.
                           </p>

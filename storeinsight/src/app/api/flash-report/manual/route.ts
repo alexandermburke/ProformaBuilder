@@ -596,21 +596,21 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
   const [facilityCode, facilityShortName] = deriveFacilitySegments(propertyDisplayName);
   const asOfDateCell = readDate(msrSheet, "A3", "As-of date (MSR!A3)");
 
-  const mtdRentals = readNumber(msrSheet, "E61", "MTD rentals (MSR!E61)");
+  const mtdRentals = readNumber(msrSheet, "J8", "MTD rentals (MSR!J8)");
   const netsqftmtd = readNumber(msrSheet, "E70", "Net SQ FT Activity	(MSR!E70)");
-  const dailyRentals = readNumber(msrSheet, "D61", "Daily rentals (MSR!D61)");
+  const dailyRentals = readNumber(msrSheet, "I8", "Daily rentals (MSR!I8)");
   const dailyReservations = readNumber(msrSheet, "D65", "Daily reservations (MSR!D65)");
   const rybtmi = readNumber(msrSheet, "F61", "YTD move-ins (MSR!F61)");
-  const mtdVacates = readNumber(msrSheet, "E62", "MTD vacates (MSR!E62)");
-  const dailyVacates = readNumber(msrSheet, "D62", "Daily vacates (MSR!D62)");
-  const mtdNetRentals = readNumber(msrSheet, "E63", "MTD net rentals (MSR!E63)");
+  const mtdVacates = readNumber(msrSheet, "J9", "MTD vacates (MSR!J9)");
+  const dailyVacates = readNumber(msrSheet, "I9", "Daily vacates (MSR!I9)");
+  const mtdNetRentals = readNumber(msrSheet, "J10", "MTD net rentals (MSR!J10)");
   const webLeadsMtd = readNumber(msrSheet, "M47", "Web leads MTD (MSR!M47)");
   const walkInLeadsMtd = readNumber(msrSheet, "M48", "Walk-in leads MTD (MSR!M48)");
   const phoneLeadsMtd = readNumber(msrSheet, "M49", "Phone leads MTD (MSR!M49)");
   const otherLeadsMtd = readNumber(msrSheet, "M50", "Other leads MTD (MSR!M50)");
-  const leadsMtd = webLeadsMtd + walkInLeadsMtd + phoneLeadsMtd + otherLeadsMtd;
-  const convRaw = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
-  const conv = formatPercent(convRaw);
+  const leadsMtdByChannel = webLeadsMtd + walkInLeadsMtd + phoneLeadsMtd + otherLeadsMtd;
+  const leadsMtd = readNumber(msrSheet, "O8", "Leads MTD total (MSR!O8)");
+  const leadConversion = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
 
   const totalRsf = readNumber(msrSheet, "M44", "Total RSF (MSR!M44)");
   const occRsf = readNumber(msrSheet, "M41", "Occupied RSF (MSR!M41)");
@@ -660,8 +660,8 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     DAILYRENTALS: dailyRentals,
     DAILYRES: dailyReservations,
     RYTBMI: rybtmi,
-    LEADSMTD: leadsMtd,
-    CONV: conv,
+    LEADSMTD: leadsMtd ?? leadsMtdByChannel,
+    CONV: formatPercent(leadConversion),
     MTDVACATES: mtdVacates,
     DAILYVACATES: dailyVacates,
     MTDNETRENTALS: mtdNetRentals,
@@ -948,4 +948,3 @@ async function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<st
 function normalizeKey(key: string): string {
   return stripHiddenTokenCharacters(key).replace(/\s+/g, "").toUpperCase();
 }
-
