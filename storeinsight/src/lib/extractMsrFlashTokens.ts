@@ -1,3 +1,4 @@
+import { Buffer as NodeBuffer } from "buffer";
 import ExcelJS from "exceljs";
 
 export type FlashMsrTokens = Record<string, string | number>;
@@ -57,22 +58,26 @@ const formatCurrency = (value: number): string => {
   });
 };
 
+const normalizeNodeBuffer = (source: ArrayBuffer | ArrayBufferView | Buffer): import("buffer").Buffer => {
+  if (NodeBuffer.isBuffer(source)) {
+    return source;
+  }
+  if (source instanceof ArrayBuffer) {
+    return NodeBuffer.from(source);
+  }
+  if (ArrayBuffer.isView(source)) {
+    return NodeBuffer.from(source.buffer, source.byteOffset, source.byteLength);
+  }
+  return NodeBuffer.from(source as ArrayBuffer);
+};
+
 export async function extractMsrFlashTokens(
   buffer: ArrayBuffer | ArrayBufferView | Buffer,
 ): Promise<FlashMsrTokens> {
   const workbook = new ExcelJS.Workbook();
-  let input: Buffer;
-  if (Buffer.isBuffer(buffer)) {
-    input = buffer;
-  } else if (buffer instanceof ArrayBuffer) {
-    input = Buffer.from(buffer);
-  } else if (ArrayBuffer.isView(buffer)) {
-    input = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  } else {
-    input = Buffer.from(buffer as ArrayBuffer);
-  }
+  const input = normalizeNodeBuffer(buffer);
 
-  await workbook.xlsx.load(input);
+  await workbook.xlsx.load(input as import("buffer").Buffer);
   const msrSheet = workbook.getWorksheet("MSR");
   if (!msrSheet) {
     throw new Error('Workbook is missing required "MSR" worksheet.');
