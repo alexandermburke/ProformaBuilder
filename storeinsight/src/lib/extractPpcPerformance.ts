@@ -1,7 +1,5 @@
 import * as XLSX from "xlsx";
 
-type Identifier = string;
-
 const toNumber = (value: unknown): number => {
   const num = typeof value === "number" ? value : Number(String(value).replace(/[^0-9.+-]/g, ""));
   return Number.isFinite(num) ? num : 0;
@@ -18,8 +16,16 @@ const matchRow = (campaign: string, identifiers: Identifier[]): boolean => {
   return identifiers.some((id) => lower.includes(id.toLowerCase()));
 };
 
-export function extractPpcPerformanceTokens(workbookBuffers: Buffer[], identifiers: Identifier[]): Record<string, number> {
-  if (!workbookBuffers || workbookBuffers.length === 0 || identifiers.length === 0) return {};
+export function extractPpcPerformanceTokens(
+  workbookBuffers: Buffer[],
+  propertyHint?: string | null,
+): Record<string, number> {
+  if (!workbookBuffers || workbookBuffers.length === 0) return {};
+
+  const hint = (propertyHint ?? "").toLowerCase();
+  const isPittman = hint.includes("pittman");
+  const isGrove = hint.includes("grove") || hint.includes("camelback");
+  const targetRows = isGrove ? [3, 5] : [2, 4]; // 1-based row numbers per instructions
 
   const tokens: Record<string, number> = {};
   let costSum = 0;
@@ -43,34 +49,30 @@ export function extractPpcPerformanceTokens(workbookBuffers: Buffer[], identifie
     }));
 
     for (const { rows } of sheets) {
-      if (rows.length === 0) continue;
-      const headers = Object.keys(rows[0]).map((h) => h.toString().toLowerCase());
+      if (rows.length <= 1) continue;
+      const headerRow = rows[0];
+      const headers = Object.keys(headerRow).map((h) => h.toString().toLowerCase());
+      if (!isHeaderMatch(headers, ["campaign", "impressions", "clicks"])) continue;
 
-      // Table with Cost/Impressions/Clicks
-      if (isHeaderMatch(headers, ["campaign", "impressions", "clicks"])) {
-        for (const row of rows) {
-          const campaign = (row[headers.find((h) => h.includes("campaign")) ?? "campaign"] ?? "") as string;
-          if (!campaign || !matchRow(campaign, identifiers)) continue;
-          costSum += toNumber(row[headers.find((h) => h === "cost" || h.includes("cost")) ?? "cost"]);
-          impressionsSum += toNumber(row[headers.find((h) => h.includes("impression")) ?? "impressions"]);
-          clicksSum += toNumber(row[headers.find((h) => h.includes("click")) ?? "clicks"]);
-        }
-      }
+      const campaignKey = headers.find((h) => h.includes("campaign")) ?? "campaign";
+      const costKey = headers.find((h) => h.includes("cost")) ?? "cost";
+      const impressionsKey = headers.find((h) => h.includes("impress")) ?? "impressions";
+      const clicksKey = headers.find((h) => h.includes("click")) ?? "clicks";
+      const conversionsKey = headers.find((h) => h.startsWith("conversion")) ?? "conversions";
+      const cpcKey = headers.find((h) => h.includes("cost") && h.includes("conv")) ?? "cost / conv";
 
-      // Table with Conversions / Cost per conversion
-      if (isHeaderMatch(headers, ["campaign", "convers"])) {
-        for (const row of rows) {
-          const campaign = (row[headers.find((h) => h.includes("campaign")) ?? "campaign"] ?? "") as string;
-          if (!campaign || !matchRow(campaign, identifiers)) continue;
-          conversionsSum += toNumber(row[headers.find((h) => h.startsWith("conversion")) ?? "conversions"]);
-          const costPerConv =
-            toNumber(row[headers.find((h) => h.includes("cost") && h.includes("conv")) ?? "cost / conv"]) || null;
-          if (costPerConv && costPerConv > 0) {
-            costPerConvValues.push(costPerConv);
-          }
-          const rowCost = toNumber(row[headers.find((h) => h === "cost" || h.includes("cost")) ?? "cost"]);
-          if (rowCost) costSum += rowCost;
-        }
+      for (const rowIndex of targetRows) {
+        const row = rows[rowIndex - 1];
+        if (!row) continue;
+        const campaign = (row[campaignKey] ?? "") as string;
+        if (!campaign) continue;
+        costSum += toNumber(row[costKey]);
+        impressionsSum += toNumber(row[impressionsKey]);
+        clicksSum += toNumber(row[clicksKey]);
+        const convs = toNumber(row[conversionsKey]);
+        if (convs > 0) conversionsSum += convs;
+        const cpc = toNumber(row[cpcKey]);
+        if (cpc > 0) costPerConvValues.push(cpc);
       }
     }
   }

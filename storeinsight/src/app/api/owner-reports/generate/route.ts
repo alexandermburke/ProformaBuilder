@@ -19,6 +19,7 @@ import type { OwnerFields } from "@/types/ownerReport";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { extractPpcPerformanceTokens } from "@/lib/extractPpcPerformance";
+import { extractMsrFlashTokens, type FlashMsrTokens } from "@/lib/extractMsrFlashTokens";
 
 export const runtime = "nodejs";
 
@@ -176,6 +177,8 @@ export async function POST(req: NextRequest) {
     typeof propertyIdRaw === "string" && propertyIdRaw.trim().length > 0
       ? propertyIdRaw.trim()
       : null;
+  const msr = form.get("msr");
+  const msrTokensRaw = form.get("msrTokens");
   let propertyForEmail: PropertyConfig | null = null;
   if (propertyKey) {
     try {
@@ -189,7 +192,6 @@ export async function POST(req: NextRequest) {
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
   const ppcFile = form.get("ppcFile");
-  const ppcFile2 = form.get("ppcFile2");
 
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
@@ -232,12 +234,18 @@ export async function POST(req: NextRequest) {
   if (availableSpaces instanceof Blob) {
     availableSpacesBuffer = Buffer.from(await availableSpaces.arrayBuffer());
   }
+  let msrTokensFromFile: FlashMsrTokens | undefined;
+  if (msr instanceof Blob) {
+    try {
+      const msrBuffer = Buffer.from(await msr.arrayBuffer());
+      msrTokensFromFile = await extractMsrFlashTokens(msrBuffer);
+    } catch (err) {
+      console.warn("[owner-reports] Unable to parse MSR workbook", err);
+    }
+  }
   const ppcBuffers: Buffer[] = [];
   if (ppcFile instanceof Blob) {
     ppcBuffers.push(Buffer.from(await ppcFile.arrayBuffer()));
-  }
-  if (ppcFile2 instanceof Blob) {
-    ppcBuffers.push(Buffer.from(await ppcFile2.arrayBuffer()));
   }
 
   let budgetTokens: Record<string, number> | undefined;
@@ -277,6 +285,26 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       console.error("[owner-reports] Unable to parse budget overrides", err);
+    }
+  }
+
+  let msrTokensFromClient: FlashMsrTokens | undefined;
+  if (typeof msrTokensRaw === "string" && msrTokensRaw.trim()) {
+    try {
+      const parsed = JSON.parse(msrTokensRaw) as Record<string, unknown>;
+      const normalized: FlashMsrTokens = {};
+      for (const [token, value] of Object.entries(parsed ?? {})) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          normalized[token] = value;
+        } else if (typeof value === "string" && value.trim().length > 0) {
+          normalized[token] = value;
+        }
+      }
+      if (Object.keys(normalized).length > 0) {
+        msrTokensFromClient = normalized;
+      }
+    } catch (err) {
+      console.error("[owner-reports] Unable to parse MSR tokens", err);
     }
   }
 
@@ -381,12 +409,15 @@ export async function POST(req: NextRequest) {
   // PPC performance tokens (IMPRE, CLICKS, CONV, COSCON) from the marketing sheet
   let ppcTokens: Record<string, string | number> | undefined;
   try {
-    const identifiers: string[] = [];
-    if (propertyKey) identifiers.push(propertyKey);
-    if (data?.ADDRESS) identifiers.push(String(data.ADDRESS));
-    if (data?.OWNERGROUP) identifiers.push(String(data.OWNERGROUP));
-    const buffersForPpc = ppcBuffers.length > 0 ? ppcBuffers : [buffer];
-    const ppcNumeric = extractPpcPerformanceTokens(buffersForPpc, identifiers);
+  const buffersForPpc = ppcBuffers.length > 0 ? ppcBuffers : [buffer];
+    const propertyHint =
+      propertyForEmail?.name ||
+      propertyForEmail?.propertyId ||
+      propertyForEmail?.tenantPropertyId ||
+      data?.ADDRESS ||
+      propertyKey ||
+      "";
+    const ppcNumeric = extractPpcPerformanceTokens(buffersForPpc, propertyHint);
     if (ppcNumeric && Object.keys(ppcNumeric).length > 0) {
       ppcTokens = {};
       for (const [key, value] of Object.entries(ppcNumeric)) {
@@ -404,6 +435,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const msrTokens = msrTokensFromFile ?? msrTokensFromClient;
+  const combinedPerformanceTokens = {
+    ...(performanceTokens ?? {}),
+    ...(ppcTokens ?? {}),
+    ...(msrTokens ?? {}),
+  };
+
   const pptx = await buildOwnerPptx({
     templateBuffer,
     ownerValues: data,
@@ -414,10 +452,7 @@ export async function POST(req: NextRequest) {
     budgetBuffer: budgetBuffer ?? null,
     availableSpacesBuffer: availableSpacesBuffer ?? null,
     availableSpacesTokens,
-    performanceTokens: {
-      ...(performanceTokens ?? {}),
-      ...(ppcTokens ?? {}),
-    },
+    performanceTokens: combinedPerformanceTokens,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 

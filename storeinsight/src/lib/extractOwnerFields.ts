@@ -264,14 +264,17 @@ export function extractOwnerFields(buffer: Buffer, filename = "report.xlsx"): Ow
     }
   }
 
-  if (!out.CURRENTDATE) out.CURRENTDATE = currentDateFromFilename(filename);
-  if (out.CURRENTDATE) {
-    const formattedDate = formatMonthYear(out.CURRENTDATE);
-    if (formattedDate) out.CURRENTDATE = formattedDate;
-  }
+  // Force CURRENTDATE/CURRENTMONTH solely from A3 in the uploaded workbook.
+  const a3Value = valueFromCellRef(grid, "A3");
+  const a3MonthLabel = a3Value != null && a3Value !== "" ? monthLabel(a3Value) : "";
+  const a3FormattedDate = a3Value != null && a3Value !== "" ? formatMonthYear(a3Value) : "";
+  out.CURRENTMONTH = a3MonthLabel || "";
+  out.CURRENTDATE = a3FormattedDate || a3MonthLabel || "";
 
   const writableOut = out as Record<keyof OwnerFields, unknown>;
+  const skipFallbackKeys = new Set<keyof OwnerFields>(["CURRENTDATE", "CURRENTMONTH"]);
   for (const key of Object.keys(CELL_FALLBACKS) as (keyof OwnerFields)[]) {
+    if (skipFallbackKeys.has(key)) continue; // avoid alternative sources
     const meta = CELL_FALLBACKS[key];
     if (!meta) continue;
     const existing = writableOut[key];
@@ -288,11 +291,6 @@ export function extractOwnerFields(buffer: Buffer, filename = "report.xlsx"): Ow
       const formatted = key === "CURRENTMONTH" ? monthLabel(raw) : formatMonthYear(raw);
       if (formatted) writableOut[key] = formatted;
     }
-  }
-
-  if (!out.CURRENTMONTH && out.CURRENTDATE) {
-    const monthOnly = monthLabel(out.CURRENTDATE);
-    if (monthOnly) out.CURRENTMONTH = monthOnly;
   }
   if (!out.TOTALUNITS) {
     for (let r = 0; r < grid.length; r++) {

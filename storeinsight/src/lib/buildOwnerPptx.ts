@@ -24,6 +24,7 @@ const MAPPING_ALIASES: Record<string, string> = {
   TOTALINCOME: "TOTALINCCM",
   TOTALEXPENSES: "TOTEXPCM",
   NETINCOME: "NETINCCM",
+  TOTALRENTALINCOME: "TOTRENINCCM",
   SFTOC: "OCCUPIEDAREAPERCENT",
 };
 
@@ -135,12 +136,14 @@ const fmtOwnerPercent = (n: number) => {
 const isPercentToken = (token: string): boolean => /(VARPER|YTDVARPER)$/.test(token);
 
 const fmtCurrency = (value: number): string =>
-  value.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  !Number.isFinite(value) || value === 0
+    ? DASH_CHARACTER
+    : value.toLocaleString("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
 const fmtBudgetPercent = (value: number): string => `${Number(value).toFixed(1)}%`;
 const fmtPercentWholeNumber = (n: number): string => {
@@ -491,15 +494,23 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     ...budgetOverrides,
   };
   const templateData = normalizeValueRecord(data);
+  const ownerCurrentMonth = summaryFields.CURRENTMONTH ?? ownerValues.CURRENTMONTH ?? "";
+  const ownerCurrentDate = summaryFields.CURRENTDATE ?? ownerValues.CURRENTDATE ?? "";
+  templateData.CURRENTMONTH = ownerCurrentMonth;
+  templateData.CURRENTDATE = ownerCurrentDate;
 
   for (const [displayKey, sourceKey] of Object.entries(MAPPING_ALIASES)) {
     const sourceValue = templateData[sourceKey];
     if (sourceValue === undefined || isBlankValue(sourceValue)) continue;
     templateData[displayKey] = sourceValue;
   }
+  // Force TOTALRENTALINCOME to only come from the budget token (C13), with no fallback.
+  templateData.TOTALRENTALINCOME = isBlankValue(templateData.TOTRENINCCM)
+    ? ""
+    : templateData.TOTRENINCCM;
 
   const prevMonth = previousMonthLabel(
-    templateData.CURRENTMONTH ?? performanceTokenValues?.CURRENTMONTH ?? ownerValues.CURRENTMONTH,
+    templateData.CURRENTMONTH ?? ownerValues.CURRENTMONTH,
   );
   if (prevMonth) {
     templateData.PREVMON = prevMonth;

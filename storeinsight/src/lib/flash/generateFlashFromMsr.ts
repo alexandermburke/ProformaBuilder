@@ -327,6 +327,55 @@ export function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: E
   const effPotRent = projRent + grossVacantRevenue;
   const effRentSf = totalRsf > 0 ? effPotRent / totalRsf : 0;
 
+  const budgetLineKeys = [
+    "RENTINC",
+    "DISC",
+    "TOTRENINC",
+    "ADMFE",
+    "LATEFEE",
+    "INSURT",
+    "OTHER",
+    "RETSAL",
+    "TOTALINC",
+    "ADVER",
+    "AUCT",
+    "CAM",
+    "CCM",
+    "DUES",
+    "FIRE",
+    "INSUREXP",
+    "PERM",
+    "MGMT",
+    "MGMSTF",
+    "OFFSUP",
+    "PROF",
+    "REP",
+    "RETPROD",
+    "SEC",
+    "SOFT",
+    "SUPP",
+    "INTER",
+    "UTIL",
+    "TOTALPROP",
+    "OTHEREXP",
+    "TOTOTHEREXP",
+    "TOTEXP",
+    "NETINC",
+  ];
+  const budgetTokenSuffixes = ["CM", "PTD", "VAR", "VARPER", "YTD", "YTDBUD", "YTDVAR", "YTDVARPER"] as const;
+  const budgetTokens: Record<string, string> = {};
+
+  budgetLineKeys.forEach((base, idx) => {
+    const placeholderCell = `Z${100 + idx}`; // TODO: map ${base} tokens to the correct MSR cells once available
+    const placeholderValue = readNumberOrZero(msrSheet, placeholderCell, `${base} placeholder value`);
+    budgetTokenSuffixes.forEach((suffix) => {
+      const tokenKey = `${base}${suffix}`;
+      const formatted =
+        suffix.endsWith("VARPER") || suffix === "VARPER" ? formatPercentDash(placeholderValue) : formatCurrencyDash(placeholderValue);
+      budgetTokens[tokenKey] = formatted;
+    });
+  });
+
   return {
     PROPERTYDISPLAYNAME: propertyDisplayName,
     FACILITYCODE: facilityCode,
@@ -376,6 +425,7 @@ export function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: E
     RSFOCCUPANCYBYMONTHSERIES: [],
     PROJECTEDRENTALREVENUESERIES: [],
     FACILITYOPENDATE: "",
+    ...budgetTokens,
   };
 }
 
@@ -413,6 +463,15 @@ function readNumber(sheet: ExcelJS.Worksheet, address: string, label: string): n
     throw new Error(`${label} is not a number.`);
   }
   return numeric;
+}
+
+function readNumberOrZero(sheet: ExcelJS.Worksheet, address: string, label: string): number {
+  try {
+    return readNumber(sheet, address, label);
+  } catch (err) {
+    console.warn(`[flash-report] ${label} unavailable at ${address}; defaulting to 0`);
+    return 0;
+  }
 }
 
 function readDate(sheet: ExcelJS.Worksheet, address: string, label: string): Date {
@@ -457,9 +516,26 @@ function formatPercent(value: number): string {
   return `${formatToTwo(value)}%`;
 }
 
+function formatPercentDash(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  if (value === 0) return "-";
+  return formatPercent(value);
+}
+
 function formatCurrency(value: number): string {
   if (!Number.isFinite(value)) return "";
   return value.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatCurrencyDash(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  if (value === 0) return "-";
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatNumberWithCommas(value: number): string {

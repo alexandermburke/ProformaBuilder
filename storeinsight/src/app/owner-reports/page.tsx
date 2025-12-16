@@ -508,12 +508,15 @@ export default function OwnerReportsPage() {
     name: string;
     data: OwnerFields;
   } | null>(null);
+  const [msrFile, setMsrFile] = useState<File | null>(null);
+  const [msrTokens, setMsrTokens] = useState<Record<string, string | number>>({});
+  const [msrStatus, setMsrStatus] = useState<{ variant: "success" | "error"; text: string } | null>(null);
+  const [msrLoading, setMsrLoading] = useState(false);
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
   const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
   const [iprcFile, setIprcFile] = useState<File | null>(null);
   const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
   const [ppcFile, setPpcFile] = useState<File | null>(null);
-  const [ppcFile2, setPpcFile2] = useState<File | null>(null);
   const [currentMonthOverride] = useState("");
   const [includeCurrentMonth] = useState(true);
   const [performanceTokens, setPerformanceTokens] = useState<OwnerPerformanceTokenValues | null>(null);
@@ -765,6 +768,41 @@ export default function OwnerReportsPage() {
         ? "Console log is empty."
         : "No console output recorded yet.";
   const isInformationalLog = !hasFilteredLog;
+  const runMsrExtract = useCallback(async (nextMsr: File | null) => {
+    if (!nextMsr) {
+      setMsrFile(null);
+      setMsrTokens({});
+      setMsrStatus(null);
+      setMsrLoading(false);
+      return;
+    }
+    setMsrFile(nextMsr);
+    setMsrLoading(true);
+    setMsrStatus(null);
+    try {
+      const form = new FormData();
+      form.append("file", nextMsr);
+      const res = await fetch("/api/owner-reports/msr-preview", { method: "POST", body: form });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || "Upload failed.");
+      }
+      const json = (await res.json()) as { tokens?: Record<string, string | number> };
+      const tokens = json.tokens ?? {};
+      setMsrTokens(tokens);
+      const detected = Object.keys(tokens).length;
+      setMsrStatus({
+        variant: "success",
+        text: detected > 0 ? `Detected ${detected} MSR tokens.` : "MSR uploaded; no tokens detected.",
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to parse the MSR workbook.";
+      setMsrTokens({});
+      setMsrStatus({ variant: "error", text: message });
+    } finally {
+      setMsrLoading(false);
+    }
+  }, []);
   const runBudgetExtract = useCallback(
     async (nextBudget: File | null) => {
       if (!nextBudget) {
@@ -1189,11 +1227,14 @@ export default function OwnerReportsPage() {
       if (availableSpacesFile) {
         form.append("availableSpacesFile", availableSpacesFile);
       }
+      if (msrFile) {
+        form.append("msr", msrFile);
+      }
+      if (Object.keys(msrTokens).length > 0) {
+        form.append("msrTokens", JSON.stringify(msrTokens));
+      }
       if (ppcFile) {
         form.append("ppcFile", ppcFile);
-      }
-      if (ppcFile2) {
-        form.append("ppcFile2", ppcFile2);
       }
       const performanceOptionsPayload = {
         currentMonthOverride: currentMonthOverride.trim() || undefined,
@@ -1448,6 +1489,10 @@ export default function OwnerReportsPage() {
     setFields(null);
     setOverrides({});
     setBudgetFile(null);
+    setMsrFile(null);
+    setMsrTokens({});
+    setMsrStatus(null);
+    setMsrLoading(false);
     lastProcessedFiles.current = { budget: null };
     setBudgetTokens({});
     setDetectedCount(0);
@@ -1595,9 +1640,59 @@ export default function OwnerReportsPage() {
                 <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
                   <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 2 - Budget Inputs</h2>
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                    Upload an optional Budget Comparison workbook. It is kept in memory during this session so you can reuse it when generating the presentation.
+                    Upload the Management Summary Report plus optional supporting workbooks (Budget Comparison, performance, pricing).
                   </p>
                   <div className="mt-6 space-y-6">
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                            Management Summary Report (MSR) (.xlsx)
+                          </p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Upload the MSR to pull flash tokens (MTD/Daily rentals, vacates, net, conversion, projected rent).
+                          </p>
+                        </div>
+                        {msrFile && (
+                          <button
+                            type="button"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => {
+                              void runMsrExtract(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        className="text-sm text-[color:var(--text-primary)]"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          void runMsrExtract(nextFile);
+                          event.target.value = "";
+                        }}
+                      />
+                      {msrLoading && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">Parsing MSR...</p>
+                      )}
+                      {msrStatus?.variant === "error" && (
+                        <div className="rounded-md border border-[#FEE2E2] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">
+                          {msrStatus.text}
+                        </div>
+                      )}
+                      {msrFile && !msrLoading && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{msrFile.name}</span>
+                        </p>
+                      )}
+                      <p className="text-[11px] text-[color:var(--text-muted)]">
+                        Parsed flash tokens are applied automatically during generation.
+                      </p>
+                    </div>
+
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="space-y-1">
@@ -1792,23 +1887,6 @@ export default function OwnerReportsPage() {
                           {ppcFile && (
                             <p className="text-xs text-[color:var(--text-secondary)]">
                               Selected: <span className="font-medium text-[color:var(--text-primary)]">{ppcFile.name}</span>
-                            </p>
-                          )}
-                        </div>
-                        <div className="space-y-2 rounded-xl border border-[color:var(--border-soft)] bg-white/70 p-3">
-                          <input
-                            type="file"
-                            accept=".csv,.xlsx,.xls"
-                            className="text-sm text-[color:var(--text-primary)]"
-                            onChange={(event) => {
-                              const nextFile = event.target.files?.[0] ?? null;
-                              setPpcFile2(nextFile);
-                              event.target.value = "";
-                            }}
-                          />
-                          {ppcFile2 && (
-                            <p className="text-xs text-[color:var(--text-secondary)]">
-                              Selected: <span className="font-medium text-[color:var(--text-primary)]">{ppcFile2.name}</span>
                             </p>
                           )}
                         </div>

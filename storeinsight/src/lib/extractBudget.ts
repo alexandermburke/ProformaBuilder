@@ -177,6 +177,7 @@ const OWNER_REPORT_CELL_MAP: Record<
   TOTRENINCVARPER: { sheet: "Budget Comparison", ref: "F14" },
   TOTRENVAR: { sheet: "Budget Comparison", ref: "E14" },
   TOTRENVARPER: { sheet: "Budget Comparison", ref: "F14" },
+  TOTRENINCCM: { sheet: "Budget Comparison", ref: "C13" },
   ADMFEEYTD: { sheet: "Budget Comparison", ref: "G15" },
   ADMFEEVARPER: { sheet: "Budget Comparison", ref: "F15" },
   RETSALVAR: { sheet: "Budget Comparison", ref: "E19" },
