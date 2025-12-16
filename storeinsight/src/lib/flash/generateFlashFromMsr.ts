@@ -469,7 +469,7 @@ function readNumberOrZero(sheet: ExcelJS.Worksheet, address: string, label: stri
   try {
     return readNumber(sheet, address, label);
   } catch (err) {
-    console.warn(`[flash-report] ${label} unavailable at ${address}; defaulting to 0`);
+    console.warn(`[flash-report] ${label} unavailable at ${address}; defaulting to 0`, err);
     return 0;
   }
 }

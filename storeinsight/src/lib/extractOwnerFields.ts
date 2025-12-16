@@ -36,15 +36,6 @@ function toISODateMaybe(v: unknown): string {
   return s;
 }
 
-function currentDateFromFilename(filename: string): string {
-  const iso = filename.match(/(20\d{2})[-_\.]?(0[1-9]|1[0-2])[-_\.]?(0[1-9]|[12]\d|3[01])/);
-  if (iso) {
-    const [, y, m, d] = iso;
-    return `${y}-${m}-${d}`;
-  }
-  return "";
-}
-
 function cellValue(grid: Grid, row: number, col: number): unknown {
   return grid[row]?.[col];
 }
@@ -153,7 +144,8 @@ const CELL_FALLBACKS: Partial<
   OVERALLPER: { ref: "T34", kind: "number" },
 };
 
-export function extractOwnerFields(buffer: Buffer, filename = "report.xlsx"): OwnerFields {
+export function extractOwnerFields(buffer: Buffer, _filename = "report.xlsx"): OwnerFields {
+  void _filename; // filename is currently unused but kept for future enhancements
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const firstSheetName = wb.SheetNames[0];
   const ws = wb.Sheets[firstSheetName];

@@ -11,11 +11,6 @@ const isHeaderMatch = (headers: string[], required: string[]): boolean =>
 const extractRows = (sheet: XLSX.WorkSheet): Record<string, unknown>[] =>
   XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null });
 
-const matchRow = (campaign: string, identifiers: Identifier[]): boolean => {
-  const lower = campaign.toLowerCase();
-  return identifiers.some((id) => lower.includes(id.toLowerCase()));
-};
-
 export function extractPpcPerformanceTokens(
   workbookBuffers: Buffer[],
   propertyHint?: string | null,
@@ -25,7 +20,6 @@ export function extractPpcPerformanceTokens(
   const hint = (propertyHint ?? "").toLowerCase();
   const isPittman = hint.includes("pittman");
   const isGrove = hint.includes("grove") || hint.includes("camelback");
-  const targetRows = isGrove ? [3, 5] : [2, 4]; // 1-based row numbers per instructions
 
   const tokens: Record<string, number> = {};
   let costSum = 0;
@@ -33,6 +27,7 @@ export function extractPpcPerformanceTokens(
   let clicksSum = 0;
   let conversionsSum = 0;
   const costPerConvValues: number[] = [];
+  const cpcValues: number[] = [];
 
   for (const workbookBuffer of workbookBuffers) {
     let workbook: XLSX.WorkBook;
@@ -60,6 +55,24 @@ export function extractPpcPerformanceTokens(
       const clicksKey = headers.find((h) => h.includes("click")) ?? "clicks";
       const conversionsKey = headers.find((h) => h.startsWith("conversion")) ?? "conversions";
       const cpcKey = headers.find((h) => h.includes("cost") && h.includes("conv")) ?? "cost / conv";
+      const avgCpcKey = headers.find((h) => h.includes("avg") && h.includes("cpc")) ?? "avg. cpc";
+
+      const groveRows: number[] = [];
+      const pittmanRows: number[] = [];
+      rows.slice(1).forEach((row, idx) => {
+        const campaignRaw = row[campaignKey];
+        const campaign = typeof campaignRaw === "string" ? campaignRaw.toLowerCase() : "";
+        const rowNumber = idx + 2; // 1-based row number
+        if (campaign.includes("camelback") || campaign.includes("grove")) groveRows.push(rowNumber);
+        if (campaign.includes("pittman")) pittmanRows.push(rowNumber);
+      });
+
+      let targetRows: number[] = [];
+      if (isGrove && groveRows.length > 0) targetRows = groveRows;
+      else if (isPittman && pittmanRows.length > 0) targetRows = pittmanRows;
+      else if (groveRows.length > 0 && pittmanRows.length === 0) targetRows = groveRows;
+      else if (pittmanRows.length > 0) targetRows = pittmanRows;
+      else targetRows = [2, 3, 4, 5].filter((n) => n <= rows.length);
 
       for (const rowIndex of targetRows) {
         const row = rows[rowIndex - 1];
@@ -69,10 +82,14 @@ export function extractPpcPerformanceTokens(
         costSum += toNumber(row[costKey]);
         impressionsSum += toNumber(row[impressionsKey]);
         clicksSum += toNumber(row[clicksKey]);
-        const convs = toNumber(row[conversionsKey]);
+        const convsRaw = toNumber(row[conversionsKey]);
+        const convs = convsRaw > 0 ? convsRaw : toNumber(row[clicksKey]); // fall back to clicks as conversions proxy
         if (convs > 0) conversionsSum += convs;
-        const cpc = toNumber(row[cpcKey]);
-        if (cpc > 0) costPerConvValues.push(cpc);
+        const cpcConv = toNumber(row[cpcKey]);
+        if (cpcConv > 0) costPerConvValues.push(cpcConv);
+        const avgCpc = toNumber(row[avgCpcKey]);
+        if (avgCpc > 0) cpcValues.push(avgCpc);
+        // ctrKey parsed but not currently tokenized; kept for potential future mapping
       }
     }
   }
@@ -85,6 +102,9 @@ export function extractPpcPerformanceTokens(
     tokens.COSCON = avg;
   } else if (conversionsSum > 0 && costSum > 0) {
     tokens.COSCON = costSum / conversionsSum;
+  } else if (cpcValues.length > 0) {
+    const avg = cpcValues.reduce((a, b) => a + b, 0) / cpcValues.length;
+    tokens.COSCON = avg;
   }
 
   return tokens;

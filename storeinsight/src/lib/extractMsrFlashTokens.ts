@@ -61,14 +61,16 @@ export async function extractMsrFlashTokens(
   buffer: ArrayBuffer | ArrayBufferView | Buffer,
 ): Promise<FlashMsrTokens> {
   const workbook = new ExcelJS.Workbook();
-  const input =
-    buffer instanceof ArrayBuffer
-      ? buffer
-      : Buffer.isBuffer(buffer)
-        ? buffer
-        : buffer instanceof Uint8Array
-          ? buffer
-          : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  let input: Buffer;
+  if (Buffer.isBuffer(buffer)) {
+    input = buffer;
+  } else if (buffer instanceof ArrayBuffer) {
+    input = Buffer.from(buffer);
+  } else if (ArrayBuffer.isView(buffer)) {
+    input = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  } else {
+    input = Buffer.from(buffer as ArrayBuffer);
+  }
 
   await workbook.xlsx.load(input);
   const msrSheet = workbook.getWorksheet("MSR");

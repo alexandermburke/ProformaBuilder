@@ -3,13 +3,7 @@ import { POST as runAutoFlash } from "@/app/api/flash-report/auto/daily/route";
 
 export const runtime = "nodejs";
 
-const addDays = (date: Date, days: number): Date => {
-  const copy = new Date(date);
-  copy.setDate(copy.getDate() + days);
-  return copy;
-};
-
-const getYesterdayMstDate = (): string => getTodayMstDateFor(addDays(new Date(), -1));
+const getTodayMstDate = (): string => getTodayMstDateFor(new Date());
 
 function getTodayMstDateFor(date: Date): string {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -74,7 +68,7 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
     const providedDate =
       typeof body.reportDate === "string" && isValidDate(body.reportDate.trim()) ? body.reportDate.trim() : null;
 
-    const reportDate = providedDate || getYesterdayMstDate();
+    const reportDate = providedDate || getTodayMstDate();
 
     const sendEmails = body.sendEmails === undefined ? true : body.sendEmails === true || body.sendEmails === "true";
 

@@ -2375,7 +2375,6 @@ export default function OwnerReportsPage() {
                                 ? "bg-[#2563EB] border-[#1D4ED8]"
                                 : "bg-[rgba(148,163,255,0.18)] border-[color:var(--border-soft)]"
                             }`}
-                            aria-pressed={sendOwnerEmail}
                             aria-label={sendOwnerEmail ? "Disable owner emails" : "Enable owner emails"}
                           >
                             <span
