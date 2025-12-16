@@ -58,7 +58,7 @@ const formatCurrency = (value: number): string => {
   });
 };
 
-const normalizeNodeBuffer = (source: ArrayBuffer | ArrayBufferView | Buffer): NodeBuffer => {
+const normalizeNodeBuffer = (source: ArrayBuffer | ArrayBufferView | Buffer): NodeBuffer<ArrayBuffer> => {
   if (NodeBuffer.isBuffer(source)) {
     const copy = NodeBuffer.alloc(source.length);
     source.copy(copy);
@@ -82,7 +82,7 @@ export async function extractMsrFlashTokens(
   const workbook = new ExcelJS.Workbook();
   const input = normalizeNodeBuffer(buffer);
 
-  await workbook.xlsx.load(input);
+  await workbook.xlsx.load(input as unknown as Buffer);
   const msrSheet = workbook.getWorksheet("MSR");
   if (!msrSheet) {
     throw new Error('Workbook is missing required "MSR" worksheet.');
