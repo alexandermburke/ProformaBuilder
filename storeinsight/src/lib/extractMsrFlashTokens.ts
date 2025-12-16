@@ -1,4 +1,4 @@
-import { Buffer as NodeBuffer } from "buffer";
+import type { Buffer } from "buffer";
 import ExcelJS from "exceljs";
 
 export type FlashMsrTokens = Record<string, string | number>;
@@ -58,31 +58,26 @@ const formatCurrency = (value: number): string => {
   });
 };
 
-const normalizeNodeBuffer = (
+const normalizeArrayBuffer = (
   source: ArrayBuffer | ArrayBufferView | Buffer,
-): Buffer => {
-  if (NodeBuffer.isBuffer(source)) {
-    const copy = NodeBuffer.alloc(source.length);
-    source.copy(copy);
-    return copy as unknown as Buffer;
-  }
+): ArrayBuffer => {
   if (source instanceof ArrayBuffer) {
-    return NodeBuffer.from(source) as unknown as Buffer;
+    // Copy to avoid issues when the original buffer is reused or sliced.
+    return source.slice(0);
   }
-  if (ArrayBuffer.isView(source)) {
-    const view = new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
-    const copy = new Uint8Array(view.byteLength);
-    copy.set(view);
-    return NodeBuffer.from(copy.buffer) as unknown as Buffer;
-  }
-  return NodeBuffer.from(source as ArrayBuffer) as unknown as Buffer;
+
+  const view = new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+  const copy = new Uint8Array(view.byteLength);
+  copy.set(view);
+
+  return copy.buffer;
 };
 
 export async function extractMsrFlashTokens(
   buffer: ArrayBuffer | ArrayBufferView | Buffer,
 ): Promise<FlashMsrTokens> {
   const workbook = new ExcelJS.Workbook();
-  const input = normalizeNodeBuffer(buffer);
+  const input = normalizeArrayBuffer(buffer);
 
   await workbook.xlsx.load(input);
   const msrSheet = workbook.getWorksheet("MSR");
