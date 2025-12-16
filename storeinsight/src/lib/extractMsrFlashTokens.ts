@@ -60,22 +60,22 @@ const formatCurrency = (value: number): string => {
 
 const normalizeNodeBuffer = (
   source: ArrayBuffer | ArrayBufferView | Buffer,
-): import("buffer").Buffer<ArrayBuffer> => {
+): Buffer => {
   if (NodeBuffer.isBuffer(source)) {
     const copy = NodeBuffer.alloc(source.length);
     source.copy(copy);
-    return copy as import("buffer").Buffer<ArrayBuffer>;
+    return copy as unknown as Buffer;
   }
   if (source instanceof ArrayBuffer) {
-    return NodeBuffer.from(source) as import("buffer").Buffer<ArrayBuffer>;
+    return NodeBuffer.from(source) as unknown as Buffer;
   }
   if (ArrayBuffer.isView(source)) {
     const view = new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
     const copy = new Uint8Array(view.byteLength);
     copy.set(view);
-    return NodeBuffer.from(copy.buffer) as import("buffer").Buffer<ArrayBuffer>;
+    return NodeBuffer.from(copy.buffer) as unknown as Buffer;
   }
-  return NodeBuffer.from(source as ArrayBuffer) as import("buffer").Buffer<ArrayBuffer>;
+  return NodeBuffer.from(source as ArrayBuffer) as unknown as Buffer;
 };
 
 export async function extractMsrFlashTokens(
