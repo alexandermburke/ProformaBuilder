@@ -50,7 +50,7 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
   }
 
   const cronDate = options.processingDate ?? new Date();
-  const targetDate = mstDateString(addDays(cronDate, -1)); // yesterday
+  const targetDate = mstDateString(cronDate); // today (MST)
   const cutoffOld = mstDateString(addDays(cronDate, -2)); // older than 2 days
 
   // Step 1: pull latest emails into msrEmails collection

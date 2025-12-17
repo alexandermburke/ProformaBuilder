@@ -1647,7 +1647,7 @@ export default function OwnerReportsPage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="space-y-1">
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
-                            Management Summary Report (MSR) (.xlsx)
+                            Management Summary Report (.xlsx)
                           </p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload the MSR to pull flash tokens (MTD/Daily rentals, vacates, net, conversion, projected rent).
