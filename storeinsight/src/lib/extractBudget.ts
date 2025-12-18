@@ -358,6 +358,26 @@ const locateBudgetSheet = (
   return null;
 };
 
+const findBudgetComparisonSheet = (
+  workbook: XLSX.WorkBook,
+  preferredName?: string,
+): { sheet: XLSX.WorkSheet; name: string } | null => {
+  if (preferredName) {
+    const sheet = workbook.Sheets[preferredName];
+    if (sheet) return { sheet, name: preferredName };
+  }
+  const direct = workbook.Sheets["Budget Comparison"];
+  if (direct) return { sheet: direct, name: "Budget Comparison" };
+  for (const name of workbook.SheetNames) {
+    const normalized = name.trim().toLowerCase();
+    if (normalized.startsWith("budget comparison")) {
+      const sheet = workbook.Sheets[name];
+      if (sheet) return { sheet, name };
+    }
+  }
+  return null;
+};
+
 const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number => {
   if (value == null || value === "") return Number.NaN;
   const { isPercent = false } = options;
@@ -462,7 +482,24 @@ const applyOwnerReportOverrides = (
   tokens: Record<string, number>,
   details: Record<string, BudgetTokenDetail>,
   debug: string[],
+  preferredSheetName?: string,
 ): void => {
+  const budgetSheetResult = findBudgetComparisonSheet(workbook, preferredSheetName);
+  const budgetSheet = budgetSheetResult?.sheet;
+  const budgetSheetName = budgetSheetResult?.name ?? "Budget Comparison";
+  const priorValues = {
+    totalExpenses: tokens.TOTALEXPENSES ?? tokens.TOTEXPCM,
+    totalExpensesDetail: details.TOTALEXPENSES ?? details.TOTEXPCM,
+    netIncome: tokens.NETINCCM ?? tokens.NETINCOME,
+    netIncomeDetail: details.NETINCCM ?? details.NETINCOME,
+  };
+
+  // Ensure we don't keep stale values for these overrides if parsing elsewhere set them.
+  ["TOTALEXPENSES", "TOTEXPCM", "NETINCCM", "NETINCOME"].forEach((key) => {
+    delete tokens[key];
+    delete details[key];
+  });
+
   for (const [rawToken, mapping] of Object.entries(OWNER_REPORT_CELL_MAP)) {
     const token = rawToken.trim().toUpperCase();
     if (!token) continue;
@@ -504,6 +541,102 @@ const applyOwnerReportOverrides = (
       cell: cellRef,
       value,
     });
+  }
+
+  // Manual single-cell overrides for owner report aggregates.
+  // TOTALEXPENSES (and TOTEXPCM) -> Budget Comparison!C48
+  // NETINCOME/NETINCCM -> Budget Comparison!C21 minus C48
+  if (!budgetSheet) {
+    debug.push("Budget Comparison sheet missing; skipping C48/C21 overrides.");
+  } else {
+    let wroteExpenses = false;
+    let wroteNetIncome = false;
+
+    const totalExpensesRaw = readCellValue(budgetSheet, "C48");
+    const totalExpenses = parseNumber(totalExpensesRaw, { isPercent: false });
+    let effectiveExpenses: number | undefined;
+    if (Number.isFinite(totalExpenses)) {
+      effectiveExpenses = normalizeZero(roundMoney(totalExpenses));
+      tokens.TOTALEXPENSES = effectiveExpenses;
+      tokens.TOTEXPCM = effectiveExpenses;
+      const note = "manual mapping";
+      const detail: BudgetTokenDetail = {
+        value: effectiveExpenses,
+        sheet: budgetSheetName,
+        cell: "C48",
+        note,
+        source: "owner-report-cell-map",
+        rawValue: totalExpensesRaw,
+      };
+      details.TOTALEXPENSES = detail;
+      details.TOTEXPCM = detail;
+      const pretty = moneyFmt(effectiveExpenses);
+      const message = `  ${pretty} from Budget Comparison!C48 applied --> {{TOTALEXPENSES}}/{{TOTEXPCM}} (${note})`;
+      console.log(message);
+      debug.push(message);
+      wroteExpenses = true;
+    } else if (Number.isFinite(Number(priorValues.totalExpenses))) {
+      effectiveExpenses = Number(priorValues.totalExpenses);
+      tokens.TOTALEXPENSES = effectiveExpenses;
+      tokens.TOTEXPCM = effectiveExpenses;
+      if (priorValues.totalExpensesDetail) {
+        details.TOTALEXPENSES = priorValues.totalExpensesDetail;
+        details.TOTEXPCM = priorValues.totalExpensesDetail;
+      }
+      debug.push("C48 unavailable; reused prior total expenses value.");
+      wroteExpenses = true;
+    } else {
+      debug.push("C48 unavailable and no prior total expenses value.");
+    }
+
+    const totalIncomeRaw = readCellValue(budgetSheet, "C21");
+    const totalIncome = parseNumber(totalIncomeRaw, { isPercent: false });
+    if (Number.isFinite(totalIncome) && Number.isFinite(effectiveExpenses)) {
+      const netIncome = normalizeZero(roundMoney(totalIncome - (effectiveExpenses ?? 0)));
+      tokens.NETINCCM = netIncome;
+      tokens.NETINCOME = netIncome;
+      const note = "manual mapping; C21 - C48";
+      const detail: BudgetTokenDetail = {
+        value: netIncome,
+        sheet: budgetSheetName,
+        cell: "C21,C48",
+        note,
+        source: "owner-report-cell-map",
+        rawValue: `${totalIncomeRaw} - ${totalExpensesRaw}`,
+      };
+      details.NETINCCM = detail;
+      details.NETINCOME = detail;
+      const pretty = moneyFmt(netIncome);
+      const message = `  ${pretty} from Budget Comparison!(C21 - C48) applied --> {{NETINCCM}}/{{NETINCOME}} (${note})`;
+      console.log(message);
+      debug.push(message);
+      wroteNetIncome = true;
+    } else if (Number.isFinite(Number(priorValues.netIncome))) {
+      const netIncome = Number(priorValues.netIncome);
+      tokens.NETINCCM = netIncome;
+      tokens.NETINCOME = netIncome;
+      if (priorValues.netIncomeDetail) {
+        details.NETINCCM = priorValues.netIncomeDetail;
+        details.NETINCOME = priorValues.netIncomeDetail;
+      }
+      debug.push("C21/C48 unavailable; reused prior net income value.");
+      wroteNetIncome = true;
+    } else {
+      debug.push("C21/C48 unavailable and no prior net income value.");
+    }
+
+    if (!wroteExpenses) {
+      delete tokens.TOTALEXPENSES;
+      delete tokens.TOTEXPCM;
+      delete details.TOTALEXPENSES;
+      delete details.TOTEXPCM;
+    }
+    if (!wroteNetIncome) {
+      delete tokens.NETINCCM;
+      delete tokens.NETINCOME;
+      delete details.NETINCCM;
+      delete details.NETINCOME;
+    }
   }
 };
 
@@ -719,7 +852,7 @@ export async function extractBudgetTableFields(
     applyTokensAndLogs(row, tokens, details, debug);
   }
 
-  applyOwnerReportOverrides(workbook, tokens, details, debug);
+  applyOwnerReportOverrides(workbook, tokens, details, debug, sheetName);
 
   const applied = Object.keys(tokens).length;
   const expected = TOTAL_BUDGET_TOKENS; // 272
