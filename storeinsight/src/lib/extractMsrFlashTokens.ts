@@ -97,6 +97,7 @@ export async function extractMsrFlashTokens(
   const effPotRent = projRent + grossVacantRevenue;
   const avgSfVaca = readNumber(msrSheet, "L38", "Average SF Vacant (MSR!L38)");
   const grossPotRent = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
+  const grossPotRentRate = readNumber(msrSheet, "N26", "Gross potential rent rate (MSR!N26)");
 
   return {
     MTDRENTALS: mtdRentals,
@@ -109,5 +110,6 @@ export async function extractMsrFlashTokens(
     EFFPOTRENT: formatCurrency(effPotRent),
     AVGSFVACA: formatCurrency(avgSfVaca),
     GROSSPOTRENT: formatCurrency(grossPotRent),
+    GROSSPOTRENTRATE: formatCurrency(grossPotRentRate),
   };
 }

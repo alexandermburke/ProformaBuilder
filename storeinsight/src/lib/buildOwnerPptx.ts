@@ -198,6 +198,13 @@ const previousMonthLabel = (value?: TemplateValue): string | null => {
   return monthNameFormatter.format(parsed);
 };
 
+const nextMonthLabel = (value?: TemplateValue): string | null => {
+  const parsed = parseMonthLabel(value);
+  if (!parsed) return null;
+  parsed.setMonth(parsed.getMonth() + 1);
+  return monthNameFormatter.format(parsed);
+};
+
 const directionLabel = (value?: TemplateValue): "increase" | "decrease" => {
   if (value == null) return "increase";
   if (typeof value === "number") {
@@ -498,6 +505,10 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   const ownerCurrentDate = summaryFields.CURRENTDATE ?? ownerValues.CURRENTDATE ?? "";
   templateData.CURRENTMONTH = ownerCurrentMonth;
   templateData.CURRENTDATE = ownerCurrentDate;
+  const nextMonth = nextMonthLabel(ownerCurrentMonth ?? ownerValues.CURRENTMONTH);
+  if (nextMonth) {
+    templateData.NEXTMONTH = nextMonth;
+  }
 
   for (const [displayKey, sourceKey] of Object.entries(MAPPING_ALIASES)) {
     const sourceValue = templateData[sourceKey];
