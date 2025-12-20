@@ -64,7 +64,6 @@ export async function POST(req: NextRequest) {
   const results: Array<{ file: string; pdfConverted: boolean; emailed: boolean; error?: string }> = [];
   const convertUrl = process.env.PPTX_CONVERT_URL || process.env.LIBRE_CONVERT_URL || null;
   const devMode = await getFlashDevMode();
-  const propertyLabel = property.name || property.propertyCode || property.tenantPropertyId || property.id;
   const propertyCode = property.propertyCode ?? property.tenantPropertyId ?? property.id;
   const safePropertyId = propertyCode.replace(/[^A-Za-z0-9._-]+/g, "_");
   const safeAsOfSegment = asOfDate.replace(/[^0-9A-Za-z._-]+/g, "_");
