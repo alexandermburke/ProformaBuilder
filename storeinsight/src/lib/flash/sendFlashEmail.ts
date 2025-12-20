@@ -87,6 +87,7 @@ export async function sendFlashEmail(options: {
   attachPptx?: boolean;
   devModeOverride?: boolean;
   pdfUrl?: string | null;
+  subjectOverride?: string;
 }): Promise<boolean> {
   const mailConfig = resolveMailerConfig();
   if (!mailConfig) return false;
@@ -125,7 +126,9 @@ export async function sendFlashEmail(options: {
       options.property.name ||
       options.property.id;
     const reportDate = options.reportDateDisplay || (options.tokens?.ASOFDATE as string) || "";
-    const subject = `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
+    const subject =
+      options.subjectOverride ??
+      `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
     const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
     const baseContent = buildHtmlContent({ propertyLabel, customBody: options.customBody, pdfUrl: options.pdfUrl });
     const pdfUrlSafe = options.pdfUrl?.replace(/"/g, "%22");
@@ -137,7 +140,7 @@ export async function sendFlashEmail(options: {
       inlinePng && inlinePng.length
         ? `<div style="margin-top: 12px;"><img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" /></div>`
         : "";
-    const html = `
+  const html = `
       <html>
         <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
           ${baseContent}
@@ -149,6 +152,14 @@ export async function sendFlashEmail(options: {
     `;
     const fromAddress = sanitizeFromAddress(options.fromOverride) || mailConfig.from;
     const attachments: Mail.Attachment[] = [];
+
+    if (options.pdfBuffer && options.pdfBuffer.length) {
+      attachments.push({
+        filename: options.pdfFilename || options.pptxFilename.replace(/\.pptx$/i, ".pdf"),
+        content: options.pdfBuffer,
+        contentType: "application/pdf",
+      });
+    }
 
     if (inlinePng && inlinePng.length) {
       attachments.push({
