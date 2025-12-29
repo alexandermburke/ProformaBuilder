@@ -1,4 +1,4 @@
-import Link from "next/link";
+ï»¿import Link from "next/link";
 import { listProperties } from "@/app/api/daily-summary/store";
 import PptxMailForm from "./ui/PptxMailForm";
 
@@ -23,12 +23,12 @@ export default async function PptxMailPage() {
             href="/"
             className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600"
           >
-            ƒ+? Back
+            &larr; Back
           </Link>
         </div>
         <div className="flex flex-col gap-2">
           <p className="text-xs uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Owner Reports</p>
-          <h1 className="text-3xl font-semibold">Monthly PPTX ƒzo PDF Mailer</h1>
+          <h1 className="text-3xl font-semibold">Monthly PPTX to PDF Mailer</h1>
           <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
             Upload monthly owner-report PPTX files, select the property, and we&apos;ll convert them to PDF and send to the configured owner email list. No PNG preview is generated for these long decks.
           </p>

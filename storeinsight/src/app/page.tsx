@@ -88,7 +88,7 @@ const HERO_STATS = [
 ];
 
 const PLATFORM_VERSION = '0.8.8';
-const NEXT_VERSION = '15.5.4';
+const NEXT_VERSION = '15.5.7';
 
 const iconToneLight: Record<FeatureTone, string> = {
   blue: 'bg-[rgba(37,99,235,0.12)] text-[#1D4ED8]',
