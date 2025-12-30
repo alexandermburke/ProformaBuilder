@@ -55,6 +55,15 @@ const HEADER_LOOKUP = new Map(REQUIRED_HEADERS.map((key) => [normalizeHeader(key
 
 export type AvailableSpacesTokenMap = Record<string, string>;
 
+const sizeLabelToSqft = (sizeLabel: string): number | null => {
+  const match = sizeLabel.match(/^(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const width = Number.parseFloat(match[1]);
+  const depth = Number.parseFloat(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(depth)) return null;
+  return width * depth;
+};
+
 export function extractWebRateTokensFromAvailableSpaces(
   workbook: XLSX.WorkBook,
 ): AvailableSpacesTokenMap {
@@ -140,6 +149,14 @@ export function extractWebRateTokensFromAvailableSpaces(
       segment === "F1" ? TOKEN_MAPPING[sizeKey]?.F1 : TOKEN_MAPPING[sizeKey]?.EV;
     if (!token) continue;
     tokens[token] = currencyFormatter.format(rate);
+
+    // Per-square-foot web rate token (e.g., 5X5WEBRT / 5X5WEBPREVRT).
+    const sqft = sizeLabelToSqft(sizeKey);
+    if (sqft && sqft > 0) {
+      const perSqft = rate / sqft;
+      const perSqftToken = segment === "F1" ? `${sizeKey}WEBRT` : `${sizeKey}WEBPREVRT`;
+      tokens[perSqftToken] = currencyFormatter.format(perSqft);
+    }
   }
 
   return tokens;
