@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { DEFAULT_OWNER_FIELDS, FIELD_LABELS, type OwnerFields } from "@/types/ownerReport";
 
+// Source: Management Summary (or Executive Summary) report export (.xlsx), first worksheet.
 type Grid = (string | number | boolean | Date | null | undefined)[][];
 
 const norm = (s: unknown) =>

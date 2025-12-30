@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 
+// Source: Budget Comparison workbook (.xlsx) for owner reports
 /* Logging helpers for uniform console output */
 const moneyFmt = (n: unknown): string =>
   typeof n === "number"
@@ -544,15 +545,15 @@ const applyOwnerReportOverrides = (
   }
 
   // Manual single-cell overrides for owner report aggregates.
-  // TOTALEXPENSES (and TOTEXPCM) -> Budget Comparison!C48
-  // NETINCOME/NETINCCM -> Budget Comparison!C21 minus C48
+  // TOTALEXPENSES (and TOTEXPCM) -> Budget Comparison!C56
+  // NETINCOME/NETINCCM -> Budget Comparison!C21 minus C56
   if (!budgetSheet) {
-    debug.push("Budget Comparison sheet missing; skipping C48/C21 overrides.");
+    debug.push("Budget Comparison sheet missing; skipping C56/C21 overrides.");
   } else {
     let wroteExpenses = false;
     let wroteNetIncome = false;
 
-    const totalExpensesRaw = readCellValue(budgetSheet, "C48");
+    const totalExpensesRaw = readCellValue(budgetSheet, "C56");
     const totalExpenses = parseNumber(totalExpensesRaw, { isPercent: false });
     let effectiveExpenses: number | undefined;
     if (Number.isFinite(totalExpenses)) {
@@ -563,7 +564,7 @@ const applyOwnerReportOverrides = (
       const detail: BudgetTokenDetail = {
         value: effectiveExpenses,
         sheet: budgetSheetName,
-        cell: "C48",
+        cell: "C56",
         note,
         source: "owner-report-cell-map",
         rawValue: totalExpensesRaw,
@@ -571,7 +572,7 @@ const applyOwnerReportOverrides = (
       details.TOTALEXPENSES = detail;
       details.TOTEXPCM = detail;
       const pretty = moneyFmt(effectiveExpenses);
-      const message = `  ${pretty} from Budget Comparison!C48 applied --> {{TOTALEXPENSES}}/{{TOTEXPCM}} (${note})`;
+      const message = `  ${pretty} from Budget Comparison!C56 applied --> {{TOTALEXPENSES}}/{{TOTEXPCM}} (${note})`;
       console.log(message);
       debug.push(message);
       wroteExpenses = true;
@@ -583,10 +584,10 @@ const applyOwnerReportOverrides = (
         details.TOTALEXPENSES = priorValues.totalExpensesDetail;
         details.TOTEXPCM = priorValues.totalExpensesDetail;
       }
-      debug.push("C48 unavailable; reused prior total expenses value.");
+      debug.push("C56 unavailable; reused prior total expenses value.");
       wroteExpenses = true;
     } else {
-      debug.push("C48 unavailable and no prior total expenses value.");
+      debug.push("C56 unavailable and no prior total expenses value.");
     }
 
     const totalIncomeRaw = readCellValue(budgetSheet, "C21");
@@ -595,11 +596,11 @@ const applyOwnerReportOverrides = (
       const netIncome = normalizeZero(roundMoney(totalIncome - (effectiveExpenses ?? 0)));
       tokens.NETINCCM = netIncome;
       tokens.NETINCOME = netIncome;
-      const note = "manual mapping; C21 - C48";
+      const note = "manual mapping; C21 - C56";
       const detail: BudgetTokenDetail = {
         value: netIncome,
         sheet: budgetSheetName,
-        cell: "C21,C48",
+        cell: "C21,C56",
         note,
         source: "owner-report-cell-map",
         rawValue: `${totalIncomeRaw} - ${totalExpensesRaw}`,
@@ -607,7 +608,7 @@ const applyOwnerReportOverrides = (
       details.NETINCCM = detail;
       details.NETINCOME = detail;
       const pretty = moneyFmt(netIncome);
-      const message = `  ${pretty} from Budget Comparison!(C21 - C48) applied --> {{NETINCCM}}/{{NETINCOME}} (${note})`;
+      const message = `  ${pretty} from Budget Comparison!(C21 - C56) applied --> {{NETINCCM}}/{{NETINCOME}} (${note})`;
       console.log(message);
       debug.push(message);
       wroteNetIncome = true;
@@ -619,10 +620,10 @@ const applyOwnerReportOverrides = (
         details.NETINCCM = priorValues.netIncomeDetail;
         details.NETINCOME = priorValues.netIncomeDetail;
       }
-      debug.push("C21/C48 unavailable; reused prior net income value.");
+      debug.push("C21/C56 unavailable; reused prior net income value.");
       wroteNetIncome = true;
     } else {
-      debug.push("C21/C48 unavailable and no prior net income value.");
+      debug.push("C21/C56 unavailable and no prior net income value.");
     }
 
     if (!wroteExpenses) {

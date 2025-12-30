@@ -2,9 +2,12 @@ import * as XLSX from "xlsx";
 
 type WorkbookInput = ArrayBuffer | ArrayBufferView | Buffer;
 
-const DASH = "—";
+const DASH = "â€”";
 const LENGTH_OF_STAY_THRESHOLD_DAYS = 180;
 
+// Sources:
+// - Move activity workbook: "Move In" and "Move Out" sheets (hummingbirdWorkbook)
+// - IPRC Change History export: CSV text (iprcCsvText)
 const MOVE_SHEETS = [
   {
     key: "moveIns" as const,

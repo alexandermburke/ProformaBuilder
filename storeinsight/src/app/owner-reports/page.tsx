@@ -326,6 +326,11 @@ const UPLOAD_FIELD_HINTS = {
     "Conversions",
     "Cost per conversion (averaged from uploaded sheets)",
   ],
+  managementSummary: [
+    "MTD/Daily rentals, vacates, net rentals",
+    "Lead conversion, projected rent, rent per SF",
+    "Occupied RSF/units and economic occupancy %",
+  ],
 } as const;
 
 const TOTAL_BUDGET_TOKENS = BUDGET_LINES.length * BUDGET_COLUMNS.length;
@@ -1646,9 +1651,12 @@ export default function OwnerReportsPage() {
                     <div className="owner-input-tile space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="space-y-1">
-                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
-                            Management Summary Report (.xlsx)
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                              Management Summary Report (.xlsx)
+                            </p>
+                            <UploadFieldHint title="MSR flash tokens" fields={UPLOAD_FIELD_HINTS.managementSummary} />
+                          </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload the MSR to pull flash tokens (MTD/Daily rentals, vacates, net, conversion, projected rent).
                           </p>
@@ -1872,25 +1880,32 @@ export default function OwnerReportsPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="space-y-2 rounded-xl border border-[color:var(--border-soft)] bg-white/70 p-3">
-                          <input
-                            type="file"
-                            accept=".csv,.xlsx,.xls"
-                            className="text-sm text-[color:var(--text-primary)]"
-                            onChange={(event) => {
-                              const nextFile = event.target.files?.[0] ?? null;
-                              setPpcFile(nextFile);
-                              event.target.value = "";
-                            }}
-                          />
-                          {ppcFile && (
-                            <p className="text-xs text-[color:var(--text-secondary)]">
-                              Selected: <span className="font-medium text-[color:var(--text-primary)]">{ppcFile.name}</span>
-                            </p>
-                          )}
-                        </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <input
+                          type="file"
+                          accept=".csv,.xlsx,.xls"
+                          className="text-sm text-[color:var(--text-primary)]"
+                          onChange={(event) => {
+                            const nextFile = event.target.files?.[0] ?? null;
+                            setPpcFile(nextFile);
+                            event.target.value = "";
+                          }}
+                        />
+                        {ppcFile && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => setPpcFile(null)}
+                          >
+                            Remove file
+                          </button>
+                        )}
                       </div>
+                      {ppcFile && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{ppcFile.name}</span>
+                        </p>
+                      )}
                     </div>
 
                     {performanceLoading && (

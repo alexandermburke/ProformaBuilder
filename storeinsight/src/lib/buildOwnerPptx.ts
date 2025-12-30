@@ -290,6 +290,11 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, Token
 }
 
 type BuildOwnerPptxOptions = {
+  // templateBuffer: PPTX template (default public/OWNERTEMPLATE.pptx)
+  // ownerValues: Management/Executive Summary report export (.xlsx parsed via extractOwnerFields)
+  // budgetBuffer/budgetTokens: Budget Comparison workbook tokens
+  // availableSpacesBuffer/availableSpacesTokens: Available Spaces by Attribute workbook
+  // performanceTokens: Move In/Move Out activity workbook + IPRC Change History CSV (ownerPerformance)
   templateBuffer?: Buffer;
   ownerValues: OwnerFields;
   budgetTokensNumeric?: Record<string, number>;
@@ -505,6 +510,16 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   const ownerCurrentDate = summaryFields.CURRENTDATE ?? ownerValues.CURRENTDATE ?? "";
   templateData.CURRENTMONTH = ownerCurrentMonth;
   templateData.CURRENTDATE = ownerCurrentDate;
+
+  // SFTOCLM: prior-period SqFt occupancy = (M19 - L14) / M22 in the Management/Executive Summary workbook.
+  const occupiedAreaSqft = Number(ownerValues.OCCUPIEDAREASQFT ?? 0);
+  const netSqftMtd = Number(ownerValues.NET_SQFT_MTD ?? 0);
+  const rentableSqft = Number(ownerValues.RENTABLESQFT ?? 0);
+  if (Number.isFinite(occupiedAreaSqft) && Number.isFinite(netSqftMtd) && rentableSqft > 0) {
+    const lastMonthOcc = (occupiedAreaSqft - netSqftMtd) / rentableSqft;
+    templateData.SFTOCLM = fmtOwnerPercent(lastMonthOcc);
+  }
+
   const nextMonth = nextMonthLabel(ownerCurrentMonth ?? ownerValues.CURRENTMONTH);
   if (nextMonth) {
     templateData.NEXTMONTH = nextMonth;
