@@ -38,7 +38,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return new Response(JSON.stringify({ error: 'OPENAI_KEY missing' }), { status: 500 });
   }
 
-  const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'; // set OPENAI_MODEL=gpt-5 if available
+  const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'; 
   console.log('[ai] suggest-mapping start', { model, vendorHint: body.vendorHint });
 
   const system = [
