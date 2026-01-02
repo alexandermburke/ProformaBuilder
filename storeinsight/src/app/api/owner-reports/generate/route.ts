@@ -20,6 +20,7 @@ import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { extractPpcPerformanceTokens } from "@/lib/extractPpcPerformance";
 import { extractMsrFlashTokens, type FlashMsrTokens } from "@/lib/extractMsrFlashTokens";
+import { extractRepairTokens } from "@/lib/extractRepairs";
 
 export const runtime = "nodejs";
 
@@ -189,6 +190,7 @@ export async function POST(req: NextRequest) {
   }
   const iprc = form.get("iprc");
   const availableSpaces = form.get("availableSpacesFile");
+  const repairsFile = form.get("repairsFile");
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
   const ppcFile = form.get("ppcFile");
@@ -233,6 +235,10 @@ export async function POST(req: NextRequest) {
   let availableSpacesBuffer: Buffer | undefined;
   if (availableSpaces instanceof Blob) {
     availableSpacesBuffer = Buffer.from(await availableSpaces.arrayBuffer());
+  }
+  let repairsBuffer: Buffer | undefined;
+  if (repairsFile instanceof Blob) {
+    repairsBuffer = Buffer.from(await repairsFile.arrayBuffer());
   }
   let msrTokensFromFile: FlashMsrTokens | undefined;
   if (msr instanceof Blob) {
@@ -391,6 +397,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let repairTokens: Record<string, string> | undefined;
+  if (repairsBuffer) {
+    try {
+      repairTokens = extractRepairTokens(repairsBuffer);
+    } catch (err) {
+      console.warn("[repairs] Unable to parse Repair and Maintenance spreadsheet", err);
+    }
+  }
+
   try {
     const delinquency = extractDelinquencyMetrics(buffer);
     if (delinquency.ok) {
@@ -440,6 +455,7 @@ export async function POST(req: NextRequest) {
     ...(performanceTokens ?? {}),
     ...(ppcTokens ?? {}),
     ...(msrTokens ?? {}),
+    ...(repairTokens ?? {}),
   };
 
   const pptx = await buildOwnerPptx({

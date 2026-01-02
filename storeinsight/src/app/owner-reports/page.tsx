@@ -24,6 +24,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type ChangeEvent,
 } from "react";
 import Link from "next/link";
@@ -487,6 +488,7 @@ export default function OwnerReportsPage() {
   const { theme } = useTheme();
   const { delinquencyAudit } = usePreferences();
   const isDark = theme === "dark";
+  const [, startTransition] = useTransition();
   const overlayTop = isDark
     ? "bg-[radial-gradient(circle_at_12%_12%,rgba(59,130,246,0.26),transparent_60%)]"
     : "bg-[radial-gradient(circle_at_18%_10%,rgba(37,99,235,0.18),transparent_60%)]";
@@ -522,6 +524,7 @@ export default function OwnerReportsPage() {
   const [iprcFile, setIprcFile] = useState<File | null>(null);
   const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
   const [ppcFile, setPpcFile] = useState<File | null>(null);
+  const [repairsFile, setRepairsFile] = useState<File | null>(null);
   const [currentMonthOverride] = useState("");
   const [includeCurrentMonth] = useState(true);
   const [performanceTokens, setPerformanceTokens] = useState<OwnerPerformanceTokenValues | null>(null);
@@ -584,10 +587,12 @@ export default function OwnerReportsPage() {
   }, [fields]);
 
   const resetPerformanceUpload = useCallback(() => {
-    setPerformanceTokens(null);
-    setPerformancePreview([]);
-    setPerformanceStatus(null);
-  }, []);
+    startTransition(() => {
+      setPerformanceTokens(null);
+      setPerformancePreview([]);
+      setPerformanceStatus(null);
+    });
+  }, [startTransition]);
 
   const runPerformanceExtract = useCallback(
     async (hb: File | null, iprc: File | null) => {
@@ -597,14 +602,16 @@ export default function OwnerReportsPage() {
         if (requestId === performanceRequestRef.current) {
           resetPerformanceUpload();
           setPerformanceLoading(false);
-          if (!hb && !iprc) {
-            setPerformanceStatus(null);
-          } else {
-            setPerformanceStatus({
-              variant: "warning",
-              text: "Upload both the Hummingbird workbook (.xlsx) and the IPRC Change History CSV.",
-            });
-          }
+          startTransition(() => {
+            if (!hb && !iprc) {
+              setPerformanceStatus(null);
+            } else {
+              setPerformanceStatus({
+                variant: "warning",
+                text: "Upload both the Hummingbird workbook (.xlsx) and the IPRC Change History CSV.",
+              });
+            }
+          });
         }
         return;
       }
@@ -623,25 +630,31 @@ export default function OwnerReportsPage() {
           },
         });
         if (result.ok) {
-          setPerformanceTokens(result.tokens);
-          setPerformancePreview(result.preview);
-          setPerformanceStatus(null);
+          startTransition(() => {
+            setPerformanceTokens(result.tokens);
+            setPerformancePreview(result.preview);
+            setPerformanceStatus(null);
+          });
         } else {
           resetPerformanceUpload();
-          setPerformanceStatus({
-            variant: result.code === "no_rows" ? "warning" : "error",
-            text: result.message,
+          startTransition(() => {
+            setPerformanceStatus({
+              variant: result.code === "no_rows" ? "warning" : "error",
+              text: result.message,
+            });
           });
         }
       } catch (err) {
         if (performanceRequestRef.current !== requestId) return;
         resetPerformanceUpload();
-        setPerformanceStatus({
-          variant: "error",
-          text:
-            err instanceof Error
-              ? err.message
-              : "Unable to parse performance inputs. Confirm both files are valid.",
+        startTransition(() => {
+          setPerformanceStatus({
+            variant: "error",
+            text:
+              err instanceof Error
+                ? err.message
+                : "Unable to parse performance inputs. Confirm both files are valid.",
+          });
         });
       } finally {
         if (performanceRequestRef.current === requestId) {
@@ -649,7 +662,7 @@ export default function OwnerReportsPage() {
         }
       }
     },
-    [currentMonthOverride, includeCurrentMonth, resetPerformanceUpload],
+    [currentMonthOverride, includeCurrentMonth, resetPerformanceUpload, startTransition],
   );
 
   const appendReportLog = useCallback(
@@ -664,9 +677,9 @@ export default function OwnerReportsPage() {
         ? `${reportLogRef.current}\n${chunk}`
         : chunk;
       reportLogRef.current = next;
-      setReportLog(next);
+      startTransition(() => setReportLog(next));
     },
-    [setReportLog],
+    [setReportLog, startTransition],
   );
 
   const track = useCallback((event: string, props?: Record<string, unknown>) => {
@@ -775,15 +788,19 @@ export default function OwnerReportsPage() {
   const isInformationalLog = !hasFilteredLog;
   const runMsrExtract = useCallback(async (nextMsr: File | null) => {
     if (!nextMsr) {
-      setMsrFile(null);
-      setMsrTokens({});
-      setMsrStatus(null);
+      startTransition(() => {
+        setMsrFile(null);
+        setMsrTokens({});
+        setMsrStatus(null);
+      });
       setMsrLoading(false);
       return;
     }
-    setMsrFile(nextMsr);
+    startTransition(() => {
+      setMsrFile(nextMsr);
+      setMsrStatus(null);
+    });
     setMsrLoading(true);
-    setMsrStatus(null);
     try {
       const form = new FormData();
       form.append("file", nextMsr);
@@ -794,16 +811,20 @@ export default function OwnerReportsPage() {
       }
       const json = (await res.json()) as { tokens?: Record<string, string | number> };
       const tokens = json.tokens ?? {};
-      setMsrTokens(tokens);
       const detected = Object.keys(tokens).length;
-      setMsrStatus({
-        variant: "success",
-        text: detected > 0 ? `Detected ${detected} MSR tokens.` : "MSR uploaded; no tokens detected.",
+      startTransition(() => {
+        setMsrTokens(tokens);
+        setMsrStatus({
+          variant: "success",
+          text: detected > 0 ? `Detected ${detected} MSR tokens.` : "MSR uploaded; no tokens detected.",
+        });
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to parse the MSR workbook.";
-      setMsrTokens({});
-      setMsrStatus({ variant: "error", text: message });
+      startTransition(() => {
+        setMsrTokens({});
+        setMsrStatus({ variant: "error", text: message });
+      });
     } finally {
       setMsrLoading(false);
     }
@@ -814,14 +835,16 @@ export default function OwnerReportsPage() {
         lastProcessedFiles.current = {
           budget: null,
         };
-        setBudgetTokens({});
-        setDetectedCount(0);
-        setBudgetOverrides({});
-        setTemplateTokenCount(null);
-        setBudgetError(null);
+        startTransition(() => {
+          setBudgetTokens({});
+          setDetectedCount(0);
+          setBudgetOverrides({});
+          setTemplateTokenCount(null);
+          setBudgetError(null);
+          setBudgetPage(0);
+          setBudgetDebugLog([]);
+        });
         setBudgetLoading(false);
-        setBudgetPage(0);
-        setBudgetDebugLog([]);
         return;
       }
       lastProcessedFiles.current = {
@@ -835,27 +858,29 @@ export default function OwnerReportsPage() {
           budgetBuffer,
           undefined,
         );
-        setBudgetTokens(tokens);
-        setDetectedCount(count);
-        setBudgetOverrides({});
-        setBudgetPage(0);
-        setTemplateTokenCount(
-          Array.isArray(templateTokens) && templateTokens.length > 0 ? templateTokens.length : null,
-        );
-        setBudgetDebugLog(debug);
-        if (ownerGroup && ownerGroup.trim().length > 0) {
-          setOverrides((prev) => {
-            const existingOverride = prev.OWNERGROUP;
-            if (typeof existingOverride === "string" && existingOverride.trim().length > 0) {
-              return prev;
-            }
-            const existingField = fieldsRef.current?.OWNERGROUP;
-            if (typeof existingField === "string" && existingField.trim().length > 0) {
-              return prev;
-            }
-            return { ...prev, OWNERGROUP: ownerGroup };
-          });
-        }
+        startTransition(() => {
+          setBudgetTokens(tokens);
+          setDetectedCount(count);
+          setBudgetOverrides({});
+          setBudgetPage(0);
+          setTemplateTokenCount(
+            Array.isArray(templateTokens) && templateTokens.length > 0 ? templateTokens.length : null,
+          );
+          setBudgetDebugLog(debug);
+          if (ownerGroup && ownerGroup.trim().length > 0) {
+            setOverrides((prev) => {
+              const existingOverride = prev.OWNERGROUP;
+              if (typeof existingOverride === "string" && existingOverride.trim().length > 0) {
+                return prev;
+              }
+              const existingField = fieldsRef.current?.OWNERGROUP;
+              if (typeof existingField === "string" && existingField.trim().length > 0) {
+                return prev;
+              }
+              return { ...prev, OWNERGROUP: ownerGroup };
+            });
+          }
+        });
 
         if (typeof window !== "undefined" && "console" in window) {
           const preview = Object.entries(tokens)
@@ -906,12 +931,14 @@ export default function OwnerReportsPage() {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unable to parse the budget workbook.";
-        setBudgetError(message);
-        setBudgetTokens({});
-        setDetectedCount(0);
-        setBudgetOverrides({});
-        setBudgetDebugLog([]);
-        setTemplateTokenCount(null);
+        startTransition(() => {
+          setBudgetError(message);
+          setBudgetTokens({});
+          setDetectedCount(0);
+          setBudgetOverrides({});
+          setBudgetDebugLog([]);
+          setTemplateTokenCount(null);
+        });
       } finally {
         setBudgetLoading(false);
       }
@@ -1017,6 +1044,25 @@ export default function OwnerReportsPage() {
     setAvailableSpacesFile(next);
   }, []);
 
+  const handleRepairsFileChange = useCallback((next: File | null) => {
+    if (!next) {
+      setRepairsFile(null);
+      return;
+    }
+    const name = next.name?.toLowerCase() ?? "";
+    const mime = next.type?.toLowerCase() ?? "";
+    const isCsv = name.endsWith(".csv") || mime === "text/csv" || mime === "application/vnd.ms-excel";
+    const isWorkbook =
+      name.endsWith(".xlsx") ||
+      name.endsWith(".xls") ||
+      mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (!isCsv && !isWorkbook) {
+      setRepairsFile(null);
+      return;
+    }
+    setRepairsFile(next);
+  }, []);
+
   const updateBudgetOverride = useCallback((token: string, value: string) => {
     setBudgetOverrides((prev) => {
       const next = { ...prev };
@@ -1114,9 +1160,11 @@ export default function OwnerReportsPage() {
   }, [emailRecipients, selectedProperty, sendOwnerEmail]);
 
   async function onUpload(f: File) {
-    setFile(f);
+    startTransition(() => {
+      setFile(f);
+      setError(null);
+    });
     setBusy(true);
-    setError(null);
     try {
       const form = new FormData();
       form.append("file", f);
@@ -1126,19 +1174,23 @@ export default function OwnerReportsPage() {
         throw new Error(message || "Upload failed.");
       }
       const json = await res.json();
-      setFields(json.fields as OwnerFields);
-      setOverrides({});
-      setStep(2);
-      if (lastDownload) {
-        URL.revokeObjectURL(lastDownload.url);
-        setLastDownload(null);
-      }
+      startTransition(() => {
+        setFields(json.fields as OwnerFields);
+        setOverrides({});
+        setStep(2);
+        if (lastDownload) {
+          URL.revokeObjectURL(lastDownload.url);
+          setLastDownload(null);
+        }
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to parse the workbook.";
-      setError(message);
-      setFields(null);
-      setOverrides({});
-      setStep(1);
+      startTransition(() => {
+        setError(message);
+        setFields(null);
+        setOverrides({});
+        setStep(1);
+      });
     } finally {
       setBusy(false);
     }
@@ -1212,6 +1264,16 @@ export default function OwnerReportsPage() {
     return mergedFields.TOTALUNITS > 0 && mergedFields.RENTABLESQFT > 0;
   }
 
+  const handleExecutiveRemove = useCallback(() => {
+    startTransition(() => {
+      setFile(null);
+      setFields(null);
+      setOverrides({});
+      setError(null);
+      setStep(1);
+    });
+  }, [startTransition]);
+
   async function generate() {
     if (!file || !mergedFields) return;
     setBusy(true);
@@ -1231,6 +1293,9 @@ export default function OwnerReportsPage() {
       }
       if (availableSpacesFile) {
         form.append("availableSpacesFile", availableSpacesFile);
+      }
+      if (repairsFile) {
+        form.append("repairsFile", repairsFile);
       }
       if (msrFile) {
         form.append("msr", msrFile);
@@ -1609,16 +1674,32 @@ export default function OwnerReportsPage() {
                 </div>
               )}
 
-              {step === 1 && (
+                            {step === 1 && (
                 <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
-                  <h2 className="flex items-center gap-2 text-lg font-semibold text-[color:var(--text-primary)]">
-                    <span>Step 1 - Upload</span>
-                    <UploadFieldHint title="Executive Summary fields" fields={UPLOAD_FIELD_HINTS.executiveSummary} />
-                  </h2>
-                  <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                    Drop your <span className="font-bold">Executive Summary Report</span> (.xlsx) below. Only the first sheet is parsed for now.
-                  </p>
-                  <div className="mt-5">
+                  <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 1 - Upload</h2>
+                  <div className="mt-4 owner-input-tile space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                            Executive Summary Report (.xlsx)
+                          </p>
+                          <UploadFieldHint title="Executive Summary fields" fields={UPLOAD_FIELD_HINTS.executiveSummary} />
+                        </div>
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Drop your Executive Summary (.xlsx). Only the first sheet is parsed for now.
+                        </p>
+                      </div>
+                      {file && (
+                        <button
+                          type="button"
+                          className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                          onClick={handleExecutiveRemove}
+                        >
+                          Remove file
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="file"
                       accept=".xlsx,.xls"
@@ -1626,22 +1707,21 @@ export default function OwnerReportsPage() {
                       onChange={(event) => {
                         const nextFile = event.target.files?.[0];
                         if (nextFile) onUpload(nextFile);
+                        event.target.value = "";
                       }}
                     />
-                  </div>
-                  {busy && <p className="mt-3 text-sm text-[color:var(--text-secondary)]">Parsing workbook…</p>}
-                  {file && !busy && (
-                    <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
-                      Last uploaded: <span className="font-medium text-[color:var(--text-primary)]">{file.name}</span>
+                    {busy && <p className="text-xs text-[color:var(--text-secondary)]">Parsing workbookƒ?İ</p>}
+                    {file && !busy && (
+                      <p className="text-xs text-[color:var(--text-secondary)]">
+                        Selected: <span className="font-medium text-[color:var(--text-primary)]">{file.name}</span>
+                      </p>
+                    )}
+                    <p className="text-[11px] text-[color:var(--text-muted)]">
+                      Preview is available on Step 4 in the Summary mapper.
                     </p>
-                  )}
-                  <p className="mt-3 text-[11px] text-[color:var(--text-muted)]">
-                    Preview is available on Step 4 in the Summary mapper.
-                  </p>
+                  </div>
                 </section>
-              )}
-
-              {step === 2 && (
+              )}{step === 2 && (
                 <section className="owner-card owner-card--surface rounded-xl px-6 py-8">
                   <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">Step 2 - Budget Inputs</h2>
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
@@ -1864,6 +1944,45 @@ export default function OwnerReportsPage() {
                       <p className="text-[11px] text-[color:var(--text-muted)]">
                         Optional: only used for the Web column on the Pricing slide.
                       </p>
+                    </div>
+
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
+                            Repair and Maintenance Spreadsheet (.csv/.xlsx)
+                          </p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Upload repair tickets to auto-fill REPAIRDATE, REPAIRDESCRIP, REPAIRCOST, and REPAIRSTATUS tokens.
+                          </p>
+                        </div>
+                        {repairsFile && (
+                          <button
+                            type="button"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => {
+                              handleRepairsFileChange(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        className="text-sm text-[color:var(--text-primary)]"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          handleRepairsFileChange(nextFile);
+                          event.target.value = "";
+                        }}
+                      />
+                      {repairsFile && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{repairsFile.name}</span>
+                        </p>
+                      )}
                     </div>
 
                     <div className="owner-input-tile space-y-3">

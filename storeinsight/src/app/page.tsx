@@ -41,18 +41,19 @@ const features: Feature[] = [
     ],
   },
   {
-    title: 'Proforma',
-    description: 'Prepare facility proformas with shared STORE assumptions.',
-    href: '/proforma',
+    title: 'Bank & Card Import Prep',
+    description: 'Standardize bank and credit card spreadsheets for efficient, accurate Yardi imports.',
+    href: '/accounting/bank-card-import-prep',
     status: 'WIP',
     tone: 'blue',
     icon: 'layers',
     highlights: [
-      'Guide analysts through upload, mapping, validation, and export',
-      'Calculate NOI scenarios with configurable STORE assumptions',
-      'Generate proforma workbooks ready for review',
+      'Upload, map fields, validate, and export',
+      'Normalize dates, descriptions, payees, and amounts',
+      'Yardi-ready outputs with clear exceptions and audit logs',
     ],
-    disabled: true,
+
+    disabled: false,
   },
   {
     title: 'Owner Reports',
@@ -82,7 +83,7 @@ const HERO_STATS = [
   },
   {
     label: 'Last update',
-    value: 'Dec, 17th',
+    value: 'Jan, 2nd',
     detail: 'Audit surface refresh',
   },
 ];
@@ -308,7 +309,7 @@ export default function DirectoryPage(): JSX.Element {
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-20">
         <header className="ios-card ios-animate-up grid gap-8 p-10">
           <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
-           STORE Internal platform
+            STORE Internal platform
           </span>
           <div className="grid gap-6 md:flex md:items-end md:justify-between">
             <div className="max-w-3xl space-y-4">
@@ -353,10 +354,10 @@ export default function DirectoryPage(): JSX.Element {
                     {feature.status}
                   </span>
                   <div className="flex items-center gap-4">
-                  <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/40 shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${iconTone[feature.tone]} dark:border-white/15 dark:bg-white/10`}
-                    aria-hidden
-                  >
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/40 shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${iconTone[feature.tone]} dark:border-white/15 dark:bg-white/10`}
+                      aria-hidden
+                    >
                       <FeatureIcon name={feature.icon} tone={feature.tone} />
                     </div>
                     <div className="space-y-1">
