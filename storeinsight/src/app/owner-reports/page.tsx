@@ -1950,7 +1950,7 @@ export default function OwnerReportsPage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="space-y-1">
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
-                            Repair and Maintenance Spreadsheet (.csv/.xlsx)
+                            Repair and Maintenance Spreadsheet (.csv)
                           </p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
                             Upload repair tickets to auto-fill REPAIRDATE, REPAIRDESCRIP, REPAIRCOST, and REPAIRSTATUS tokens.
@@ -1970,7 +1970,7 @@ export default function OwnerReportsPage() {
                       </div>
                       <input
                         type="file"
-                        accept=".csv,.xlsx,.xls"
+                        accept=".csv"
                         className="text-sm text-[color:var(--text-primary)]"
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
@@ -1990,7 +1990,7 @@ export default function OwnerReportsPage() {
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-sm font-semibold text-[color:var(--accent-strong)]">
-                              PPC Performance sheets (.csv/.xlsx)
+                              PPC Performance sheets (.csv)
                             </p>
                             <UploadFieldHint title="PPC performance fields" fields={UPLOAD_FIELD_HINTS.ppcPerformance} />
                           </div>
@@ -2002,7 +2002,7 @@ export default function OwnerReportsPage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <input
                           type="file"
-                          accept=".csv,.xlsx,.xls"
+                          accept=".csv"
                           className="text-sm text-[color:var(--text-primary)]"
                           onChange={(event) => {
                             const nextFile = event.target.files?.[0] ?? null;

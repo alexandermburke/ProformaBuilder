@@ -87,12 +87,13 @@ export default function BankCardImportPrepPage() {
       <main className="relative mx-auto flex max-w-6xl flex-col gap-10 px-6 py-12 lg:gap-12 lg:px-10 lg:py-16">
         <header className="ios-card ios-animate-up grid gap-6 p-8">
           <div className="flex items-center justify-between gap-3">
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-              &larr; Back
-            </Link>
             <span className="ios-badge inline-flex items-center gap-2 text-[10px]" data-tone="neutral">
               WIP / Coming Soon
             </span>
+            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
+              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
+              Back to directory
+            </Link>
           </div>
           <div className="grid gap-4 md:flex md:items-end md:justify-between">
             <div className="space-y-2">
@@ -136,7 +137,7 @@ export default function BankCardImportPrepPage() {
               {intakePoints.map((point) => (
                 <div
                   key={point.title}
-                  className="rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4 shadow-sm"
+                  className="flex h-full min-h-[220px] flex-col gap-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
@@ -149,7 +150,7 @@ export default function BankCardImportPrepPage() {
                   </div>
                   <button
                     type="button"
-                    className="ios-button mt-3 w-full justify-center px-4 py-2 text-sm"
+                    className="ios-button mt-auto w-full justify-center px-4 py-2 text-sm"
                     disabled
                     aria-disabled="true"
                   >
