@@ -55,61 +55,62 @@ const guides: GuideContent[] = [
     id: "owner-reports",
     label: "Owner Reports",
     badge: "Owner Reports",
-    heading: "Owner's reports guide",
+    heading: "Owner report walkthrough",
     description:
-      "Move from raw vendor exports to a finished owner-ready deck with confidence. Follow the walkthrough below, drop in screenshots where the placeholders sit, and leverage the pro tips gathered from our onboarding playbooks.",
+      "Follow this runbook to move from Yardi exports to the finished PPTX with mapping, overrides, validation, and audit logs.",
     quickCards: [
       {
-        id: "owner-inputs",
+        id: "owner-required",
         tone: "blue",
-        title: "Inputs needed",
-        items: ["Executive Summary (xlsx)", "Budget Comparison (xlsx)", "Move-In/Move-Out Activity (optional)"],
+        title: "Required uploads",
+        items: ["Executive Summary (xlsx)", "Budget Comparison (xlsx)"],
       },
       {
-        id: "owner-prep",
-        tone: "amber",
-        title: "Prep checklist",
+        id: "owner-optional",
+        tone: "green",
+        title: "Optional uploads",
         items: [
-          "Confirm facility naming matches STORE conventions",
-          "Remove trailing blank columns before upload",
-          "Grab the latest PPT template from SharePoint",
+          "Hummingbird Move-In/Move-Out Activity",
+          "IPRC Change History",
+          "Available Spaces + PPC performance",
+          "Repairs ledger (appendix)",
         ],
       },
       {
         id: "owner-time",
-        tone: "green",
-        title: "Time to complete",
-        items: ["Detection + review: roughly 6 minutes", "Manual touchups: 2-3 minutes", "Export + QA: 1 minute"],
+        tone: "amber",
+        title: "Run time",
+        items: ["Detection + review: ~6 minutes", "Overrides + validation: 2-3 minutes", "Export + QA: < 1 minute"],
       },
     ],
     steps: [
       {
         id: "step-upload",
-        title: "Upload your Executive Summary",
+        title: "Upload Executive Summary",
         body:
-          "Begin with the monthly Executive Summary export from Yardi or the approved vendor layout. Once the file uploads, the wizard detects facility details, totals, and reporting periods automatically.",
+          "Use the monthly Executive Summary (first sheet only). The wizard detects address, owner group, hero totals, occupancy, and move activity.",
         proTips: [
-          "Rename the workbook with the period end date (YYYY-MM-DD) so the CURRENTDATE token populates automatically.",
-          "If the summary contains extra audit tabs, delete them before uploading. The parser only reads the first sheet.",
+          "Name the file with the period end date (YYYY-MM-DD) so CURRENTDATE picks it up automatically.",
+          "Delete extra audit tabs before uploading; only the first worksheet is read.",
         ],
-        placeholderLabel: "Placeholder image: Upload modal",
+        placeholderLabel: "Placeholder image: Executive Summary upload",
       },
       {
         id: "step-budget",
         title: "Add the Budget Comparison workbook",
         body:
-          "Drop in the Budget Comparison workbook to unlock automatic token mapping. The wizard holds it in memory so you can reuse it across mapping and export steps.",
+          "Upload the budget file to unlock PTD/YTD mapping for every line. Values stay in memory as you move through the wizard.",
         proTips: [
-          "Confirm the header row includes PTD/YTD columns in positions B-I. Hidden columns are safely ignored.",
-          "If Current Month values are missing for a line, supply an override in the mapper or update the source workbook before uploading.",
+          "Keep PTD/YTD columns in the expected B–I span; hidden columns are ignored safely.",
+          "If a Current Month value is blank, add an override in the mapper or fix the source before re-uploading.",
         ],
-        placeholderLabel: "Placeholder image: Budget upload cards",
+        placeholderLabel: "Placeholder image: Budget upload + detection",
       },
       {
         id: "step-map",
-        title: "Tune values on the Map Budget Table step",
+        title: "Map budget table",
         body:
-          "Each budget line shows detected values, manual overrides, and blank status so you can spot gaps quickly. Flip between the slide groupings with the page controls before moving on.",
+          "Review detected amounts, fill gaps with overrides, and confirm totals across pages 1/2 before continuing.",
         proTips: [
           "Manual overrides always win over detected numbers. Use them for rounding tweaks or last-minute updates.",
           "Select \"Reset row\" to revert overrides for a line back to the detected values.",
@@ -117,150 +118,81 @@ const guides: GuideContent[] = [
         placeholderLabel: "Placeholder image: Budget mapping table",
       },
       {
-        id: "step-generate",
-        title: "Validate summary fields and export the deck",
+        id: "step-summary",
+        title: "Review summary fields",
         body:
-          "Complete the validation checklist (units and rentable square footage must both be greater than zero) and hit Generate. Docxtemplater merges your tokens into the STORE-branded PPTX template.",
+          "Confirm hero values: current date/month, address, owner group, units, RSF, rental income, total income/expenses, net income, occupancy, and move activity counts.",
         proTips: [
-          "If a field comes through blank, verify the template uses the exact token casing shown in the mapper.",
-          "You can regenerate and download again at any time; overrides persist until you start another session.",
+          "Numeric fields auto-format; you can still override any text or number inline.",
+          "If something looks off, jump back to the earlier step instead of waiting until export.",
         ],
-        placeholderLabel: "Placeholder image: Export success toast",
+        placeholderLabel: "Placeholder image: Summary field review",
+      },
+      {
+        id: "step-validate",
+        title: "Validate and choose email behavior",
+        body:
+          "Run the validation checklist (units and RSF must be greater than zero) and decide whether to email owners automatically or just download locally.",
+        proTips: [
+          "Pick the target property from the dropdown; disabled properties are flagged inline.",
+          "Toggle owner emails off when testing—downloads are still produced.",
+        ],
+        placeholderLabel: "Placeholder image: Validation + email toggle",
+      },
+      {
+        id: "step-export",
+        title: "Export, download, and audit",
+        body:
+          "Generate the PPTX, then use the export recap to download again or open the console log with token/value mapping for QA.",
+        proTips: [
+          "If a token is blank, check the log for the source cell and verify the PPTX token casing.",
+          "Overrides persist until you start another session, so you can regenerate as needed.",
+        ],
+        placeholderLabel: "Placeholder image: Export complete + log viewer",
       },
     ],
     references: [
       {
-        id: "ref-template",
-        title: "Template token reference",
-        summary: "Complete list of PPTX tokens grouped by slide, plus the source workbook for each value.",
+        id: "ref-tokens",
+        title: "Token matrix & slide map",
+        summary: "Full PPTX token list grouped by slide with the source workbook/field for each.",
         actions: [
-          { label: "View token matrix", href: "/owner-reports" },
-          { label: "Download sample PPTX", href: "/owner-reports" },
+          { label: "Open owner reports", href: "/owner-reports" },
         ],
+      },
+      {
+        id: "ref-template",
+        title: "STORE PPTX template",
+        summary: "Latest owner deck template used for generation.",
+        actions: [{ label: "Download template", href: "/owner-reports" }],
+      },
+      {
+        id: "ref-troubleshooting",
+        title: "Troubleshooting & logs",
+        summary: "Common blanks, percent/variance safeguards, and how to read the console log after export.",
+        actions: [{ label: "View log guidance", href: "/owner-reports" }],
       },
     ],
     faqs: [
       {
         id: "faq-blank-values",
-        question: "Why are some tokens blank even after uploading both workbooks?",
+        question: "Why is a token blank after uploading both workbooks?",
         answer:
-          "Token detection relies on the source labels matching our expected wording. If a vendor renamed a line, supply an override in the mapper or edit the source label before uploading.",
+          "Check that the label matches our expected wording on the first sheet, confirm token casing in the PPTX, and use overrides for last-minute fixes.",
       },
       {
         id: "faq-overrides",
-        question: "How long do overrides stick around?",
+        question: "Do overrides stick around between exports?",
         answer:
-          "Overrides live for the current session. They reset after you refresh, close the tab, or start another report.",
+          "Yes, for the current session. They reset when you refresh, close the tab, or start another report. You can regenerate/download multiple times.",
+      },
+      {
+        id: "faq-email",
+        question: "Can I skip emailing owners when testing?",
+        answer:
+          "Yes. Turn off the email toggle on the Validate step. The PPTX still downloads locally and the console log remains available.",
       },
     ],
-  },
-  {
-    id: "accounting",
-    label: "Accounting",
-    badge: "Accounting",
-    heading: "Workflow outline",
-    description:
-      "We are drafting the detailed accounting walkthrough. In the meantime, lean on your existing checklist and jot notes where the placeholders sit so the final build goes faster.",
-    quickCards: [
-      {
-        id: "accounting-inputs",
-        tone: "blue",
-        title: "Inputs (draft)",
-        items: ["Monthly GL export", "Accrual notes", "Variance commentary (optional)"],
-      },
-      {
-        id: "accounting-prep",
-        tone: "amber",
-        title: "Prep reminders",
-        items: [
-          "Flag upstream schedule dependencies",
-          "Collect open JE requests before handoff",
-          "Document owner questions for the final guide",
-        ],
-      },
-      {
-        id: "accounting-time",
-        tone: "green",
-        title: "ETA for full guide",
-        items: ["Drafting in progress", "Screenshots to be captured", "Target publish: next sprint"],
-      },
-    ],
-    steps: [
-      {
-        id: "accounting-coming-soon",
-        title: "Coming soon",
-        body:
-          "The accounting runbook is being assembled. Use this space to sketch the walkthrough steps you plan to capture once the official screenshots are ready.",
-        proTips: [
-          "Keep your month-end checklist nearby so you can drop it in here later.",
-          "Capture any tricky reconciliations you want highlighted when the guide ships.",
-        ],
-        placeholderLabel: "Placeholder image: Accounting workflow storyboard",
-      },
-    ],
-    references: [
-      {
-        id: "accounting-reference",
-        title: "Reference library (draft)",
-        summary: "Links will land here once the accounting SOP is finalized. For now, note the documents you reach for most.",
-        actions: [],
-      },
-    ],
-    faqs: [],
-  },
-  {
-    id: "proforma",
-    label: "Proforma",
-    badge: "Proforma Builder",
-    heading: "Guide in progress",
-    description:
-      "We are curating the proforma walkthrough to mirror the owner reports playbook. Drop placeholder notes now so you can swap in rich content once the template is ready.",
-    quickCards: [
-      {
-        id: "proforma-inputs",
-        tone: "blue",
-        title: "Inputs (planned)",
-        items: ["Revenue assumptions", "Expense schedule draft", "Capital plan snapshot"],
-      },
-      {
-        id: "proforma-prep",
-        tone: "amber",
-        title: "Prep checklist (placeholder)",
-        items: [
-          "List the KPIs you want highlighted",
-          "Identify any tabs that need screenshots",
-          "Collect talking points from the underwriting team",
-        ],
-      },
-      {
-        id: "proforma-time",
-        tone: "green",
-        title: "Next steps",
-        items: ["Outline the sections you expect to narrate", "Flag data sources to cross-check", "Gather feedback from pilot users"],
-      },
-    ],
-    steps: [
-      {
-        id: "proforma-coming-soon",
-        title: "Storyboard your walkthrough",
-        body:
-          "Use this draft space to plan the narrative for the proforma experience. Replace the placeholders with real screenshots and commentary once the tooling is locked.",
-        proTips: [
-          "Sketch which scenarios you want to feature so the visuals land quickly later.",
-          "Capture early learnings from SMEs and note them here for future you.",
-        ],
-        placeholderLabel: "Placeholder image: Proforma storyboard",
-      },
-    ],
-    references: [
-      {
-        id: "proforma-reference",
-        title: "Resource links (coming soon)",
-        summary: "We'll add calculators, template decks, and KPI glossaries here once the team finalizes them.",
-        actions: [],
-      },
-    ],
-    faqs: [],
   },
 ];
 

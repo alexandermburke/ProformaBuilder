@@ -295,11 +295,6 @@ export default function DirectoryPage(): JSX.Element {
   const overlayBottom = isDark
     ? 'bg-[radial-gradient(circle_at_85%_80%,rgba(56,189,248,0.18),transparent_60%)]'
     : 'bg-[radial-gradient(circle_at_82%_85%,rgba(125,211,252,0.16),transparent_62%)]';
-  const badgeTone: Record<FeatureTone, 'neutral' | 'success'> = {
-    blue: 'neutral',
-    purple: 'neutral',
-    green: 'success',
-  };
   const iconTone = isDark ? iconToneDark : iconToneLight;
 
   return (
@@ -350,7 +345,7 @@ export default function DirectoryPage(): JSX.Element {
                   className="pointer-events-none absolute inset-px rounded-[26px] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_70%)] opacity-0 transition duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.2),transparent_75%)]"
                 />
                 <div className="relative z-10 flex flex-col gap-6">
-                  <span className="ios-pill text-[11px]" data-tone={badgeTone[feature.tone]}>
+                  <span className="ios-pill text-[11px]" data-tone={feature.tone}>
                     {feature.status}
                   </span>
                   <div className="flex items-center gap-4">
