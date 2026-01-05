@@ -818,7 +818,8 @@ html.dark .ios-table tbody tr:hover {
 
 /* --- Wizard surfaces ---------------------------------------------------- */
 .owner-reports-page,
-.proforma-page {
+.proforma-page,
+.bank-card-page {
   position: relative;
   isolation: isolate;
 }
