@@ -48,7 +48,7 @@ const uploadCards: UploadCard[] = [
   },
   {
     key: "reference",
-    title: "Reference mappings (optional)",
+    title: "Reference mappings",
     detail: "Payee normalizations and GL/class crosswalks applied during mapping.",
     fileTypes: "XLSX",
     required: false,
@@ -58,48 +58,12 @@ const uploadCards: UploadCard[] = [
   },
   {
     key: "exceptions",
-    title: "Exceptions log (optional)",
+    title: "Exceptions log",
     detail: "Prior-period exceptions to suppress duplicates and overlaps.",
     fileTypes: "CSV",
     required: false,
     accept: ["csv"],
     examples: ["(Optional) Prior-period Exceptions Log.csv"],
-  },
-];
-
-const flowSteps = [
-  { title: "Validate inputs", description: "Confirm required files and file types." },
-  { title: "Parse bank export", description: "Read operating/trust bank activity." },
-  { title: "Parse card export", description: "Pull card transactions with memo/merchant fields." },
-  { title: "Parse other bank activity", description: "Merge secondary bank activity file." },
-  { title: "Normalize to Yardi columns", description: "Map values into Yardi_Import schema." },
-  { title: "Validate rows", description: "Check dates, accounts, debits/credits, and gaps." },
-  { title: "Build workbook", description: "Generate Yardi-ready XLSX and prep download." },
-];
-
-const guardrails = [
-  "Period detection blocks overlapping statements",
-  "Debit/credit sign checks by source type",
-  "Header templates per bank/card exporter",
-  "Duplicate and gap detection on dates + refs",
-  "Audit log of every normalization and override",
-];
-
-const outputTiles = [
-  {
-    title: "Yardi imports",
-    detail: "Single workbook with Yardi_Import tab and validated debits/credits.",
-    badge: "Primary",
-  },
-  {
-    title: "Exception log",
-    detail: "Warnings for missing accounts, invalid dates, or both debit/credit values.",
-    badge: "Review",
-  },
-  {
-    title: "Audit trail",
-    detail: "Inline log of processing steps and normalization notes.",
-    badge: "Trace",
   },
 ];
 
@@ -703,80 +667,170 @@ export default function BankCardImportPrepPage() {
               </span>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {uploadCards.map((card) => {
-                const current = uploads[card.key];
-                return (
-                  <div
-                    key={card.key}
-                    className="flex h-full min-h-[220px] flex-col gap-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-[color:var(--text-primary)]">
-                          {card.title}
-                          {card.required ? " *" : ""}
-                        </p>
-                        <p className="text-xs text-[color:var(--text-secondary)]">{card.detail}</p>
-                        <p className="text-[11px] text-[color:var(--text-muted)]">
-                          {card.exampleLabel ?? (card.examples.length > 1 ? "Examples" : "Example")}:{" "}
-                          {card.examples.map((ex, idx) => (
-                            <span
-                              key={ex}
-                              className="inline-block rounded-md bg-[color:var(--surface)]/90 px-1.5 py-0.5 font-mono text-[11px] text-[color:var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
-                            >
-                              {ex}
-                              {idx < card.examples.length - 1 ? "," : ""}
-                            </span>
-                          ))}
-                        </p>
-                      </div>
-                      <span className="ios-pill text-[10px]" data-tone="neutral">
-                        {card.fileTypes}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-2 text-sm text-[color:var(--text-secondary)]">
-                      {current.file ? (
-                        <div className="rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 px-3 py-2">
-                          <p className="font-semibold text-[color:var(--text-primary)]">{current.file.name}</p>
-                          <p className="text-xs text-[color:var(--text-secondary)]">
-                            {formatBytes(current.file.size)}
+              {uploadCards
+                .filter((card) => card.required)
+                .map((card) => {
+                  const current = uploads[card.key];
+                  return (
+                    <div
+                      key={card.key}
+                      className="flex h-full min-h-[220px] flex-col gap-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-[color:var(--text-primary)]">
+                            {card.title}
+                            {card.required ? " *" : ""}
+                          </p>
+                          <p className="text-xs text-[color:var(--text-secondary)]">{card.detail}</p>
+                          <p className="text-[11px] text-[color:var(--text-muted)]">
+                            {card.exampleLabel ?? (card.examples.length > 1 ? "Examples" : "Example")}:{" "}
+                            {card.examples.map((ex, idx) => (
+                              <span
+                                key={ex}
+                                className="inline-block rounded-md bg-[color:var(--surface)]/90 px-1.5 py-0.5 font-mono text-[11px] text-[color:var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                              >
+                                {ex}
+                                {idx < card.examples.length - 1 ? "," : ""}
+                              </span>
+                            ))}
                           </p>
                         </div>
-                      ) : (
-                        <p className="text-xs text-[color:var(--text-muted)]">No file selected.</p>
-                      )}
-                      {current.error && <p className="text-xs text-[#B91C1C]">{current.error}</p>}
-                    </div>
-                    <div className="mt-auto flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="ios-button px-4 py-2 text-sm"
-                        data-variant="primary"
-                        onClick={() => document.getElementById(`file-${card.key}`)?.click()}
-                      >
-                        {current.file ? "Replace" : "Upload"}
-                      </button>
-                      {current.file && (
+                        <span className="ios-pill text-[10px]" data-tone="neutral">
+                          {card.fileTypes}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-2 text-sm text-[color:var(--text-secondary)]">
+                        {current.file ? (
+                          <div className="rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 px-3 py-2">
+                            <p className="font-semibold text-[color:var(--text-primary)]">{current.file.name}</p>
+                            <p className="text-xs text-[color:var(--text-secondary)]">
+                              {formatBytes(current.file.size)}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[color:var(--text-muted)]">No file selected.</p>
+                        )}
+                        {current.error && <p className="text-xs text-[#B91C1C]">{current.error}</p>}
+                      </div>
+                      <div className="mt-auto flex flex-wrap gap-2">
                         <button
                           type="button"
                           className="ios-button px-4 py-2 text-sm"
-                          data-variant="secondary"
-                          onClick={() => clearFile(card.key)}
+                          data-variant="primary"
+                          onClick={() => document.getElementById(`file-${card.key}`)?.click()}
                         >
-                          Remove
+                          {current.file ? "Replace" : "Upload"}
                         </button>
-                      )}
-                      <input
-                        id={`file-${card.key}`}
-                        type="file"
-                        className="hidden"
-                        accept={card.accept.map((ext) => `.${ext}`).join(",")}
-                        onChange={(event) => handleFileSelect(card.key, event.target.files)}
-                      />
+                        {current.file && (
+                          <button
+                            type="button"
+                            className="ios-button px-4 py-2 text-sm"
+                            data-variant="secondary"
+                            onClick={() => clearFile(card.key)}
+                          >
+                            Remove
+                          </button>
+                        )}
+                        <input
+                          id={`file-${card.key}`}
+                          type="file"
+                          className="hidden"
+                          accept={card.accept.map((ext) => `.${ext}`).join(",")}
+                          onChange={(event) => handleFileSelect(card.key, event.target.files)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+            </div>
+            <div className="mt-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-4">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-sm font-semibold text-[color:var(--text-primary)]"
+                onClick={() => setShowAdvancedUploads((prev) => !prev)}
+                aria-expanded={showAdvancedUploads}
+              >
+                <span>Advanced (optional)</span>
+                <span className="text-[color:var(--text-secondary)]">{showAdvancedUploads ? "−" : "+"}</span>
+              </button>
+              {showAdvancedUploads && (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {uploadCards
+                    .filter((card) => !card.required)
+                    .map((card) => {
+                      const current = uploads[card.key];
+                      return (
+                        <div
+                          key={card.key}
+                          className="flex h-full min-h-[200px] flex-col gap-3 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-sm font-semibold text-[color:var(--text-primary)]">{card.title}</p>
+                              <p className="text-xs text-[color:var(--text-secondary)]">{card.detail}</p>
+                              <p className="text-[11px] text-[color:var(--text-muted)]">
+                                {card.exampleLabel ?? (card.examples.length > 1 ? "Examples" : "Example")}:{" "}
+                                {card.examples.map((ex, idx) => (
+                                  <span
+                                    key={ex}
+                                    className="inline-block rounded-md bg-[color:var(--surface)]/90 px-1.5 py-0.5 font-mono text-[11px] text-[color:var(--text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+                                  >
+                                    {ex}
+                                    {idx < card.examples.length - 1 ? "," : ""}
+                                  </span>
+                                ))}
+                              </p>
+                            </div>
+                            <span className="ios-pill text-[10px]" data-tone="neutral">
+                              {card.fileTypes}
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-2 text-sm text-[color:var(--text-secondary)]">
+                            {current.file ? (
+                              <div className="rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 px-3 py-2">
+                                <p className="font-semibold text-[color:var(--text-primary)]">{current.file.name}</p>
+                                <p className="text-xs text-[color:var(--text-secondary)]">
+                                  {formatBytes(current.file.size)}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-[color:var(--text-muted)]">No file selected.</p>
+                            )}
+                            {current.error && <p className="text-xs text-[#B91C1C]">{current.error}</p>}
+                          </div>
+                          <div className="mt-auto flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="ios-button px-4 py-2 text-sm"
+                              data-variant="secondary"
+                              onClick={() => document.getElementById(`file-${card.key}`)?.click()}
+                            >
+                              {current.file ? "Replace" : "Upload"}
+                            </button>
+                            {current.file && (
+                              <button
+                                type="button"
+                                className="ios-button px-4 py-2 text-sm"
+                                data-variant="tertiary"
+                                onClick={() => clearFile(card.key)}
+                              >
+                                Remove
+                              </button>
+                            )}
+                            <input
+                              id={`file-${card.key}`}
+                              type="file"
+                              className="hidden"
+                              accept={card.accept.map((ext) => `.${ext}`).join(",")}
+                              onChange={(event) => handleFileSelect(card.key, event.target.files)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
             <div className="mt-4 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/75 p-4 text-sm text-[color:var(--text-secondary)]">
               Separate uploads let us apply presets per bank/card exporter and reuse payee/GL crosswalks without

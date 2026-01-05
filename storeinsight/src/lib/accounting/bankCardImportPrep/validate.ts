@@ -50,7 +50,7 @@ export function validateRows(rows: NormalizedRow[]): ValidateResult {
     const journalDate = asDate(row.journalDate ?? null);
     const postMonth = row.postMonth && row.postMonth.trim() ? row.postMonth.trim() : journalDate ? format(journalDate, "MM/yyyy") : null;
 
-    let debit = row.debit != null ? Math.abs(row.debit) : null;
+    const debit = row.debit != null ? Math.abs(row.debit) : null;
     let credit = row.credit != null ? Math.abs(row.credit) : null;
 
     if (debit != null && credit != null && debit > 0 && credit > 0) {

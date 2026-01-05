@@ -92,7 +92,7 @@ function hasYardiHeaders(raw: Record<string, unknown>): boolean {
   return required.every((key) => lowered[key] !== undefined);
 }
 
-function normalizeBankRow(raw: Record<string, unknown>, warnings: string[]): NormalizedRow {
+function normalizeBankRow(raw: Record<string, unknown>): NormalizedRow {
   const lowered = lowerEntries(raw);
   const journalDate = asDate(lowered.date);
   const description = (lowered.description as string) || "";
@@ -228,7 +228,7 @@ function normalizeFallback(row: ParsedRow, warnings: string[]): NormalizedRow {
 }
 
 function normalizeRow(row: ParsedRow, warnings: string[]): NormalizedRow {
-  if (row.source === "bank") return normalizeBankRow(row.raw, warnings);
+  if (row.source === "bank") return normalizeBankRow(row.raw);
   if (row.source === "card") return normalizeCardRow(row.raw);
   if (row.source === "other-bank" && hasYardiHeaders(row.raw)) {
     return normalizePassthrough(row.raw, row.source);

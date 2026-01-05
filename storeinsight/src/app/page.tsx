@@ -41,7 +41,7 @@ const features: Feature[] = [
     ],
   },
   {
-    title: 'Bank & Card Import Prep',
+    title: 'Accounting',
     description: 'Standardize bank and credit card spreadsheets for efficient, accurate Yardi imports.',
     href: '/accounting/bank-card-import-prep',
     status: 'WIP',
@@ -59,7 +59,7 @@ const features: Feature[] = [
     title: 'Owner Reports',
     description: 'Build owner report packages with STORE portfolio and market data.',
     href: '/owner-reports',
-    status: 'Beta',
+    status: 'Active',
     tone: 'green',
     icon: 'globe',
     highlights: [
