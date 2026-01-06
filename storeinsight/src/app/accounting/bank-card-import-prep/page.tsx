@@ -26,7 +26,7 @@ const uploadCards: UploadCard[] = [
     fileTypes: "CSV",
     required: true,
     accept: ["csv", "xlsx"],
-    examples: ['11. CSV Bank Export (9).csv'],
+    examples: ['CSV Bank Export.csv'],
   },
   {
     key: "card",
@@ -35,7 +35,7 @@ const uploadCards: UploadCard[] = [
     fileTypes: "CSV",
     required: true,
     accept: ["csv", "xlsx"],
-    examples: ['11. Excel CC Export.csv'],
+    examples: ['Excel CC Export.csv'],
   },
   {
     key: "otherBank",
@@ -44,7 +44,7 @@ const uploadCards: UploadCard[] = [
     fileTypes: "XLSX",
     required: true,
     accept: ["xlsx", "csv"],
-    examples: ['2025 1130 Other Bank Activity.xlsx'],
+    examples: ['Other Bank Activity.xlsx'],
   },
   {
     key: "reference",
@@ -634,7 +634,7 @@ export default function BankCardImportPrepPage() {
                 Bank &amp; Card Import Prep
               </h1>
               <p className="text-base text-[color:var(--text-secondary)]">
-                Clean, map, and validate bank and card spreadsheets with the same polish as Owner Reports—then export a
+                Clean, map, and validate bank and card spreadsheets with the same polish as Owner Reports then export a
                 Yardi-ready workbook.
               </p>
             </div>
@@ -921,7 +921,7 @@ export default function BankCardImportPrepPage() {
                     id="default-property"
                     name="default-property"
                     className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
-                    placeholder="e.g., STORE on the Grove"
+                    placeholder="e.g., 555 Pittman Road"
                     value={defaultProperty}
                     onChange={(event) => setDefaultProperty(event.target.value)}
                     disabled={processing}
