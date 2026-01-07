@@ -15,12 +15,15 @@ export type ValidatedRow = {
   Book: string | null;
   Unit: string | null;
   source: string;
+  passthrough?: boolean;
 };
 
 export type ValidateResult = {
   rows: ValidatedRow[];
   logs: string[];
   warnings: string[];
+  transactions: number;
+  passthrough: number;
 };
 
 function asDate(value: Date | string | null): Date | null {
@@ -37,6 +40,8 @@ export function validateRows(rows: NormalizedRow[]): ValidateResult {
   const warnings: string[] = [];
   const logs: string[] = [];
   const validated: ValidatedRow[] = [];
+  let transactionCount = 0;
+  let passthroughCount = 0;
 
   const missingJournal: number[] = [];
   const missingPostMonth: number[] = [];
@@ -65,6 +70,12 @@ export function validateRows(rows: NormalizedRow[]): ValidateResult {
     const propertyName =
       typeof row.propertyName === "string" ? row.propertyName.trim() : row.propertyName ?? null;
     const account = typeof row.account === "string" ? row.account.trim() : row.account ?? null;
+
+    if (row.passthrough) {
+      passthroughCount += 1;
+    } else {
+      transactionCount += 1;
+    }
 
     if (!journalDate) {
       missingJournal.push(index + 1);
@@ -95,6 +106,7 @@ export function validateRows(rows: NormalizedRow[]): ValidateResult {
       Book: row.book,
       Unit: row.unit,
       source: row.source,
+      passthrough: row.passthrough,
     });
   });
 
@@ -114,6 +126,7 @@ export function validateRows(rows: NormalizedRow[]): ValidateResult {
   summarize("Invalid Account (non-digits)", invalidAccount, "Only digits are allowed");
 
   logs.push(`[validate] validated ${validated.length} rows (warnings: ${warnings.length})`);
+  logs.push(`[validate] transactions: ${transactionCount}, passthrough: ${passthroughCount}`);
 
-  return { rows: validated, logs, warnings };
+  return { rows: validated, logs, warnings, transactions: transactionCount, passthrough: passthroughCount };
 }

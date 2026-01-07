@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
   if (!job.rows || job.rows.length === 0) {
     return NextResponse.json({ error: "Job rows not available" }, { status: 409 });
   }
+  if (!job.cashAccount) {
+    return NextResponse.json({ error: "Missing cash account" }, { status: 400 });
+  }
 
   const updatedRows = job.rows.map((row) => ({ ...row }));
 
@@ -91,7 +94,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { buffer, filename } = buildWorkbook(updatedRows);
+  const { buffer, filename, emitted } = buildWorkbook(updatedRows, { cashAccount: job.cashAccount });
   updateJob(jobId, {
     rows: updatedRows,
     downloadReady: true,
@@ -102,7 +105,11 @@ export async function POST(req: NextRequest) {
     percent: 100,
     needsReview: false,
     unmappedCount: 0,
-    logs: [...job.logs, `[build] workbook ready (${filename}), rows: ${updatedRows.length}`],
+    logs: [...job.logs, `[build] emitted ${emitted} journal rows (cash + offset)`, `[build] workbook ready (${filename})`],
+    counts: {
+      ...job.counts,
+      output: emitted,
+    },
   });
 
   return NextResponse.json({

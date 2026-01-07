@@ -125,11 +125,12 @@ export default function BankCardImportPrepPage() {
   const [step, setStep] = useState("Waiting to start");
   const [logs, setLogs] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [counts, setCounts] = useState<{ bank: number; card: number; otherBank: number; output: number }>({
+  const [counts, setCounts] = useState<{ bank: number; card: number; otherBank: number; output: number; transactions: number }>({
     bank: 0,
     card: 0,
     otherBank: 0,
     output: 0,
+    transactions: 0,
   });
   const [downloadReady, setDownloadReady] = useState(false);
   const [lastDownloadName, setLastDownloadName] = useState<string | null>(null);
@@ -139,6 +140,7 @@ export default function BankCardImportPrepPage() {
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [copyActive, setCopyActive] = useState(false);
   const [defaultProperty, setDefaultProperty] = useState("");
+  const [cashAccount, setCashAccount] = useState("");
   const [needsReview, setNeedsReview] = useState(false);
   const [unmappedRows, setUnmappedRows] = useState<ReviewRow[]>([]);
   const [unmappedCount, setUnmappedCount] = useState(0);
@@ -146,7 +148,7 @@ export default function BankCardImportPrepPage() {
   const [finalizing, setFinalizing] = useState(false);
   const [unmappedError, setUnmappedError] = useState<string | null>(null);
   const [reviewToast, setReviewToast] = useState<string | null>(null);
-  const [defaultAccount, setDefaultAccount] = useState("");
+  const [defaultOffsetAccount, setDefaultOffsetAccount] = useState("");
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showAdvancedUploads, setShowAdvancedUploads] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -160,8 +162,8 @@ export default function BankCardImportPrepPage() {
     [uploads],
   );
   const canProcess = useMemo(
-    () => filesReady && Boolean(defaultProperty.trim()),
-    [defaultProperty, filesReady],
+    () => filesReady && Boolean(defaultProperty.trim()) && Boolean(cashAccount.trim()) && DIGITS_ONLY.test(cashAccount.trim()),
+    [cashAccount, defaultProperty, filesReady],
   );
 
   useEffect(() => {
@@ -342,7 +344,7 @@ export default function BankCardImportPrepPage() {
         downloadReady: boolean;
         needsReview?: boolean;
         unmappedCount?: number;
-        counts?: { bank: number; card: number; otherBank: number; output: number };
+        counts?: { bank: number; card: number; otherBank: number; output: number; transactions?: number };
         outputFilename?: string;
         errorMessage?: string;
       };
@@ -354,7 +356,14 @@ export default function BankCardImportPrepPage() {
       setDownloadReady(Boolean(data.downloadReady));
       setNeedsReview(Boolean(data.needsReview));
       setUnmappedCount(data.unmappedCount ?? 0);
-      setCounts(data.counts ?? { bank: 0, card: 0, otherBank: 0, output: 0 });
+      const receivedCounts = data.counts ?? { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 };
+      setCounts({
+        bank: receivedCounts.bank ?? 0,
+        card: receivedCounts.card ?? 0,
+        otherBank: receivedCounts.otherBank ?? 0,
+        output: receivedCounts.output ?? 0,
+        transactions: receivedCounts.transactions ?? 0,
+      });
 
       if (data.status === "error") {
         setProcessing(false);
@@ -420,7 +429,7 @@ export default function BankCardImportPrepPage() {
     setNeedsReview(false);
     setUnmappedRows([]);
     setUnmappedCount(0);
-    setDefaultAccount("");
+    setDefaultOffsetAccount("");
     setReviewToast(null);
     setDownloadReady(false);
     setFinalizing(false);
@@ -430,6 +439,10 @@ export default function BankCardImportPrepPage() {
     setLastDownloadAt(null);
     if (!filesReady) {
       setError("Select all required files before processing.");
+      return;
+    }
+    if (!cashAccount.trim() || !DIGITS_ONLY.test(cashAccount.trim())) {
+      setError("Cash Account (Bank GL) is required and must be digits only.");
       return;
     }
     if (!defaultProperty.trim()) {
@@ -447,6 +460,7 @@ export default function BankCardImportPrepPage() {
 
     const formData = new FormData();
     formData.append("defaultProperty", defaultProperty.trim());
+    formData.append("cashAccount", cashAccount.trim());
     (Object.keys(uploads) as UploadKey[]).forEach((key) => {
       const file = uploads[key].file;
       if (file) formData.append(key, file);
@@ -488,8 +502,8 @@ export default function BankCardImportPrepPage() {
     [unmappedRows],
   );
   const defaultAccountValid = useMemo(
-    () => Boolean(defaultAccount.trim()) && DIGITS_ONLY.test(defaultAccount.trim()),
-    [defaultAccount],
+    () => Boolean(defaultOffsetAccount.trim()) && DIGITS_ONLY.test(defaultOffsetAccount.trim()),
+    [defaultOffsetAccount],
   );
   const reviewInvalidCount = useMemo(
     () =>
@@ -508,7 +522,7 @@ export default function BankCardImportPrepPage() {
     Boolean(jobId);
 
   const applyDefaultAccount = () => {
-    const trimmed = defaultAccount.trim();
+    const trimmed = defaultOffsetAccount.trim();
     if (!trimmed || !DIGITS_ONLY.test(trimmed)) return;
     let applied = 0;
     setUnmappedRows((prev) =>
@@ -847,7 +861,7 @@ export default function BankCardImportPrepPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="ios-pill text-[10px]" data-tone="neutral">
-                    {counts.output} rows
+                    {counts.output} journal lines
                   </span>
                   <button
                     type="button"
@@ -876,7 +890,8 @@ export default function BankCardImportPrepPage() {
                 <p>Bank rows: {counts.bank}</p>
                 <p>Card rows: {counts.card}</p>
                 <p>Other bank rows: {counts.otherBank}</p>
-                <p>Exported rows: {counts.output}</p>
+                <p>Transactions: {counts.transactions}</p>
+                <p>Exported journal lines: {counts.output}</p>
               </div>
               {warnings.length > 0 && (
                 <div className="space-y-2 rounded-xl border border-[#FACC15]/50 bg-[#FEF9C3] p-3 text-[color:var(--text-primary)]">
@@ -929,6 +944,29 @@ export default function BankCardImportPrepPage() {
                   />
                   <p className="text-xs text-[color:var(--text-secondary)]">
                     Applied whenever Property_Name is blank so Yardi has a property on every row.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="cash-account"
+                    className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
+                  >
+                    Cash Account (Bank GL) *
+                  </label>
+                  <input
+                    id="cash-account"
+                    name="cash-account"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
+                    placeholder="e.g., 1110"
+                    value={cashAccount}
+                    onChange={(event) => setCashAccount(event.target.value.replace(/[^0-9]/g, ""))}
+                    disabled={processing}
+                    required
+                  />
+                  <p className="text-xs text-[color:var(--text-secondary)]">
+                    Bank/cash GL account used for the cash-side line (example: 1110).
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 md:justify-end">
@@ -1071,22 +1109,22 @@ export default function BankCardImportPrepPage() {
                       htmlFor="default-account"
                       className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
                     >
-                      Default Account (optional)
+                      Default Offset Account (optional)
                     </label>
                     <input
-                      id="default-account"
-                      ref={defaultAccountInputRef}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
+                    id="default-account"
+                    ref={defaultAccountInputRef}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                       className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/85 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
                       placeholder="e.g., 5100"
-                      value={defaultAccount}
-                      onChange={(event) => setDefaultAccount(event.target.value.replace(/[^0-9]/g, ""))}
+                      value={defaultOffsetAccount}
+                      onChange={(event) => setDefaultOffsetAccount(event.target.value.replace(/[^0-9]/g, ""))}
                       disabled={reviewLoading || finalizing}
                     />
                     <p className="text-xs text-[color:var(--text-secondary)]">
-                      Fills Account for all rows that are missing Account. Use only if the batch should post to a single GL.
+                      Fills Offset Account for all rows that are missing Account. Use only if the batch should post to a single GL.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1106,7 +1144,7 @@ export default function BankCardImportPrepPage() {
                       onClick={applyDefaultAccount}
                       disabled={!defaultAccountValid || missingAccountCount === 0 || reviewLoading}
                     >
-                      Apply to missing Accounts
+                      Apply to missing Offset Accounts
                     </button>
                   </div>
                 </div>
@@ -1138,7 +1176,7 @@ export default function BankCardImportPrepPage() {
                           <th className="px-3 py-2 text-right">Debit</th>
                           <th className="px-3 py-2 text-right">Credit</th>
                           <th className="px-3 py-2 text-left">Property_Name</th>
-                          <th className="px-3 py-2 text-left">Account</th>
+                          <th className="px-3 py-2 text-left">Offset Account (Income/Expense/Liability)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[rgba(148,163,255,0.2)] bg-[color:var(--surface)]">

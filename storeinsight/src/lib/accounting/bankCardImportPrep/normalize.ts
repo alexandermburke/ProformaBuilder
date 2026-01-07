@@ -13,12 +13,14 @@ export type NormalizedRow = {
   unit: string | null;
   debit: number | null;
   credit: number | null;
+  passthrough?: boolean;
 };
 
 export type NormalizeResult = {
   rows: NormalizedRow[];
   logs: string[];
   warnings: string[];
+  transactions?: number;
 };
 
 const MONTH_NAMES = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
@@ -170,6 +172,7 @@ function normalizePassthrough(raw: Record<string, unknown>, source: string): Nor
     unit: lowered.unit ? String(lowered.unit) : null,
     debit: debit != null ? Math.abs(debit) : null,
     credit: credit != null ? Math.abs(credit) : null,
+    passthrough: false,
   };
 }
 
@@ -258,6 +261,7 @@ export async function normalizeAll(
   const rows: NormalizedRow[] = [];
   const trimmedDefault = defaultProperty.trim();
   let defaultApplied = 0;
+  let transactions = 0;
 
   const pushWithDefault = (row: ParsedRow) => {
     const normalizedBase = normalizeRow(row, warnings);
@@ -275,6 +279,8 @@ export async function normalizeAll(
   if (defaultApplied > 0) {
     logs.push(`[normalize] applied default property to ${defaultApplied} rows`);
   }
+  transactions = rows.filter((row) => !row.passthrough).length;
+  logs.push(`[normalize] created ${transactions} transactions`);
 
-  return { rows, logs, warnings };
+  return { rows, logs, warnings, transactions };
 }

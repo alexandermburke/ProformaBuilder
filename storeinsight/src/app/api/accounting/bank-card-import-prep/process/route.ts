@@ -9,6 +9,7 @@ import { createJob, getJob, updateJob } from "../jobStore";
 
 export const runtime = "nodejs";
 const DIGITS_ONLY = /^\d+$/;
+const isDigits = (value: string) => DIGITS_ONLY.test(value.trim());
 
 type UploadPayload = {
   bank: Buffer;
@@ -18,6 +19,7 @@ type UploadPayload = {
   exceptions?: Buffer | null;
   filenames: Record<string, string>;
   defaultProperty: string;
+  cashAccount: string;
 };
 
 const REQUIRED_FILES = {
@@ -65,7 +67,7 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
 
   try {
     append(["[job] starting Bank & Card Import Prep"], [], "Validate inputs", 5);
-    updateJob(jobId, { status: "running", defaultProperty: payload.defaultProperty });
+    updateJob(jobId, { status: "running", defaultProperty: payload.defaultProperty, cashAccount: payload.cashAccount });
 
     const bankResult = await parseBank(payload.bank);
     append(bankResult.logs, bankResult.warnings, "Parse bank export", 20);
@@ -110,7 +112,8 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
         bank: bankResult.rows.length,
         card: cardResult.rows.length,
         otherBank: otherResult.rows.length,
-        output: validated.rows.length,
+        output: validated.transactions * 2 + validated.passthrough,
+        transactions: validated.transactions,
       },
       outputBuffer: undefined,
       outputFilename: undefined,
@@ -123,8 +126,15 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       return;
     }
 
-    const { buffer, filename } = buildWorkbook(validated.rows);
-    append([`[build] workbook ready (${filename}), rows: ${validated.rows.length}`], [], "Build workbook", 98);
+    const { buffer, filename, emitted } = buildWorkbook(validated.rows, {
+      cashAccount: payload.cashAccount,
+    });
+    append(
+      [`[build] emitted ${emitted} journal rows (cash + offset)`, `[build] workbook ready (${filename})`],
+      [],
+      "Build workbook",
+      98,
+    );
 
     updateJob(jobId, {
       ...baseUpdate,
@@ -136,6 +146,10 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       outputFilename: filename,
       needsReview: false,
       unmappedCount: 0,
+      counts: {
+        ...baseUpdate.counts,
+        output: emitted,
+      },
     });
   } catch (err) {
     const message = (err as Error)?.message ?? "Unknown error";
@@ -148,6 +162,8 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
   const defaultEntry = form.get("defaultProperty");
   const defaultProperty = typeof defaultEntry === "string" ? defaultEntry.trim() : "";
+  const cashEntry = form.get("cashAccount");
+  const cashAccount = typeof cashEntry === "string" ? cashEntry.trim() : "";
 
   const files: Record<string, File | null> = {
     bank: (form.get("bank") as File) ?? null,
@@ -177,6 +193,9 @@ export async function POST(req: NextRequest) {
   if (!defaultProperty) {
     return NextResponse.json({ error: "defaultProperty is required" }, { status: 400 });
   }
+  if (!cashAccount || !isDigits(cashAccount)) {
+    return NextResponse.json({ error: "Valid cashAccount is required (digits only)" }, { status: 400 });
+  }
 
   const job = createJob();
 
@@ -194,6 +213,7 @@ export async function POST(req: NextRequest) {
       exceptions: files.exceptions?.name ?? "",
     },
     defaultProperty,
+    cashAccount,
   };
 
   // Start processing asynchronously

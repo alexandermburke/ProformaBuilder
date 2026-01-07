@@ -18,11 +18,13 @@ export type PrepJob = {
     card: number;
     otherBank: number;
     output: number;
+    transactions: number;
   };
   rows: ValidatedRow[];
   needsReview: boolean;
   unmappedCount: number;
   defaultProperty: string;
+  cashAccount: string;
   errorMessage?: string;
   createdAt: number;
 };
@@ -51,7 +53,8 @@ export function createJob(): PrepJob {
     needsReview: false,
     unmappedCount: 0,
     defaultProperty: "",
-    counts: { bank: 0, card: 0, otherBank: 0, output: 0 },
+    cashAccount: "",
+    counts: { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 },
     createdAt: Date.now(),
   };
   jobs.set(id, job);
