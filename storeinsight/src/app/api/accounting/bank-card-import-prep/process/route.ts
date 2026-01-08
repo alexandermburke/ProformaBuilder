@@ -5,6 +5,7 @@ import { parseCard } from "@/lib/accounting/bankCardImportPrep/parseCard";
 import { parseOtherBank } from "@/lib/accounting/bankCardImportPrep/parseOtherBank";
 import { applyRules, buildRules, parseCodedWorkbook } from "@/lib/accounting/bankCardImportPrep/rulesEngine/learnRules";
 import { validateRows } from "@/lib/accounting/bankCardImportPrep/validate";
+import { buildWorkbook } from "@/lib/accounting/bankCardImportPrep/buildWorkbook";
 import { createJob, getJob, updateJob } from "../jobStore";
 
 export const runtime = "nodejs";
