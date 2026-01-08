@@ -179,7 +179,7 @@ export function buildRules(examples: TrainingExample[]): LearnedRules {
     signatureMap.set(key, meta);
   }
 
-  return { exactMap, signatureMap, cashAccount: null, totalExamples: examples.length };
+  return { exactMap, signatureMap, cashAccount: null, propertyName: null, totalExamples: examples.length };
 }
 
 function canUseSignature(direction: "in" | "out", meta: { total: number; counts: Map<string, number>; dominantAccount: string | null }): boolean {
