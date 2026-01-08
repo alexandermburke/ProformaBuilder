@@ -27,5 +27,11 @@ export async function GET(req: NextRequest) {
     createdAt: job.createdAt,
     needsReview: job.needsReview,
     unmappedCount: job.unmappedCount,
+    templateCashAccount: job.templateCashAccount,
+    templateTxCount: job.templateTxCount,
+    matchedTxCount: job.matchedTxCount,
+    unmatchedSamples: job.unmatchedSamples,
+    strictTemplate: job.strictTemplate,
+    missingCashAccount: job.missingCashAccount,
   });
 }

@@ -5,7 +5,7 @@ import { Copy, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 
-type UploadKey = "bank" | "card" | "otherBank" | "reference" | "exceptions";
+type UploadKey = "bank" | "card" | "otherBank" | "reference" | "exceptions" | "template";
 
 type UploadCard = {
   key: UploadKey;
@@ -65,6 +65,15 @@ const uploadCards: UploadCard[] = [
     accept: ["csv"],
     examples: ["(Optional) Prior-period Exceptions Log.csv"],
   },
+  {
+    key: "template",
+    title: "Coded Template Output (optional)",
+    detail: "Prior exported Bank Deposit Template used for mapping GL + references.",
+    fileTypes: "XLSX",
+    required: false,
+    accept: ["xlsx"],
+    examples: ["2025 1130 Bank Deposit Template.xlsx"],
+  },
 ];
 
 const REQUIRED_KEYS: UploadKey[] = ["bank", "card", "otherBank"];
@@ -75,6 +84,7 @@ const ACCEPT_MAP: Record<UploadKey, string[]> = {
   otherBank: ["xlsx", "csv"],
   reference: ["csv", "xlsx"],
   exceptions: ["csv"],
+  template: ["xlsx"],
 };
 
 type ReviewRow = {
@@ -97,6 +107,7 @@ const emptyUploads = (): Record<UploadKey, { file: File | null; error: string | 
   otherBank: { file: null, error: null },
   reference: { file: null, error: null },
   exceptions: { file: null, error: null },
+  template: { file: null, error: null },
 });
 
 const formatBytes = (size: number): string => {
@@ -139,9 +150,9 @@ export default function BankCardImportPrepPage() {
   const [processing, setProcessing] = useState(false);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [copyActive, setCopyActive] = useState(false);
-  const [defaultProperty, setDefaultProperty] = useState("");
-  const [cashAccount, setCashAccount] = useState("");
   const [needsReview, setNeedsReview] = useState(false);
+  const [missingCashAccount, setMissingCashAccount] = useState(false);
+  const [cashAccount, setCashAccount] = useState("");
   const [unmappedRows, setUnmappedRows] = useState<ReviewRow[]>([]);
   const [unmappedCount, setUnmappedCount] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -151,6 +162,17 @@ export default function BankCardImportPrepPage() {
   const [defaultOffsetAccount, setDefaultOffsetAccount] = useState("");
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showAdvancedUploads, setShowAdvancedUploads] = useState(false);
+  const [templateStats, setTemplateStats] = useState<{
+    templateTxCount: number;
+    matchedTxCount: number;
+    unmatchedSamples: Array<{ journalDate: string | null; amount: number; notes: string | null }>;
+    templateCashAccount: string | null;
+  }>({
+    templateTxCount: 0,
+    matchedTxCount: 0,
+    unmatchedSamples: [],
+    templateCashAccount: null,
+  });
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const downloadTriggeredRef = useRef(false);
   const reviewModalRef = useRef<HTMLDivElement | null>(null);
@@ -161,10 +183,7 @@ export default function BankCardImportPrepPage() {
     () => REQUIRED_KEYS.every((key) => uploads[key].file && !uploads[key].error),
     [uploads],
   );
-  const canProcess = useMemo(
-    () => filesReady && Boolean(defaultProperty.trim()) && Boolean(cashAccount.trim()) && DIGITS_ONLY.test(cashAccount.trim()),
-    [cashAccount, defaultProperty, filesReady],
-  );
+  const canProcess = useMemo(() => filesReady, [filesReady]);
 
   useEffect(() => {
     if (processing) return;
@@ -244,7 +263,11 @@ export default function BankCardImportPrepPage() {
       const res = await fetch(`/api/accounting/bank-card-import-prep/download?jobId=${id}`, {
         method: "GET",
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Download failed", { status: res.status, statusText: res.statusText, body: text });
+        throw new Error(text || "Unable to download file.");
+      }
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename=\"(.+)\"/);
@@ -261,6 +284,7 @@ export default function BankCardImportPrepPage() {
       setLastDownloadName(filename);
       setLastDownloadAt(new Date().toLocaleString());
     } catch (err) {
+      console.error("Download error", err);
       setError((err as Error)?.message ?? "Unable to download file.");
       setStatus("error");
     }
@@ -327,7 +351,7 @@ export default function BankCardImportPrepPage() {
   };
 
   const fetchStatus = async (id: string, options?: { autoDownload?: boolean }) => {
-    const autoDownload = options?.autoDownload ?? true;
+    const autoDownload = options?.autoDownload ?? false;
     try {
       const res = await fetch(`/api/accounting/bank-card-import-prep/status?jobId=${id}`, {
         cache: "no-store",
@@ -345,8 +369,13 @@ export default function BankCardImportPrepPage() {
         needsReview?: boolean;
         unmappedCount?: number;
         counts?: { bank: number; card: number; otherBank: number; output: number; transactions?: number };
+        templateTxCount?: number;
+        matchedTxCount?: number;
+        unmatchedSamples?: Array<{ journalDate: string | null; amount: number; notes: string | null }>;
+        templateCashAccount?: string | null;
         outputFilename?: string;
         errorMessage?: string;
+        missingCashAccount?: boolean;
       };
 
       setPercent(data.percent ?? 0);
@@ -355,6 +384,8 @@ export default function BankCardImportPrepPage() {
       setWarnings(data.warnings ?? []);
       setDownloadReady(Boolean(data.downloadReady));
       setNeedsReview(Boolean(data.needsReview));
+      const isMissingCash = Boolean(data.missingCashAccount);
+      setMissingCashAccount(isMissingCash);
       setUnmappedCount(data.unmappedCount ?? 0);
       const receivedCounts = data.counts ?? { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 };
       setCounts({
@@ -363,6 +394,12 @@ export default function BankCardImportPrepPage() {
         otherBank: receivedCounts.otherBank ?? 0,
         output: receivedCounts.output ?? 0,
         transactions: receivedCounts.transactions ?? 0,
+      });
+      setTemplateStats({
+        templateTxCount: data.templateTxCount ?? 0,
+        matchedTxCount: data.matchedTxCount ?? 0,
+        unmatchedSamples: data.unmatchedSamples ?? [],
+        templateCashAccount: data.templateCashAccount ?? null,
       });
 
       if (data.status === "error") {
@@ -374,7 +411,7 @@ export default function BankCardImportPrepPage() {
         setProcessing(false);
         setStatus("ready");
         if (pollRef.current) clearInterval(pollRef.current);
-        if (id) fetchReviewRows(id);
+        if (id && !isMissingCash) fetchReviewRows(id);
       } else if (data.status === "done" && data.downloadReady) {
         setProcessing(false);
         setStatus("done");
@@ -418,6 +455,10 @@ export default function BankCardImportPrepPage() {
       `Other bank rows: ${counts.otherBank}`,
       `Exported rows: ${counts.output}`,
     ];
+    if (templateStats.templateTxCount > 0) {
+      header.push(`Template transactions: ${templateStats.templateTxCount}`);
+      header.push(`Template matched: ${templateStats.matchedTxCount}`);
+    }
     const warnSection = warnings.length > 0 ? ["Warnings", ...warnings] : ["Warnings", "None"];
     const logSection = logs.length > 0 ? ["Logs", ...logs] : ["Logs", "None"];
     return [...header, "", ...warnSection, "", ...logSection].join("\n");
@@ -427,11 +468,18 @@ export default function BankCardImportPrepPage() {
     setError(null);
     setUnmappedError(null);
     setNeedsReview(false);
+    setMissingCashAccount(false);
     setUnmappedRows([]);
     setUnmappedCount(0);
     setDefaultOffsetAccount("");
     setReviewToast(null);
     setDownloadReady(false);
+    setTemplateStats({
+      templateTxCount: 0,
+      matchedTxCount: 0,
+      unmatchedSamples: [],
+      templateCashAccount: null,
+    });
     setFinalizing(false);
     setShowReviewModal(false);
     hasOpenedReviewRef.current = false;
@@ -439,14 +487,6 @@ export default function BankCardImportPrepPage() {
     setLastDownloadAt(null);
     if (!filesReady) {
       setError("Select all required files before processing.");
-      return;
-    }
-    if (!cashAccount.trim() || !DIGITS_ONLY.test(cashAccount.trim())) {
-      setError("Cash Account (Bank GL) is required and must be digits only.");
-      return;
-    }
-    if (!defaultProperty.trim()) {
-      setError("Default Property is required.");
       return;
     }
     setProcessing(true);
@@ -459,12 +499,16 @@ export default function BankCardImportPrepPage() {
     downloadTriggeredRef.current = false;
 
     const formData = new FormData();
-    formData.append("defaultProperty", defaultProperty.trim());
-    formData.append("cashAccount", cashAccount.trim());
     (Object.keys(uploads) as UploadKey[]).forEach((key) => {
       const file = uploads[key].file;
-      if (file) formData.append(key, file);
+      if (file) {
+        const formKey = key === "template" ? "codedTemplateFile" : key;
+        formData.append(formKey, file);
+      }
     });
+    if (cashAccount.trim()) {
+      formData.append("cashAccount", cashAccount.trim());
+    }
 
     try {
       const res = await fetch("/api/accounting/bank-card-import-prep/process", {
@@ -513,13 +557,18 @@ export default function BankCardImportPrepPage() {
     [unmappedRows],
   );
   const issuesRemainingText =
-    reviewInvalidCount === 0 ? "0 issues remaining" : `${reviewInvalidCount} row(s) need fixes`;
+    missingCashAccount
+      ? "Add cash account before export"
+      : reviewInvalidCount === 0
+        ? "0 issues remaining"
+        : `${reviewInvalidCount} row(s) need fixes`;
   const canGenerateDownload =
     unmappedRows.length > 0 &&
     reviewInvalidCount === 0 &&
     !processing &&
     !finalizing &&
-    Boolean(jobId);
+    Boolean(jobId) &&
+    !missingCashAccount;
 
   const applyDefaultAccount = () => {
     const trimmed = defaultOffsetAccount.trim();
@@ -540,7 +589,15 @@ export default function BankCardImportPrepPage() {
 
   const handleGenerateDownload = async () => {
     if (!jobId) {
+      console.error("Generate download blocked: missing jobId");
       setUnmappedError("Missing job ID. Please re-run processing.");
+      return;
+    }
+    if (missingCashAccount) {
+      console.error("Generate download blocked: missing cash account");
+      setUnmappedError(
+        "Missing cash account. Enter a cash account override, upload a coded template, or configure a server default before downloading.",
+      );
       return;
     }
     setUnmappedError(null);
@@ -565,6 +622,7 @@ export default function BankCardImportPrepPage() {
       });
       const responseText = res.ok ? "" : await res.text();
       if (!res.ok) {
+        console.error("Generate download failed", { status: res.status, statusText: res.statusText, body: responseText });
         throw new Error(responseText || "Unable to generate download.");
       }
       const data = (await res.json()) as {
@@ -594,11 +652,20 @@ export default function BankCardImportPrepPage() {
       fetchStatus(jobId, { autoDownload: false });
       setUnmappedRows([]);
     } catch (err) {
+      console.error("Generate download error", err);
       setProcessing(false);
       setUnmappedError((err as Error)?.message ?? "Unable to generate download.");
     } finally {
       setFinalizing(false);
     }
+  };
+
+  const openReviewModal = () => {
+    if (!unmappedRows.length && jobId) {
+      fetchReviewRows(jobId);
+    }
+    hasOpenedReviewRef.current = true;
+    setShowReviewModal(true);
   };
 
   const statusLabel =
@@ -624,7 +691,12 @@ export default function BankCardImportPrepPage() {
             ? "danger"
             : "neutral";
   const progressVisible = status === "processing" || status === "done" || percent > 0;
-  const canDownloadAgain = downloadReady && status === "done";
+  const reviewRowCount = unmappedCount || unmappedRows.length;
+  const hasInvalidRows = needsReview || reviewRowCount > 0;
+  const needsCashOnly = missingCashAccount && reviewRowCount === 0;
+  const canDownloadNow = downloadReady && !hasInvalidRows && !missingCashAccount && Boolean(jobId);
+  const reviewButtonLabel = reviewRowCount > 0 ? `Fix ${reviewRowCount} rows` : "Fix unmapped rows";
+  const downloadLabel = lastDownloadName ? "Download again" : "Download";
 
   return (
     <div className="bank-card-page owner-reports-page relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
@@ -766,7 +838,7 @@ export default function BankCardImportPrepPage() {
                 aria-expanded={showAdvancedUploads}
               >
                 <span>Advanced (optional)</span>
-                <span className="text-[color:var(--text-secondary)]">{showAdvancedUploads ? "−" : "+"}</span>
+                <span className="text-[color:var(--text-secondary)]">{showAdvancedUploads ? "-" : "+"}</span>
               </button>
               {showAdvancedUploads && (
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -893,12 +965,33 @@ export default function BankCardImportPrepPage() {
                 <p>Transactions: {counts.transactions}</p>
                 <p>Exported journal lines: {counts.output}</p>
               </div>
+              {templateStats.templateTxCount > 0 && (
+                <div className="rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
+                  <p className="font-semibold text-[color:var(--text-primary)]">Template mapping</p>
+                  <p>Template transactions: {templateStats.templateTxCount}</p>
+                  <p>Matched: {templateStats.matchedTxCount}</p>
+                  <p>Unmatched: {Math.max(templateStats.templateTxCount - templateStats.matchedTxCount, 0)}</p>
+                  {templateStats.templateCashAccount && <p>Template cash account: {templateStats.templateCashAccount}</p>}
+                  {templateStats.unmatchedSamples.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      <p className="text-[color:var(--text-secondary)]">Examples needing review:</p>
+                      <ul className="list-disc space-y-0.5 pl-4">
+                        {templateStats.unmatchedSamples.slice(0, 3).map((sample, idx) => (
+                          <li key={`${sample.notes ?? "sample"}-${idx}`}>
+                            {formatDateValue(sample.journalDate) ?? "n/a"} — {sample.amount} — {sample.notes ?? "no notes"}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
               {warnings.length > 0 && (
                 <div className="space-y-2 rounded-xl border border-[#FACC15]/50 bg-[#FEF9C3] p-3 text-[color:var(--text-primary)]">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#92400E]">Warnings</p>
                   <ul className="space-y-1 text-xs text-[#92400E]">
                     {warnings.map((warn) => (
-                      <li key={warn}>• {warn}</li>
+                      <li key={warn}>- {warn}</li>
                     ))}
                   </ul>
                 </div>
@@ -909,7 +1002,7 @@ export default function BankCardImportPrepPage() {
                   {logs.length === 0 ? (
                     <p className="text-[color:var(--text-muted)]">Logs will appear after processing starts.</p>
                   ) : (
-                    logs.map((log, idx) => <p key={`${log}-${idx}`}>• {log}</p>)
+                    logs.map((log, idx) => <p key={`${log}-${idx}`}>- {log}</p>)
                   )}
                 </div>
               </div>
@@ -917,80 +1010,17 @@ export default function BankCardImportPrepPage() {
             <div className="ios-card ios-animate-up space-y-4 p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Outputs</p>
-                  <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">Process &amp; download</h3>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Action</p>
+                  <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">Process &amp; export</h3>
                   <p className="text-sm text-[color:var(--text-secondary)]">
-                    Upload required spreadsheets, process, and download the consolidated Yardi-ready workbook.
+                    Upload, process, fix unmapped rows if needed, then download.
                   </p>
                 </div>
+                <span className="owner-status-badge" data-tone={statusTone}>
+                  {statusLabel}
+                </span>
               </div>
-              <div className="flex flex-col gap-4">
-                <div className="space-y-2">
-                  <label
-                    htmlFor="default-property"
-                    className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
-                  >
-                    Default Property *
-                  </label>
-                  <input
-                    id="default-property"
-                    name="default-property"
-                    className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
-                    placeholder="e.g., 555 Pittman Road"
-                    value={defaultProperty}
-                    onChange={(event) => setDefaultProperty(event.target.value)}
-                    disabled={processing}
-                    required
-                  />
-                  <p className="text-xs text-[color:var(--text-secondary)]">
-                    Applied whenever Property_Name is blank so Yardi has a property on every row.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="cash-account"
-                    className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
-                  >
-                    Cash Account (Bank GL) *
-                  </label>
-                  <input
-                    id="cash-account"
-                    name="cash-account"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
-                    placeholder="e.g., 1110"
-                    value={cashAccount}
-                    onChange={(event) => setCashAccount(event.target.value.replace(/[^0-9]/g, ""))}
-                    disabled={processing}
-                    required
-                  />
-                  <p className="text-xs text-[color:var(--text-secondary)]">
-                    Bank/cash GL account used for the cash-side line (example: 1110).
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                  <button
-                    type="button"
-                    className="ios-button px-5 py-2 text-sm"
-                    data-variant="primary"
-                    onClick={handleProcess}
-                    disabled={!canProcess || processing}
-                  >
-                    {processing ? "Processing..." : "Process"}
-                  </button>
-                  <button
-                    type="button"
-                    className="ios-button px-4 py-2 text-sm"
-                    data-variant="secondary"
-                    onClick={() => jobId && triggerDownload(jobId)}
-                    disabled={!canDownloadAgain}
-                    aria-disabled={!canDownloadAgain}
-                  >
-                    Download again
-                  </button>
-                </div>
-              </div>
+
               {progressVisible && (
                 <div className="space-y-2">
                   <div className="relative h-4 rounded-full border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 shadow-inner">
@@ -1005,42 +1035,93 @@ export default function BankCardImportPrepPage() {
                   </div>
                 </div>
               )}
-              {(needsReview || (unmappedRows.length > 0 && !downloadReady)) && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 px-4 py-3">
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
-                      Review
-                    </p>
-                    <p className="text-sm text-[color:var(--text-secondary)]">
-                      {needsReview ? "Resolve unmapped rows before download." : "Edit unmapped rows as needed."}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="ios-pill text-[10px]" data-tone={needsReview ? "warning" : "neutral"}>
-                      {unmappedCount || unmappedRows.length} rows
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="cash-account-override"
+                  className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
+                >
+                  Cash account override (optional)
+                </label>
+                <input
+                  id="cash-account-override"
+                  name="cash-account-override"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
+                  placeholder="e.g., 1110"
+                  value={cashAccount}
+                  onChange={(event) => setCashAccount(event.target.value.replace(/[^0-9]/g, ""))}
+                  disabled={processing}
+                />
+                <p className="text-xs text-[color:var(--text-secondary)]">
+                  Sets the cash-side GL account for this run. Re-process to apply changes.
+                </p>
+              </div>
+
+              {reviewRowCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 px-4 py-3">
+                  <span className="ios-pill text-[10px]" data-tone="warning">
+                    {`${reviewRowCount} rows need fixes`}
+                  </span>
+                  {reviewInvalidCount > 0 && (
+                    <span className="ios-pill text-[10px]" data-tone="danger">
+                      {reviewInvalidCount} invalid
                     </span>
-                    {reviewInvalidCount > 0 && (
-                      <span className="ios-pill text-[10px]" data-tone="danger">
-                        {reviewInvalidCount} invalid
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className="ios-button px-4 py-2 text-sm"
-                      data-variant="primary"
-                      onClick={() => {
-                        if (!unmappedRows.length && jobId) {
-                          fetchReviewRows(jobId);
-                        }
-                        hasOpenedReviewRef.current = true;
-                        setShowReviewModal(true);
-                      }}
-                    >
-                      Review unmapped rows ({unmappedCount || unmappedRows.length})
-                    </button>
-                  </div>
+                  )}
                 </div>
               )}
+
+              {missingCashAccount && (
+                <div className="rounded-lg border border-[#FEE2E2] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">
+                  Cash account not detected. Enter a cash account override, upload a coded template, or set a server default.
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {reviewRowCount > 0 ? (
+                  <button
+                    type="button"
+                    className="ios-button px-5 py-2 text-sm"
+                    data-variant="primary"
+                    onClick={openReviewModal}
+                    disabled={processing || reviewLoading || !jobId}
+                  >
+                    {reviewButtonLabel}
+                  </button>
+                ) : needsCashOnly ? (
+                  <button
+                    type="button"
+                    className="ios-button px-5 py-2 text-sm"
+                    data-variant="primary"
+                    onClick={handleProcess}
+                    disabled={!canProcess || processing}
+                  >
+                    Process after adding cash account
+                  </button>
+                ) : canDownloadNow ? (
+                  <button
+                    type="button"
+                    className="ios-button px-5 py-2 text-sm"
+                    data-variant="primary"
+                    onClick={() => jobId && triggerDownload(jobId)}
+                    disabled={!jobId || processing}
+                  >
+                    {downloadLabel}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="ios-button px-5 py-2 text-sm"
+                    data-variant="primary"
+                    onClick={handleProcess}
+                    disabled={!canProcess || processing}
+                  >
+                    {processing ? "Processing..." : "Process"}
+                  </button>
+                )}
+              </div>
+
               {lastDownloadName && (
                 <div className="rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 px-3 py-2 text-xs text-[color:var(--text-secondary)]">
                   <p className="font-semibold text-[color:var(--text-primary)]">{lastDownloadName}</p>
@@ -1187,19 +1268,19 @@ export default function BankCardImportPrepPage() {
                             <tr key={row.rowNumber} className="divide-x divide-[rgba(148,163,255,0.15)]">
                               <td className="px-3 py-2 font-semibold text-[color:var(--text-primary)]">{row.source}</td>
                               <td className="px-3 py-2 text-[color:var(--text-secondary)]">
-                                {row.journalDate || "—"}
+                                {row.journalDate || "-"}
                               </td>
                               <td className="px-3 py-2 text-[color:var(--text-secondary)]">
-                                {row.notes || "—"}
+                                {row.notes || "-"}
                               </td>
                               <td className="px-3 py-2 text-[color:var(--text-secondary)]">
-                                {row.detailNotes || "—"}
+                                {row.detailNotes || "-"}
                               </td>
                               <td className="px-3 py-2 text-right text-[color:var(--text-primary)]">
-                                {row.debit != null ? row.debit.toLocaleString() : "—"}
+                                {row.debit != null ? row.debit.toLocaleString() : "-"}
                               </td>
                               <td className="px-3 py-2 text-right text-[color:var(--text-primary)]">
-                                {row.credit != null ? row.credit.toLocaleString() : "—"}
+                                {row.credit != null ? row.credit.toLocaleString() : "-"}
                               </td>
                               <td className="px-3 py-2">
                                 <div className="space-y-1">
@@ -1291,3 +1372,8 @@ export default function BankCardImportPrepPage() {
     </div>
   );
 }
+
+
+
+
+

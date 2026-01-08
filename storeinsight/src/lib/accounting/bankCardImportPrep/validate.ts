@@ -24,6 +24,7 @@ export type ValidateResult = {
   warnings: string[];
   transactions: number;
   passthrough: number;
+  unmatchedSamples?: Array<{ journalDate: string | null; amount: number; notes: string | null }>;
 };
 
 function asDate(value: Date | string | null): Date | null {
@@ -114,7 +115,7 @@ export function validateRows(rows: NormalizedRow[]): ValidateResult {
     if (rowsWithIssue.length === 0) return;
     const sample = rowsWithIssue.slice(0, 5).join(", ");
     const suffix = rowsWithIssue.length > 5 ? `, ... (+${rowsWithIssue.length - 5})` : "";
-    warnings.push(`${label}: ${rowsWithIssue.length} rows (e.g., #${sample}${suffix})${extra ? ` — ${extra}` : ""}`);
+    warnings.push(`${label}: ${rowsWithIssue.length} rows (e.g., #${sample}${suffix})${extra ? ` - ${extra}` : ""}`);
   };
 
   summarize("Missing or invalid JournalDate", missingJournal);

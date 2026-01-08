@@ -25,6 +25,12 @@ export type PrepJob = {
   unmappedCount: number;
   defaultProperty: string;
   cashAccount: string;
+  templateCashAccount?: string;
+  templateTxCount?: number;
+  matchedTxCount?: number;
+  unmatchedSamples?: Array<{ journalDate: string | null; amount: number; notes: string | null }>;
+  strictTemplate?: boolean;
+  missingCashAccount?: boolean;
   errorMessage?: string;
   createdAt: number;
 };
@@ -56,6 +62,7 @@ export function createJob(): PrepJob {
     cashAccount: "",
     counts: { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 },
     createdAt: Date.now(),
+    missingCashAccount: false,
   };
   jobs.set(id, job);
   return job;

@@ -23,13 +23,16 @@ const HEADERS = [
 ] as const;
 
 type BuildOptions = {
-  cashAccount: string;
+  cashAccount?: string;
   referenceFallback?: string;
 };
 
 export function buildWorkbook(rows: ValidatedRow[], options: BuildOptions): BuildResult {
   const aoa: Array<Array<string | number | Date | null>> = [HEADERS as unknown as Array<string>];
-  const cashAccount = options.cashAccount.trim();
+  const cashAccount = options.cashAccount?.trim() ?? "";
+  if (!cashAccount) {
+    throw new Error("Missing cash account for cash-side journal lines");
+  }
   let emitted = 0;
   const cashRows: ValidatedRow[] = [];
   const offsetRows: ValidatedRow[] = [];

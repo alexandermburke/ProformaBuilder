@@ -43,9 +43,6 @@ export async function POST(req: NextRequest) {
   if (!job.rows || job.rows.length === 0) {
     return NextResponse.json({ error: "Job rows not available" }, { status: 409 });
   }
-  if (!job.cashAccount) {
-    return NextResponse.json({ error: "Missing cash account" }, { status: 400 });
-  }
 
   const updatedRows = job.rows.map((row) => ({ ...row }));
 
@@ -94,7 +91,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { buffer, filename, emitted } = buildWorkbook(updatedRows, { cashAccount: job.cashAccount });
+  const cashAccount = job.cashAccount || job.templateCashAccount || "";
+  if (!cashAccount) {
+    return NextResponse.json({ error: "Missing cash account" }, { status: 400 });
+  }
+
+  const { buffer, filename, emitted } = buildWorkbook(updatedRows, { cashAccount });
   updateJob(jobId, {
     rows: updatedRows,
     downloadReady: true,
