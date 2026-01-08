@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildWorkbook } from "@/lib/accounting/bankCardImportPrep/buildWorkbook";
-import { getJob, updateJob } from "../jobStore";
+import { getJob, updateJob, SOURCE_KEYS, type SourceKey } from "../jobStore";
 
 export const runtime = "nodejs";
 
@@ -21,30 +21,34 @@ type ReviewUpdate = {
 };
 
 export async function POST(req: NextRequest) {
-  let body: { jobId?: string; updates?: ReviewUpdate[] };
+  let body: { jobId?: string; source?: SourceKey; updates?: ReviewUpdate[] };
   try {
-    body = (await req.json()) as { jobId?: string; updates?: ReviewUpdate[] };
+    body = (await req.json()) as { jobId?: string; source?: SourceKey; updates?: ReviewUpdate[] };
   } catch {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 });
   }
 
-  const { jobId, updates } = body ?? {};
+  const { jobId, updates, source } = body ?? {};
   if (!jobId) {
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }
   if (!Array.isArray(updates)) {
     return NextResponse.json({ error: "updates array is required" }, { status: 400 });
   }
+  if (!source || !SOURCE_KEYS.includes(source)) {
+    return NextResponse.json({ error: "source is required (bank, card, otherBank)" }, { status: 400 });
+  }
 
   const job = getJob(jobId);
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
-  if (!job.rows || job.rows.length === 0) {
+  const sourceState = job.sources[source];
+  if (!sourceState || !sourceState.rows || sourceState.rows.length === 0) {
     return NextResponse.json({ error: "Job rows not available" }, { status: 409 });
   }
 
-  const updatedRows = job.rows.map((row) => ({ ...row }));
+  const updatedRows = sourceState.rows.map((row) => ({ ...row }));
 
   for (const update of updates) {
     const rowNumber = Number(update?.rowNumber);
@@ -77,10 +81,27 @@ export async function POST(req: NextRequest) {
   );
 
   if (unmappedCount > 0) {
-    updateJob(jobId, {
+    const review = {
+      missingAccount: updatedRows.filter((row) => !row.Account || !row.Account.trim()).length,
+      missingProperty: updatedRows.filter((row) => !row.Property_Name || !row.Property_Name.trim()).length,
+      invalidAccount: updatedRows.filter((row) => row.Account && !DIGITS_ONLY.test(row.Account.trim())).length,
+      unmapped: unmappedCount,
+    };
+    const updatedSource = {
+      ...sourceState,
       rows: updatedRows,
+      review,
       needsReview: true,
-      unmappedCount,
+      downloadReady: false,
+      outputBuffer: undefined,
+      outputFilename: undefined,
+    };
+    const updatedSources = { ...job.sources, [source]: updatedSource };
+    const totalUnmapped = SOURCE_KEYS.reduce((total, key) => total + updatedSources[key].review.unmapped, 0);
+    updateJob(jobId, {
+      sources: updatedSources,
+      needsReview: true,
+      unmappedCount: totalUnmapped,
       downloadReady: false,
       outputBuffer: undefined,
       outputFilename: undefined,
@@ -96,28 +117,60 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing cash account" }, { status: 400 });
   }
 
-  const { buffer, filename, emitted } = buildWorkbook(updatedRows, { cashAccount });
-  updateJob(jobId, {
+  const exportTimestamp = job.exportTimestamp ?? Date.now();
+  const filename = `yardi_import_${source === "otherBank" ? "otherbank" : source}_${exportTimestamp}.xlsx`;
+  const { buffer, emitted } = buildWorkbook(updatedRows, { cashAccount, filename });
+  const updatedSource = {
+    ...sourceState,
     rows: updatedRows,
     downloadReady: true,
     outputBuffer: buffer,
     outputFilename: filename,
+    needsReview: false,
+    review: {
+      missingAccount: 0,
+      missingProperty: 0,
+      invalidAccount: 0,
+      unmapped: 0,
+    },
+    counts: {
+      ...sourceState.counts,
+      output: emitted,
+    },
+  };
+  const updatedSources = { ...job.sources, [source]: updatedSource };
+  const allReady = SOURCE_KEYS.every((key) => updatedSources[key].downloadReady);
+  const totalOutput = SOURCE_KEYS.reduce((total, key) => total + updatedSources[key].counts.output, 0);
+  const totalTransactions = SOURCE_KEYS.reduce((total, key) => total + updatedSources[key].counts.transactions, 0);
+  const totalUnmapped = SOURCE_KEYS.reduce((total, key) => total + updatedSources[key].review.unmapped, 0);
+  const zipName = `yardi_import_${exportTimestamp}.zip`;
+
+  updateJob(jobId, {
+    sources: updatedSources,
+    downloadReady: allReady,
+    outputFilename: allReady ? zipName : job.outputFilename,
     status: "done",
     step: "Complete",
     percent: 100,
-    needsReview: false,
-    unmappedCount: 0,
-    logs: [...job.logs, `[build] emitted ${emitted} journal rows (cash + offset)`, `[build] workbook ready (${filename})`],
+    needsReview: totalUnmapped > 0,
+    unmappedCount: totalUnmapped,
+    logs: [
+      ...job.logs,
+      `[build] ${source.toUpperCase()} emitted ${emitted} journal rows (cash + offset)`,
+      `[build] ${source.toUpperCase()} workbook ready (${filename})`,
+    ],
     counts: {
       ...job.counts,
-      output: emitted,
+      output: totalOutput,
+      transactions: totalTransactions,
     },
   });
 
   return NextResponse.json({
-    downloadReady: true,
+    downloadReady: allReady,
     filename,
-    needsReview: false,
-    unmappedCount: 0,
+    needsReview: totalUnmapped > 0,
+    unmappedCount: totalUnmapped,
+    source,
   });
 }

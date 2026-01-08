@@ -216,7 +216,9 @@ export function applyRules(
     if (!amount) return row;
     const direction = row.credit && row.credit > 0 ? "in" : "out";
     const date = toDateOnly(row.journalDate);
-    const merchantNorm = normalizeText(`${row.notes ?? ""} ${row.detailNotes ?? ""}`);
+    const rawNotes = row.rawNotes ?? row.notes;
+    const rawDetailNotes = row.rawDetailNotes ?? row.detailNotes;
+    const merchantNorm = normalizeText(`${rawNotes ?? ""} ${rawDetailNotes ?? ""}`);
     const signature = buildSignature(merchantNorm);
 
     const exactKey = makeExactKey({ date, amount, direction, merchantNorm });

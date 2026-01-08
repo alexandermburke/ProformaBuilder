@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { normalizeAll } from "@/lib/accounting/bankCardImportPrep/normalize";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { normalizeSource, type NormalizedRow } from "@/lib/accounting/bankCardImportPrep/normalize";
 import { parseBank } from "@/lib/accounting/bankCardImportPrep/parseBank";
 import { parseCard } from "@/lib/accounting/bankCardImportPrep/parseCard";
 import { parseOtherBank } from "@/lib/accounting/bankCardImportPrep/parseOtherBank";
+import type { ParseResult, ParsedRow } from "@/lib/accounting/bankCardImportPrep/parseShared";
 import { applyRules, buildRules, parseCodedWorkbook } from "@/lib/accounting/bankCardImportPrep/rulesEngine/learnRules";
-import { validateRows } from "@/lib/accounting/bankCardImportPrep/validate";
+import { validateRows, type ValidatedRow } from "@/lib/accounting/bankCardImportPrep/validate";
 import { buildWorkbook } from "@/lib/accounting/bankCardImportPrep/buildWorkbook";
-import { createJob, getJob, updateJob } from "../jobStore";
+import { createJob, getJob, updateJob, SOURCE_KEYS, type SourceKey, type SourceSummary } from "../jobStore";
 
 export const runtime = "nodejs";
 const DIGITS_ONLY = /^\d+$/;
@@ -14,6 +15,17 @@ const envDefaultCashAccount =
   process.env.BANK_IMPORT_DEFAULT_CASH_ACCOUNT?.trim() ||
   process.env.DEFAULT_CASH_ACCOUNT?.trim() ||
   "";
+const BILL_PAY_PATTERNS = [/^Draft\b/i, /Withdrawal\s+STORE[\s\W]*MANAGEMENT/i, /STORE[\s\W]*MANAGEMENT/i];
+const SOURCE_LABELS: Record<SourceKey, string> = {
+  bank: "Bank",
+  card: "Credit Card",
+  otherBank: "Other Bank Activity",
+};
+const SOURCE_REFERENCE_PREFIX: Record<SourceKey, string> = {
+  bank: "Bank Import",
+  card: "Credit Card Import",
+  otherBank: "Other Bank Activity",
+};
 
 type UploadPayload = {
   bank: Buffer;
@@ -50,6 +62,20 @@ function isAllowed(name: string | undefined, allowed: readonly string[]): boolea
   return allowed.includes(ext);
 }
 
+function isBillPayRow(row: ParsedRow): boolean {
+  const raw = row.raw ?? {};
+  const description = String((raw as Record<string, unknown>).description ?? "");
+  const memo = String((raw as Record<string, unknown>).memo ?? "");
+  const combined = `${description} ${memo}`.trim();
+  return BILL_PAY_PATTERNS.some((pattern) => pattern.test(description) || pattern.test(memo) || pattern.test(combined));
+}
+
+function filterBankBillPay(result: ParseResult): { result: ParseResult; removed: number } {
+  const filteredRows = result.rows.filter((row) => !isBillPayRow(row));
+  const removed = result.rows.length - filteredRows.length;
+  return { result: { ...result, rows: filteredRows }, removed };
+}
+
 async function readBlob(blob: Blob | null): Promise<Buffer | null> {
   if (!blob) return null;
   const arrayBuffer = await blob.arrayBuffer();
@@ -67,19 +93,30 @@ function formatTenantDepositReference(postMonth: string | null, journalDate: Dat
   return `Tenant Deposits ${month}.${year}`;
 }
 
-type NormalizeAllResult = Awaited<ReturnType<typeof normalizeAll>>;
-
-function applyTenantDepositRule(rows: NormalizeAllResult["rows"]) {
+function applyTenantDepositRule(rows: NormalizedRow[]) {
   const tenantPattern = /^deposit\s+tenant/i;
+  const tenantNotes = "Deposit TENANT INC";
   return rows.map((row) => {
     if (!row.notes || !tenantPattern.test(row.notes.trim())) return row;
     const ref = formatTenantDepositReference(row.postMonth, row.journalDate) || row.reference || row.detailNotes;
     return {
       ...row,
       account: "4401",
+      notes: tenantNotes,
       reference: ref,
-      detailNotes: ref,
+      detailNotes: tenantNotes,
     };
+  });
+}
+
+function applySourceReference(rows: NormalizedRow[], sourceKey: SourceKey): NormalizedRow[] {
+  const prefix = SOURCE_REFERENCE_PREFIX[sourceKey];
+  return rows.map((row) => {
+    const existing = row.reference?.trim();
+    if (existing) return row;
+    const postMonth = row.postMonth?.trim();
+    const suffix = postMonth ? ` ${postMonth}` : "";
+    return { ...row, reference: `${prefix}${suffix}`.trim() };
   });
 }
 
@@ -100,10 +137,12 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
 
   try {
     append(["[job] starting Bank & Card Import Prep"], [], "Validate inputs", 5);
+    const exportTimestamp = Date.now();
     updateJob(jobId, {
       status: "running",
       defaultProperty: payload.defaultProperty,
       cashAccount: payload.cashAccount ?? "",
+      exportTimestamp,
     });
 
     let templateCashAccount: string | null = null;
@@ -141,8 +180,13 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
         15,
       );
     }
-    const bankResult = await parseBank(payload.bank);
-    append(bankResult.logs, bankResult.warnings, "Parse bank export", 20);
+    const parsedBank = await parseBank(payload.bank);
+    append(parsedBank.logs, parsedBank.warnings, "Parse bank export", 20);
+    const { result: bankResult, removed: billPayRemoved } = filterBankBillPay(parsedBank);
+    append(
+      [`[filter] removed ${billPayRemoved} bill pay transactions (Draft/Withdrawal STORE MANAGEMENT) from bank source`],
+      [],
+    );
 
     const cardResult = await parseCard(payload.card);
     append(cardResult.logs, cardResult.warnings, "Parse card export", 40);
@@ -157,24 +201,25 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       append([`[exceptions] received (${payload.filenames.exceptions || "exceptions"})`]);
     }
 
-    const normalized = await normalizeAll(bankResult, cardResult, otherResult, "");
-    append(normalized.logs, normalized.warnings, "Normalize & map to Yardi", 65);
+    const bankNormalized = normalizeSource(bankResult.rows, "");
+    const cardNormalized = normalizeSource(cardResult.rows, "");
+    const otherNormalized = normalizeSource(otherResult.rows, "");
+    append(
+      [...bankNormalized.logs, ...cardNormalized.logs, ...otherNormalized.logs],
+      [...bankNormalized.warnings, ...cardNormalized.warnings, ...otherNormalized.warnings],
+      "Normalize & map to Yardi",
+      65,
+    );
 
     const resolvedCashAccount = payload.cashAccount?.trim() || templateCashAccount || envDefaultCashAccount;
     const missingCashAccount = !resolvedCashAccount;
 
     let otherBankDropped = 0;
     let otherBankKept = 0;
-    const filteredRows: typeof normalized.rows = [];
-    normalized.rows.forEach((row) => {
-      if (row.source !== "other-bank") {
-        filteredRows.push(row);
-        return;
-      }
+    const otherBankFiltered = otherNormalized.rows.filter((row) => {
       if (!resolvedCashAccount) {
         otherBankKept += 1;
-        filteredRows.push(row);
-        return;
+        return true;
       }
       const account = row.account?.trim() ?? "";
       const debit = row.debit ?? 0;
@@ -186,21 +231,26 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
         ((creditPositive && !debitPositive) || (debitPositive && !creditPositive));
       if (isCashSide) {
         otherBankDropped += 1;
-        return;
+        return false;
       }
       otherBankKept += 1;
-      filteredRows.push(row);
+      return true;
     });
 
     if (resolvedCashAccount) {
       append([
         `[other-bank] dropped ${otherBankDropped} cash-side rows (Account=${resolvedCashAccount}) from Other Bank Activity to prevent duplicates`,
-        `[other-bank] kept ${otherBankKept} offset rows → ${otherBankKept} transactions`,
+        `[other-bank] kept ${otherBankKept} offset rows -> ${otherBankKept} transactions`,
       ]);
     }
 
+    const allNormalizedRows = [
+      ...bankNormalized.rows,
+      ...cardNormalized.rows,
+      ...otherBankFiltered,
+    ];
     const knownProperties = new Set(
-      normalized.rows
+      allNormalizedRows
         .map((row) => row.propertyName?.trim())
         .filter((val): val is string => Boolean(val)),
     );
@@ -210,100 +260,238 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       (singleSourceProperty ? singleSourceProperty : "") ||
       (payload.defaultProperty?.trim() ?? "");
 
+    const applyDefaultProperty = (rows: NormalizedRow[]) => {
+      let applied = 0;
+      const updated = rows.map((row) => {
+        if (row.propertyName?.trim()) return row;
+        if (!defaultProperty) return row;
+        applied += 1;
+        return { ...row, propertyName: defaultProperty };
+      });
+      return { rows: updated, applied };
+    };
+
     let defaultApplied = 0;
-    const rowsWithDefaults = filteredRows.map((row) => {
-      if (row.propertyName?.trim()) return row;
-      if (!defaultProperty) return row;
-      defaultApplied += 1;
-      return { ...row, propertyName: defaultProperty };
-    });
+    const bankWithDefaults = applyDefaultProperty(bankNormalized.rows);
+    defaultApplied += bankWithDefaults.applied;
+    const cardWithDefaults = applyDefaultProperty(cardNormalized.rows);
+    defaultApplied += cardWithDefaults.applied;
+    const otherWithDefaults = applyDefaultProperty(otherBankFiltered);
+    defaultApplied += otherWithDefaults.applied;
 
     if (defaultApplied > 0) {
       append([`[normalize] applied default property to ${defaultApplied} rows`]);
     }
 
-    const ruleApplied = applyRules(rowsWithDefaults, rules);
-    const tenantAppliedRows = applyTenantDepositRule(ruleApplied.rows);
+    const ruleApplied = {
+      bank: applyRules(bankWithDefaults.rows, rules),
+      card: applyRules(cardWithDefaults.rows, rules),
+      otherBank: applyRules(otherWithDefaults.rows, rules),
+    };
+
+    const tenantApplied = {
+      bank: applyTenantDepositRule(ruleApplied.bank.rows),
+      card: applyTenantDepositRule(ruleApplied.card.rows),
+      otherBank: applyTenantDepositRule(ruleApplied.otherBank.rows),
+    };
+    const referencedRows = {
+      bank: applySourceReference(tenantApplied.bank, "bank"),
+      card: applySourceReference(tenantApplied.card, "card"),
+      otherBank: applySourceReference(tenantApplied.otherBank, "otherBank"),
+    };
+
+    const totalExact =
+      ruleApplied.bank.exactMatches + ruleApplied.card.exactMatches + ruleApplied.otherBank.exactMatches;
+    const totalSignature =
+      ruleApplied.bank.signatureMatches +
+      ruleApplied.card.signatureMatches +
+      ruleApplied.otherBank.signatureMatches;
+    const totalUnmatched =
+      ruleApplied.bank.unmatched + ruleApplied.card.unmatched + ruleApplied.otherBank.unmatched;
+
+    const combinedUnmatchedSamples: Array<{ journalDate: string | null; amount: number; notes: string | null }> = [];
+    [ruleApplied.bank.unmatchedSamples, ruleApplied.card.unmatchedSamples, ruleApplied.otherBank.unmatchedSamples].forEach(
+      (samples) => {
+        samples.forEach((sample) => {
+          if (combinedUnmatchedSamples.length < 10) {
+            combinedUnmatchedSamples.push(sample);
+          }
+        });
+      },
+    );
+
     templateSummary = {
-      matched: ruleApplied.exactMatches + ruleApplied.signatureMatches,
+      matched: totalExact + totalSignature,
       templateCount: rules.totalExamples,
-      unmatchedSamples: ruleApplied.unmatchedSamples,
+      unmatchedSamples: combinedUnmatchedSamples,
     };
     if (rules.totalExamples > 0) {
       append(
-        [
-          `[rules] exact matches: ${ruleApplied.exactMatches}, fuzzy matches: ${ruleApplied.signatureMatches}, unmatched: ${ruleApplied.unmatched}`,
-        ],
+        [`[rules] exact matches: ${totalExact}, fuzzy matches: ${totalSignature}, unmatched: ${totalUnmatched}`],
         [],
         "Apply template mapping",
         70,
       );
     }
 
-    const validated = validateRows(tenantAppliedRows);
-    append(validated.logs, validated.warnings, "Validate rows & warnings", 85);
-
-    const unmappedCount = validated.rows.reduce(
-      (count, row) =>
-        count +
-        (isPropertyMissing(row.Property_Name) || isAccountInvalid(row.Account) ? 1 : 0),
-      0,
+    const validated = {
+      bank: validateRows(referencedRows.bank),
+      card: validateRows(referencedRows.card),
+      otherBank: validateRows(referencedRows.otherBank),
+    };
+    append(
+      [...validated.bank.logs, ...validated.card.logs, ...validated.otherBank.logs],
+      [...validated.bank.warnings, ...validated.card.warnings, ...validated.otherBank.warnings],
+      "Validate rows & warnings",
+      85,
     );
+
+    const buildReviewCounts = (rows: ValidatedRow[]) => {
+      let missingAccount = 0;
+      let missingProperty = 0;
+      let invalidAccount = 0;
+      rows.forEach((row) => {
+        if (isPropertyMissing(row.Property_Name)) missingProperty += 1;
+        if (!row.Account || !row.Account.trim()) {
+          missingAccount += 1;
+          return;
+        }
+        if (!DIGITS_ONLY.test(row.Account.trim())) invalidAccount += 1;
+      });
+      const unmapped = rows.reduce(
+        (count, row) =>
+          count +
+          (isPropertyMissing(row.Property_Name) || isAccountInvalid(row.Account) ? 1 : 0),
+        0,
+      );
+      return { missingAccount, missingProperty, invalidAccount, unmapped };
+    };
+
+    const sourceSummaries: Record<SourceKey, SourceSummary> = {
+      bank: {
+        key: "bank",
+        rows: validated.bank.rows,
+        downloadReady: false,
+        counts: {
+          input: bankNormalized.rows.length,
+          output: validated.bank.transactions * 2 + validated.bank.passthrough,
+          transactions: validated.bank.transactions,
+          passthrough: validated.bank.passthrough,
+        },
+        review: buildReviewCounts(validated.bank.rows),
+        needsReview: false,
+      },
+      card: {
+        key: "card",
+        rows: validated.card.rows,
+        downloadReady: false,
+        counts: {
+          input: cardNormalized.rows.length,
+          output: validated.card.transactions * 2 + validated.card.passthrough,
+          transactions: validated.card.transactions,
+          passthrough: validated.card.passthrough,
+        },
+        review: buildReviewCounts(validated.card.rows),
+        needsReview: false,
+      },
+      otherBank: {
+        key: "otherBank",
+        rows: validated.otherBank.rows,
+        downloadReady: false,
+        counts: {
+          input: otherWithDefaults.rows.length,
+          output: validated.otherBank.transactions * 2 + validated.otherBank.passthrough,
+          transactions: validated.otherBank.transactions,
+          passthrough: validated.otherBank.passthrough,
+        },
+        review: buildReviewCounts(validated.otherBank.rows),
+        needsReview: false,
+      },
+    };
+
+    SOURCE_KEYS.forEach((key) => {
+      const summary = sourceSummaries[key];
+      summary.needsReview = summary.review.unmapped > 0;
+    });
+
+    const unmappedCount = SOURCE_KEYS.reduce((total, key) => total + sourceSummaries[key].review.unmapped, 0);
     if (unmappedCount > 0) {
-      append([`[review] ${unmappedCount} rows need Property_Name and/or Account`], [], "Review unmapped rows", 95);
+      const reviewSummary = SOURCE_KEYS.map((key) => `${SOURCE_LABELS[key]}: ${sourceSummaries[key].review.unmapped}`).join(", ");
+      append([`[review] ${unmappedCount} rows need Property_Name and/or Account (${reviewSummary})`], [], "Review unmapped rows", 95);
     }
 
+    const counts = {
+      bank: bankNormalized.rows.length,
+      card: cardNormalized.rows.length,
+      otherBank: otherWithDefaults.rows.length,
+      output: SOURCE_KEYS.reduce((total, key) => total + sourceSummaries[key].counts.output, 0),
+      transactions: validated.bank.transactions + validated.card.transactions + validated.otherBank.transactions,
+    };
+
+    const needsReview = SOURCE_KEYS.some((key) => sourceSummaries[key].needsReview) || missingCashAccount;
+
     const baseUpdate = {
-      percent: unmappedCount > 0 ? 95 : 100,
-      step: unmappedCount > 0 ? "Review unmapped rows" : "Complete",
+      percent: needsReview ? 95 : 100,
+      step: needsReview ? "Review unmapped rows" : "Complete",
       downloadReady: false,
-      rows: validated.rows,
-      needsReview: unmappedCount > 0,
+      sources: sourceSummaries,
+      needsReview,
       unmappedCount,
-      counts: {
-        bank: bankResult.rows.length,
-        card: cardResult.rows.length,
-        otherBank: resolvedCashAccount ? otherBankKept : otherResult.rows.length,
-        output: validated.transactions * 2 + validated.passthrough,
-        transactions: validated.transactions,
-      },
+      counts,
       templateCashAccount: templateCashAccount ?? undefined,
       templateTxCount: templateSummary.templateCount,
       matchedTxCount: templateSummary.matched,
       unmatchedSamples: templateSummary.unmatchedSamples,
       strictTemplate: false,
-      missingCashAccount: false,
+      missingCashAccount,
       defaultProperty,
       outputBuffer: undefined,
       outputFilename: undefined,
     } as const;
 
-    updateJob(jobId, baseUpdate);
+    updateJob(jobId, {
+      ...baseUpdate,
+      cashAccount: resolvedCashAccount,
+      exportTimestamp,
+    });
 
     if (missingCashAccount) {
       append(["[validate] missing cash account; unable to build workbook"]);
     }
-    updateJob(jobId, {
-      ...baseUpdate,
-      cashAccount: resolvedCashAccount,
-      missingCashAccount,
-      needsReview: baseUpdate.needsReview || missingCashAccount,
-    });
 
-    if (unmappedCount > 0 || missingCashAccount) {
+    if (needsReview) {
       updateJob(jobId, { status: "done" });
       return;
     }
 
-    const { buffer, filename, emitted } = buildWorkbook(validated.rows, {
-      cashAccount: resolvedCashAccount,
+    const buildLogs: string[] = [];
+    const updatedSources: Record<SourceKey, SourceSummary> = { ...sourceSummaries };
+
+    SOURCE_KEYS.forEach((key) => {
+      const source = updatedSources[key];
+      const filename = `yardi_import_${key === "otherBank" ? "otherbank" : key}_${exportTimestamp}.xlsx`;
+      const { buffer, emitted } = buildWorkbook(source.rows, {
+        cashAccount: resolvedCashAccount,
+        filename,
+      });
+      updatedSources[key] = {
+        ...source,
+        downloadReady: true,
+        outputBuffer: buffer,
+        outputFilename: filename,
+        counts: {
+          ...source.counts,
+          output: emitted,
+        },
+      };
+      buildLogs.push(`[build] ${SOURCE_LABELS[key]} emitted ${emitted} journal rows (cash + offset)`);
+      buildLogs.push(`[build] ${SOURCE_LABELS[key]} workbook ready (${filename})`);
     });
-    append(
-      [`[build] emitted ${emitted} journal rows (cash + offset)`, `[build] workbook ready (${filename})`],
-      [],
-      "Build workbook",
-      98,
-    );
+
+    const totalEmitted = SOURCE_KEYS.reduce((total, key) => total + (updatedSources[key].counts.output || 0), 0);
+    const zipName = `yardi_import_${exportTimestamp}.zip`;
+
+    append(buildLogs, [], "Build workbook", 98);
 
     updateJob(jobId, {
       ...baseUpdate,
@@ -311,13 +499,13 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       percent: 100,
       step: "Complete",
       downloadReady: true,
-      outputBuffer: buffer,
-      outputFilename: filename,
+      sources: updatedSources,
+      outputFilename: zipName,
       needsReview: false,
       unmappedCount: 0,
       counts: {
-        ...baseUpdate.counts,
-        output: emitted,
+        ...counts,
+        output: totalEmitted,
       },
     });
   } catch (err) {
@@ -389,3 +577,10 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ jobId: job.id });
 }
+
+
+
+
+
+
+

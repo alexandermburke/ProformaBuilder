@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 
 type UploadKey = "bank" | "card" | "otherBank" | "reference" | "exceptions" | "template";
+type SourceKey = "bank" | "card" | "otherBank";
 
 type UploadCard = {
   key: UploadKey;
@@ -87,6 +88,33 @@ const ACCEPT_MAP: Record<UploadKey, string[]> = {
   template: ["xlsx"],
 };
 
+const SOURCE_KEYS: SourceKey[] = ["bank", "card", "otherBank"];
+const SOURCE_LABELS: Record<SourceKey, string> = {
+  bank: "Bank",
+  card: "Credit Card",
+  otherBank: "Other Bank Activity",
+};
+
+type SourceSummary = {
+  key: SourceKey;
+  label: string;
+  downloadReady: boolean;
+  outputFilename?: string;
+  counts: {
+    input: number;
+    output: number;
+    transactions: number;
+    passthrough: number;
+  };
+  review: {
+    missingAccount: number;
+    missingProperty: number;
+    invalidAccount: number;
+    unmapped: number;
+  };
+  needsReview: boolean;
+};
+
 type ReviewRow = {
   rowNumber: number;
   source: string;
@@ -109,6 +137,22 @@ const emptyUploads = (): Record<UploadKey, { file: File | null; error: string | 
   exceptions: { file: null, error: null },
   template: { file: null, error: null },
 });
+
+const emptySourceSummary = (key: SourceKey): SourceSummary => ({
+  key,
+  label: SOURCE_LABELS[key],
+  downloadReady: false,
+  outputFilename: undefined,
+  counts: { input: 0, output: 0, transactions: 0, passthrough: 0 },
+  review: { missingAccount: 0, missingProperty: 0, invalidAccount: 0, unmapped: 0 },
+  needsReview: false,
+});
+
+const emptySources = (): Record<SourceKey, SourceSummary> =>
+  Object.fromEntries(SOURCE_KEYS.map((key) => [key, emptySourceSummary(key)])) as Record<
+    SourceKey,
+    SourceSummary
+  >;
 
 const formatBytes = (size: number): string => {
   if (!size || size <= 0) return "0 B";
@@ -143,6 +187,7 @@ export default function BankCardImportPrepPage() {
     output: 0,
     transactions: 0,
   });
+  const [sourceSummaries, setSourceSummaries] = useState<Record<SourceKey, SourceSummary>>(emptySources());
   const [downloadReady, setDownloadReady] = useState(false);
   const [lastDownloadName, setLastDownloadName] = useState<string | null>(null);
   const [lastDownloadAt, setLastDownloadAt] = useState<string | null>(null);
@@ -162,6 +207,7 @@ export default function BankCardImportPrepPage() {
   const [defaultOffsetAccount, setDefaultOffsetAccount] = useState("");
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showAdvancedUploads, setShowAdvancedUploads] = useState(false);
+  const [activeReviewSource, setActiveReviewSource] = useState<SourceKey>("bank");
   const [templateStats, setTemplateStats] = useState<{
     templateTxCount: number;
     matchedTxCount: number;
@@ -258,9 +304,12 @@ export default function BankCardImportPrepPage() {
     setFile(key, null, null);
   };
 
-  const triggerDownload = async (id: string) => {
+  const triggerDownload = async (id: string, source?: SourceKey) => {
     try {
-      const res = await fetch(`/api/accounting/bank-card-import-prep/download?jobId=${id}`, {
+      const url = source
+        ? `/api/accounting/bank-card-import-prep/download?jobId=${id}&source=${source}`
+        : `/api/accounting/bank-card-import-prep/download?jobId=${id}`;
+      const res = await fetch(url, {
         method: "GET",
       });
       if (!res.ok) {
@@ -271,16 +320,20 @@ export default function BankCardImportPrepPage() {
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename=\"(.+)\"/);
-      const filename = match?.[1] || `yardi_import_${Date.now()}.xlsx`;
-      const url = URL.createObjectURL(blob);
+      const fallbackSource = source === "otherBank" ? "otherbank" : source;
+      const fallbackName = source
+        ? `yardi_import_${fallbackSource}_${Date.now()}.xlsx`
+        : `yardi_import_${Date.now()}.zip`;
+      const filename = match?.[1] || fallbackName;
+      const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url;
+      link.href = objectUrl;
       link.download = filename;
       link.style.display = "none";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objectUrl);
       setLastDownloadName(filename);
       setLastDownloadAt(new Date().toLocaleString());
     } catch (err) {
@@ -297,18 +350,20 @@ export default function BankCardImportPrepPage() {
     return date.toLocaleDateString();
   };
 
-  const fetchReviewRows = async (id: string) => {
+  const fetchReviewRows = async (id: string, source: SourceKey) => {
     setReviewLoading(true);
     setUnmappedError(null);
     setReviewToast(null);
+    setActiveReviewSource(source);
     try {
-      const res = await fetch(`/api/accounting/bank-card-import-prep/review?jobId=${id}`, {
+      const res = await fetch(`/api/accounting/bank-card-import-prep/review?jobId=${id}&source=${source}`, {
         cache: "no-store",
       });
       if (!res.ok) {
         throw new Error(await res.text());
       }
       const data = (await res.json()) as {
+        source?: SourceKey;
         rows: Array<{
           rowNumber: number;
           source: string;
@@ -322,6 +377,9 @@ export default function BankCardImportPrepPage() {
         }>;
         needsReview?: boolean;
         unmappedCount?: number;
+        missingAccountCount?: number;
+        missingPropertyCount?: number;
+        invalidAccountCount?: number;
       };
 
       const mapped = (data.rows || []).map((row) => ({
@@ -336,7 +394,7 @@ export default function BankCardImportPrepPage() {
         account: row.account ?? "",
       }));
 
-      setNeedsReview(Boolean(data.needsReview));
+      if (data.source) setActiveReviewSource(data.source);
       setUnmappedRows(mapped);
       setUnmappedCount(data.unmappedCount ?? mapped.length);
       if (data.needsReview && !hasOpenedReviewRef.current) {
@@ -369,6 +427,7 @@ export default function BankCardImportPrepPage() {
         needsReview?: boolean;
         unmappedCount?: number;
         counts?: { bank: number; card: number; otherBank: number; output: number; transactions?: number };
+        sources?: Record<SourceKey, SourceSummary>;
         templateTxCount?: number;
         matchedTxCount?: number;
         unmatchedSamples?: Array<{ journalDate: string | null; amount: number; notes: string | null }>;
@@ -395,6 +454,9 @@ export default function BankCardImportPrepPage() {
         output: receivedCounts.output ?? 0,
         transactions: receivedCounts.transactions ?? 0,
       });
+      if (data.sources) {
+        setSourceSummaries(data.sources);
+      }
       setTemplateStats({
         templateTxCount: data.templateTxCount ?? 0,
         matchedTxCount: data.matchedTxCount ?? 0,
@@ -411,7 +473,12 @@ export default function BankCardImportPrepPage() {
         setProcessing(false);
         setStatus("ready");
         if (pollRef.current) clearInterval(pollRef.current);
-        if (id && !isMissingCash) fetchReviewRows(id);
+        if (id && !isMissingCash) {
+          const nextSource =
+            data.sources &&
+            SOURCE_KEYS.find((key) => (data.sources?.[key]?.review?.unmapped ?? 0) > 0);
+          fetchReviewRows(id, nextSource ?? activeReviewSource);
+        }
       } else if (data.status === "done" && data.downloadReady) {
         setProcessing(false);
         setStatus("done");
@@ -471,6 +538,8 @@ export default function BankCardImportPrepPage() {
     setMissingCashAccount(false);
     setUnmappedRows([]);
     setUnmappedCount(0);
+    setSourceSummaries(emptySources());
+    setActiveReviewSource("bank");
     setDefaultOffsetAccount("");
     setReviewToast(null);
     setDownloadReady(false);
@@ -618,7 +687,7 @@ export default function BankCardImportPrepPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ jobId, updates }),
+        body: JSON.stringify({ jobId, source: activeReviewSource, updates }),
       });
       const responseText = res.ok ? "" : await res.text();
       if (!res.ok) {
@@ -630,6 +699,8 @@ export default function BankCardImportPrepPage() {
         needsReview?: boolean;
         unmappedCount?: number;
         error?: string;
+        source?: SourceKey;
+        filename?: string;
       };
 
       setNeedsReview(Boolean(data.needsReview));
@@ -648,6 +719,8 @@ export default function BankCardImportPrepPage() {
       downloadTriggeredRef.current = true;
       if (data.downloadReady) {
         await triggerDownload(jobId);
+      } else {
+        await triggerDownload(jobId, activeReviewSource);
       }
       fetchStatus(jobId, { autoDownload: false });
       setUnmappedRows([]);
@@ -660,9 +733,12 @@ export default function BankCardImportPrepPage() {
     }
   };
 
-  const openReviewModal = () => {
-    if (!unmappedRows.length && jobId) {
-      fetchReviewRows(jobId);
+  const openReviewModal = (source?: SourceKey) => {
+    const targetSource = source ?? activeReviewSource;
+    if (jobId && (!unmappedRows.length || activeReviewSource !== targetSource)) {
+      fetchReviewRows(jobId, targetSource);
+    } else {
+      setActiveReviewSource(targetSource);
     }
     hasOpenedReviewRef.current = true;
     setShowReviewModal(true);
@@ -691,12 +767,20 @@ export default function BankCardImportPrepPage() {
             ? "danger"
             : "neutral";
   const progressVisible = status === "processing" || status === "done" || percent > 0;
-  const reviewRowCount = unmappedCount || unmappedRows.length;
-  const hasInvalidRows = needsReview || reviewRowCount > 0;
-  const needsCashOnly = missingCashAccount && reviewRowCount === 0;
+  const activeSummary = sourceSummaries[activeReviewSource] ?? emptySourceSummary(activeReviewSource);
+  const totalReviewCount = SOURCE_KEYS.reduce(
+    (total, key) => total + (sourceSummaries[key]?.review?.unmapped ?? 0),
+    0,
+  );
+  const reviewRowCount = unmappedRows.length || activeSummary.review.unmapped;
+  const hasInvalidRows = needsReview || totalReviewCount > 0;
+  const needsCashOnly = missingCashAccount && totalReviewCount === 0;
   const canDownloadNow = downloadReady && !hasInvalidRows && !missingCashAccount && Boolean(jobId);
-  const reviewButtonLabel = reviewRowCount > 0 ? `Fix ${reviewRowCount} rows` : "Fix unmapped rows";
-  const downloadLabel = lastDownloadName ? "Download again" : "Download";
+  const reviewButtonLabel =
+    reviewRowCount > 0
+      ? `Review ${SOURCE_LABELS[activeReviewSource]} (${reviewRowCount})`
+      : "Review unmapped rows";
+  const downloadLabel = lastDownloadName ? "Download again" : "Download ZIP";
 
   return (
     <div className="bank-card-page owner-reports-page relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
@@ -1059,16 +1143,38 @@ export default function BankCardImportPrepPage() {
                 </p>
               </div>
 
-              {reviewRowCount > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 px-4 py-3">
-                  <span className="ios-pill text-[10px]" data-tone="warning">
-                    {`${reviewRowCount} rows need fixes`}
-                  </span>
-                  {reviewInvalidCount > 0 && (
-                    <span className="ios-pill text-[10px]" data-tone="danger">
-                      {reviewInvalidCount} invalid
-                    </span>
-                  )}
+              {totalReviewCount > 0 && (
+                <div className="space-y-2">
+                  {SOURCE_KEYS.map((key) => {
+                    const summary = sourceSummaries[key];
+                    const hasIssues = summary.review.unmapped > 0;
+                    return (
+                      <div
+                        key={key}
+                        className="flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 px-4 py-3 text-xs text-[color:var(--text-secondary)]"
+                      >
+                        <span className="ios-pill text-[10px]" data-tone={hasIssues ? "warning" : "neutral"}>
+                          {SOURCE_LABELS[key]}
+                        </span>
+                        <span>Missing Account: {summary.review.missingAccount}</span>
+                        <span>Missing Property: {summary.review.missingProperty}</span>
+                        {summary.review.invalidAccount > 0 && (
+                          <span className="ios-pill text-[10px]" data-tone="danger">
+                            Invalid Account: {summary.review.invalidAccount}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="ios-button px-3 py-1 text-[11px]"
+                          data-variant="secondary"
+                          onClick={() => openReviewModal(key)}
+                          disabled={!hasIssues || reviewLoading || !jobId}
+                        >
+                          Review {summary.review.unmapped}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -1079,12 +1185,12 @@ export default function BankCardImportPrepPage() {
               )}
 
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {reviewRowCount > 0 ? (
+                {totalReviewCount > 0 ? (
                   <button
                     type="button"
                     className="ios-button px-5 py-2 text-sm"
                     data-variant="primary"
-                    onClick={openReviewModal}
+                    onClick={() => openReviewModal(activeReviewSource)}
                     disabled={processing || reviewLoading || !jobId}
                   >
                     {reviewButtonLabel}
@@ -1121,6 +1227,26 @@ export default function BankCardImportPrepPage() {
                   </button>
                 )}
               </div>
+              {jobId && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {SOURCE_KEYS.map((key) => {
+                    const summary = sourceSummaries[key];
+                    if (!summary.downloadReady) return null;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className="ios-button px-4 py-2 text-xs"
+                        data-variant="secondary"
+                        onClick={() => triggerDownload(jobId, key)}
+                        disabled={processing}
+                      >
+                        Download {SOURCE_LABELS[key]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {lastDownloadName && (
                 <div className="rounded-lg border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 px-3 py-2 text-xs text-[color:var(--text-secondary)]">
@@ -1157,7 +1283,9 @@ export default function BankCardImportPrepPage() {
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">Review</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">Review unmapped rows</h3>
+                  <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">
+                    Review {SOURCE_LABELS[activeReviewSource]}
+                  </h3>
                   <span className="ios-pill text-[10px]" data-tone={missingAccountCount > 0 ? "warning" : "neutral"}>
                     Missing Account: {missingAccountCount}
                   </span>
@@ -1169,6 +1297,25 @@ export default function BankCardImportPrepPage() {
                       Invalid Account: {invalidAccountCount}
                     </span>
                   )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {SOURCE_KEYS.map((key) => {
+                    const summary = sourceSummaries[key];
+                    const isActive = key === activeReviewSource;
+                    const tone = summary.review.unmapped > 0 ? "warning" : "neutral";
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className="ios-pill text-[10px]"
+                        data-tone={isActive ? "success" : tone}
+                        onClick={() => jobId && openReviewModal(key)}
+                        disabled={reviewLoading}
+                      >
+                        {SOURCE_LABELS[key]}: {summary.review.unmapped}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -1213,7 +1360,7 @@ export default function BankCardImportPrepPage() {
                       type="button"
                       className="ios-button px-4 py-2 text-xs"
                       data-variant="secondary"
-                      onClick={() => jobId && fetchReviewRows(jobId)}
+                      onClick={() => jobId && fetchReviewRows(jobId, activeReviewSource)}
                       disabled={reviewLoading}
                     >
                       Refresh rows
@@ -1266,7 +1413,13 @@ export default function BankCardImportPrepPage() {
                           const accountInvalid = !row.account.trim() || !DIGITS_ONLY.test(row.account.trim());
                           return (
                             <tr key={row.rowNumber} className="divide-x divide-[rgba(148,163,255,0.15)]">
-                              <td className="px-3 py-2 font-semibold text-[color:var(--text-primary)]">{row.source}</td>
+                              <td className="px-3 py-2 font-semibold text-[color:var(--text-primary)]">
+                                {row.source === "other-bank"
+                                  ? SOURCE_LABELS.otherBank
+                                  : row.source === "card"
+                                    ? SOURCE_LABELS.card
+                                    : SOURCE_LABELS.bank}
+                              </td>
                               <td className="px-3 py-2 text-[color:var(--text-secondary)]">
                                 {row.journalDate || "-"}
                               </td>

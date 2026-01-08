@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getJob } from "../jobStore";
+import { getJob, SOURCE_KEYS } from "../jobStore";
 
 export const runtime = "nodejs";
+const SOURCE_LABELS = {
+  bank: "Bank",
+  card: "Credit Card",
+  otherBank: "Other Bank Activity",
+} as const;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -14,6 +19,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
 
+  const sources = Object.fromEntries(
+    SOURCE_KEYS.map((key) => {
+      const source = job.sources[key];
+      return [
+        key,
+        {
+          key,
+          label: SOURCE_LABELS[key],
+          downloadReady: source.downloadReady,
+          outputFilename: source.outputFilename,
+          counts: source.counts,
+          review: source.review,
+          needsReview: source.needsReview,
+        },
+      ];
+    }),
+  );
+
   return NextResponse.json({
     status: job.status,
     percent: job.percent,
@@ -22,6 +45,7 @@ export async function GET(req: NextRequest) {
     warnings: job.warnings,
     downloadReady: job.downloadReady,
     counts: job.counts,
+    sources,
     errorMessage: job.errorMessage,
     outputFilename: job.outputFilename,
     createdAt: job.createdAt,

@@ -25,6 +25,7 @@ const HEADERS = [
 type BuildOptions = {
   cashAccount?: string;
   referenceFallback?: string;
+  filename?: string;
 };
 
 export function buildWorkbook(rows: ValidatedRow[], options: BuildOptions): BuildResult {
@@ -70,7 +71,19 @@ export function buildWorkbook(rows: ValidatedRow[], options: BuildOptions): Buil
     transactions.push({ base: row, amount, direction, reference: baseRef });
   });
 
-  transactions.forEach((tx, idx) => {
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const timeA = a.base.JournalDate instanceof Date ? a.base.JournalDate.getTime() : Number.POSITIVE_INFINITY;
+    const timeB = b.base.JournalDate instanceof Date ? b.base.JournalDate.getTime() : Number.POSITIVE_INFINITY;
+    if (timeA !== timeB) return timeA - timeB;
+    const dirA = a.direction === "in" ? 0 : 1;
+    const dirB = b.direction === "in" ? 0 : 1;
+    if (dirA !== dirB) return dirA - dirB;
+    const notesA = a.base.Notes ?? "";
+    const notesB = b.base.Notes ?? "";
+    return notesA.localeCompare(notesB);
+  });
+
+  sortedTransactions.forEach((tx, idx) => {
     const seq = idx + 1;
     const cashLine: ValidatedRow = {
       ...tx.base,
@@ -83,7 +96,7 @@ export function buildWorkbook(rows: ValidatedRow[], options: BuildOptions): Buil
     cashRows.push(cashLine);
   });
 
-  transactions.forEach((tx, idx) => {
+  sortedTransactions.forEach((tx, idx) => {
     const seq = idx + 1;
     const offsetLine: ValidatedRow = {
       ...tx.base,
@@ -103,7 +116,7 @@ export function buildWorkbook(rows: ValidatedRow[], options: BuildOptions): Buil
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(workbook, sheet, "Yardi_Import");
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
-  const filename = `yardi_import_${Date.now()}.xlsx`;
+  const filename = options.filename?.trim() || `yardi_import_${Date.now()}.xlsx`;
 
   const countMismatch = cashRows.length !== offsetRows.length ? Math.max(cashRows.length, offsetRows.length) : 0;
   if (countMismatch > 0) {

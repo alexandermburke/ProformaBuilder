@@ -3,6 +3,32 @@ import type { ValidatedRow } from "@/lib/accounting/bankCardImportPrep/validate"
 
 export type JobStatus = "queued" | "running" | "done" | "error";
 
+export const SOURCE_KEYS = ["bank", "card", "otherBank"] as const;
+export type SourceKey = (typeof SOURCE_KEYS)[number];
+
+export type SourceReviewCounts = {
+  missingAccount: number;
+  missingProperty: number;
+  invalidAccount: number;
+  unmapped: number;
+};
+
+export type SourceSummary = {
+  key: SourceKey;
+  rows: ValidatedRow[];
+  downloadReady: boolean;
+  outputFilename?: string;
+  outputBuffer?: Buffer;
+  counts: {
+    input: number;
+    output: number;
+    transactions: number;
+    passthrough: number;
+  };
+  review: SourceReviewCounts;
+  needsReview: boolean;
+};
+
 export type PrepJob = {
   id: string;
   status: JobStatus;
@@ -13,6 +39,7 @@ export type PrepJob = {
   downloadReady: boolean;
   outputFilename?: string;
   outputBuffer?: Buffer;
+  sources: Record<SourceKey, SourceSummary>;
   counts: {
     bank: number;
     card: number;
@@ -20,7 +47,6 @@ export type PrepJob = {
     output: number;
     transactions: number;
   };
-  rows: ValidatedRow[];
   needsReview: boolean;
   unmappedCount: number;
   defaultProperty: string;
@@ -33,6 +59,7 @@ export type PrepJob = {
   missingCashAccount?: boolean;
   errorMessage?: string;
   createdAt: number;
+  exportTimestamp?: number;
 };
 
 // Share job store across route handlers (process/status/download) even when Next.js
@@ -47,6 +74,14 @@ const THIRTY_MIN_MS = 30 * 60 * 1000;
 
 export function createJob(): PrepJob {
   const id = randomUUID();
+  const emptySource = (key: SourceKey): SourceSummary => ({
+    key,
+    rows: [],
+    downloadReady: false,
+    counts: { input: 0, output: 0, transactions: 0, passthrough: 0 },
+    review: { missingAccount: 0, missingProperty: 0, invalidAccount: 0, unmapped: 0 },
+    needsReview: false,
+  });
   const job: PrepJob = {
     id,
     status: "queued",
@@ -55,7 +90,11 @@ export function createJob(): PrepJob {
     logs: [],
     warnings: [],
     downloadReady: false,
-    rows: [],
+    sources: {
+      bank: emptySource("bank"),
+      card: emptySource("card"),
+      otherBank: emptySource("otherBank"),
+    },
     needsReview: false,
     unmappedCount: 0,
     defaultProperty: "",
@@ -63,6 +102,7 @@ export function createJob(): PrepJob {
     counts: { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 },
     createdAt: Date.now(),
     missingCashAccount: false,
+    exportTimestamp: Date.now(),
   };
   jobs.set(id, job);
   return job;

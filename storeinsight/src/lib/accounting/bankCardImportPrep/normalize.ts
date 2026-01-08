@@ -9,6 +9,8 @@ export type NormalizedRow = {
   reference: string | null;
   notes: string | null;
   detailNotes: string | null;
+  rawNotes?: string | null;
+  rawDetailNotes?: string | null;
   book: string | null;
   unit: string | null;
   debit: number | null;
@@ -24,11 +26,61 @@ export type NormalizeResult = {
 };
 
 const MONTH_NAMES = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
+const VENDOR_ALLOWLIST = ["AMAZON", "STAPLES", "VISTAPRINT", "HOME DEPOT", "LOWES", "COSTCO", "ULINE"] as const;
 const cleanString = (value: unknown): string | null => {
   if (value == null) return null;
   const str = typeof value === "string" ? value : String(value);
   const trimmed = str.trim();
   return trimmed ? trimmed : null;
+};
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const vendorPattern = new RegExp(
+  `\\b(${VENDOR_ALLOWLIST.map((name) => name.split(/\s+/).map(escapeRegex).join("\\s+")).join("|")})\\b`,
+  "i",
+);
+const collapseWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim();
+const normalizeRawNotes = (value: unknown): string | null => {
+  const cleaned = cleanString(value);
+  if (!cleaned) return null;
+  const collapsed = collapseWhitespace(cleaned);
+  return collapsed || null;
+};
+const isNoisyToken = (token: string): boolean => {
+  const normalized = token.replace(/[()]/g, "");
+  if (!normalized) return false;
+  if (/^#?\d{4,}$/.test(normalized)) return true;
+  return /^(?=.*\d)[A-Z0-9-]{4,}$/i.test(normalized);
+};
+const stripTrailingIdTokens = (value: string): string => {
+  const tokens = value.split(" ");
+  while (tokens.length > 1 && isNoisyToken(tokens[tokens.length - 1])) {
+    tokens.pop();
+  }
+  return tokens.join(" ").trim();
+};
+const normalizeNotes = (value: string | null): string | null => {
+  if (!value) return null;
+  const collapsed = collapseWhitespace(value);
+  if (!collapsed) return null;
+  if (/^deposit\s+home\s+banking(?:\s+transfer)?\b/i.test(collapsed)) {
+    return "Transfer In (Home Banking)";
+  }
+  if (/^withdrawal\s+home\s+banking\b/i.test(collapsed)) {
+    return "Transfer Out (Home Banking)";
+  }
+  const stripped = stripTrailingIdTokens(collapsed);
+  return stripped || null;
+};
+const hasVendorDetail = (value: string | null): boolean => Boolean(value && vendorPattern.test(value));
+const selectDetailNotes = (
+  rawNotes: string | null,
+  rawDetailNotes: string | null,
+  cleanNotes: string | null,
+): string | null => {
+  if (hasVendorDetail(rawDetailNotes) || hasVendorDetail(rawNotes)) {
+    return rawDetailNotes ?? rawNotes ?? cleanNotes;
+  }
+  return cleanNotes;
 };
 
 function asNumber(value: unknown): number | null {
@@ -101,6 +153,10 @@ function normalizeBankRow(raw: Record<string, unknown>): NormalizedRow {
   const memo = (lowered.memo as string) || "";
   const debitVal = asNumber(lowered.amountdebit);
   const creditVal = asNumber(lowered.amountcredit);
+  const rawNotes = normalizeRawNotes(description || memo);
+  const rawDetailNotes = normalizeRawNotes(memo || description);
+  const cleanNotes = normalizeNotes(rawNotes ?? rawDetailNotes);
+  const detailNotes = selectDetailNotes(rawNotes, rawDetailNotes, cleanNotes);
 
   let debit: number | null = null;
   let credit: number | null = null;
@@ -117,8 +173,10 @@ function normalizeBankRow(raw: Record<string, unknown>): NormalizedRow {
     propertyName: null,
     account: null,
     reference: null,
-    notes: description || memo || null,
-    detailNotes: memo || null,
+    notes: cleanNotes,
+    detailNotes,
+    rawNotes,
+    rawDetailNotes,
     book: null,
     unit: null,
     debit,
@@ -131,6 +189,10 @@ function normalizeCardRow(raw: Record<string, unknown>): NormalizedRow {
   const amount = asNumber(lowered.amount);
   const journalDate = asDate(lowered.date);
   const postMonth = toPostMonth(journalDate);
+  const rawNotes = normalizeRawNotes(lowered.merchant ?? lowered.detailnotes ?? null);
+  const rawDetailNotes = normalizeRawNotes(lowered.detailnotes ?? null);
+  const cleanNotes = normalizeNotes(rawNotes ?? rawDetailNotes);
+  const detailNotes = selectDetailNotes(rawNotes, rawDetailNotes, cleanNotes);
 
   return {
     source: "card",
@@ -139,8 +201,10 @@ function normalizeCardRow(raw: Record<string, unknown>): NormalizedRow {
     propertyName: null,
     account: lowered.account ? String(lowered.account) : null,
     reference: null,
-    notes: lowered.merchant ? String(lowered.merchant) : null,
-    detailNotes: lowered.detailnotes ? String(lowered.detailnotes) : null,
+    notes: cleanNotes,
+    detailNotes,
+    rawNotes,
+    rawDetailNotes,
     book: null,
     unit: null,
     debit: amount != null ? Math.abs(amount) : null,
@@ -158,6 +222,10 @@ function normalizePassthrough(raw: Record<string, unknown>, source: string): Nor
 
   const debit = asNumber(lowered.debit);
   const credit = asNumber(lowered.credit);
+  const rawNotes = normalizeRawNotes(lowered.notes ?? lowered.detailnotes ?? null);
+  const rawDetailNotes = normalizeRawNotes(lowered.detailnotes ?? lowered.notes ?? null);
+  const cleanNotes = normalizeNotes(rawNotes ?? rawDetailNotes);
+  const detailNotes = selectDetailNotes(rawNotes, rawDetailNotes, cleanNotes);
 
   return {
     source,
@@ -166,8 +234,10 @@ function normalizePassthrough(raw: Record<string, unknown>, source: string): Nor
     propertyName: lowered.property_name ? String(lowered.property_name) : null,
     account: lowered.account ? String(lowered.account) : null,
     reference: lowered.reference ? String(lowered.reference) : null,
-    notes: lowered.notes ? String(lowered.notes) : null,
-    detailNotes: lowered.detailnotes ? String(lowered.detailnotes) : null,
+    notes: cleanNotes,
+    detailNotes,
+    rawNotes,
+    rawDetailNotes,
     book: lowered.book ? String(lowered.book) : null,
     unit: lowered.unit ? String(lowered.unit) : null,
     debit: debit != null ? Math.abs(debit) : null,
@@ -189,6 +259,10 @@ function normalizeFallback(row: ParsedRow, warnings: string[]): NormalizedRow {
   const detailNotes = (pickValue(row, ["detailnotes", "details", "detail"]) ?? "") as string;
   const book = (pickValue(row, ["book"]) ?? "") as string;
   const unit = (pickValue(row, ["unit", "unit_id", "space"]) ?? "") as string;
+  const rawNotes = normalizeRawNotes(notes || detailNotes);
+  const rawDetailNotes = normalizeRawNotes(detailNotes || notes);
+  const cleanNotes = normalizeNotes(rawNotes ?? rawDetailNotes);
+  const cleanedDetailNotes = selectDetailNotes(rawNotes, rawDetailNotes, cleanNotes);
 
   const debitValue = asNumber(pickValue(row, ["debit", "debits", "debitamount"]));
   const creditValue = asNumber(pickValue(row, ["credit", "credits", "creditamount"]));
@@ -221,8 +295,10 @@ function normalizeFallback(row: ParsedRow, warnings: string[]): NormalizedRow {
     propertyName: propertyName || null,
     account: account || null,
     reference: reference || null,
-    notes: notes || null,
-    detailNotes: detailNotes || null,
+    notes: cleanNotes,
+    detailNotes: cleanedDetailNotes,
+    rawNotes,
+    rawDetailNotes,
     book: book || null,
     unit: unit || null,
     debit: amountDebit ?? null,
@@ -257,30 +333,45 @@ export async function normalizeAll(
   defaultProperty: string,
 ): Promise<NormalizeResult> {
   const warnings: string[] = [...bank.warnings, ...card.warnings, ...other.warnings];
+  const bankResult = normalizeSource(bank.rows, defaultProperty, "bank", warnings);
+  const cardResult = normalizeSource(card.rows, defaultProperty, "card", warnings);
+  const otherResult = normalizeSource(other.rows, defaultProperty, "other-bank", warnings);
+
+  const rows = [...bankResult.rows, ...cardResult.rows, ...otherResult.rows];
+  const logs = [...bank.logs, ...card.logs, ...other.logs, ...bankResult.logs, ...cardResult.logs, ...otherResult.logs];
+  const transactions = rows.filter((row) => !row.passthrough).length;
+  logs.push(`[normalize] created ${transactions} transactions`);
+
+  return { rows, logs, warnings, transactions };
+}
+
+export function normalizeSource(
+  rows: ParsedRow[],
+  defaultProperty: string,
+  sourceLabel?: string,
+  warningsTarget?: string[],
+): NormalizeResult {
+  const warnings: string[] = warningsTarget ?? [];
   const logs: string[] = [];
-  const rows: NormalizedRow[] = [];
+  const normalizedRows: NormalizedRow[] = [];
   const trimmedDefault = defaultProperty.trim();
   let defaultApplied = 0;
-  let transactions = 0;
 
-  const pushWithDefault = (row: ParsedRow) => {
+  rows.forEach((row) => {
     const normalizedBase = normalizeRow(row, warnings);
     const propertyMissing = !cleanString(normalizedBase.propertyName);
     const normalized = applyDefaults(normalizedBase, defaultProperty);
     if (propertyMissing && normalized.propertyName === trimmedDefault) defaultApplied += 1;
-    rows.push(normalized);
-  };
+    normalizedRows.push(normalized);
+  });
 
-  for (const row of bank.rows) pushWithDefault(row);
-  for (const row of card.rows) pushWithDefault(row);
-  for (const row of other.rows) pushWithDefault(row);
-
-  logs.push(`[normalize] normalized ${rows.length} rows across all sources`);
+  const label = sourceLabel ? ` (${sourceLabel})` : "";
+  logs.push(`[normalize] normalized ${normalizedRows.length} rows${label}`);
   if (defaultApplied > 0) {
-    logs.push(`[normalize] applied default property to ${defaultApplied} rows`);
+    logs.push(`[normalize] applied default property to ${defaultApplied} rows${label}`);
   }
-  transactions = rows.filter((row) => !row.passthrough).length;
-  logs.push(`[normalize] created ${transactions} transactions`);
+  const transactions = normalizedRows.filter((row) => !row.passthrough).length;
+  logs.push(`[normalize] created ${transactions} transactions${label}`);
 
-  return { rows, logs, warnings, transactions };
+  return { rows: normalizedRows, logs, warnings, transactions };
 }

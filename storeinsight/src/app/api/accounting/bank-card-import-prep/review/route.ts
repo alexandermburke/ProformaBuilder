@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getJob } from "../jobStore";
+import { getJob, SOURCE_KEYS } from "../jobStore";
 
 export const runtime = "nodejs";
 
@@ -10,6 +10,7 @@ const isAccountInvalid = (value: string | null | undefined) => !value || !DIGITS
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const jobId = searchParams.get("jobId");
+  const sourceParam = searchParams.get("source");
   if (!jobId) {
     return NextResponse.json({ error: "jobId is required" }, { status: 400 });
   }
@@ -18,11 +19,16 @@ export async function GET(req: NextRequest) {
   if (!job) {
     return NextResponse.json({ error: "Job not found" }, { status: 404 });
   }
-  if (!job.rows || job.rows.length === 0) {
+  const resolvedSource =
+    SOURCE_KEYS.find((key) => key === sourceParam) ??
+    SOURCE_KEYS.find((key) => job.sources[key].needsReview) ??
+    SOURCE_KEYS[0];
+  const source = job.sources[resolvedSource];
+  if (!source || !source.rows || source.rows.length === 0) {
     return NextResponse.json({ error: "Job rows not available" }, { status: 409 });
   }
 
-  const rowsNeedingReview = job.rows
+  const rowsNeedingReview = source.rows
     .map((row, idx) => ({
       rowNumber: row.Tran_Seq_Number ?? idx + 1,
       source: row.source,
@@ -37,8 +43,12 @@ export async function GET(req: NextRequest) {
     .filter((row) => isPropertyMissing(row.propertyName) || isAccountInvalid(row.account));
 
   return NextResponse.json({
-    needsReview: job.needsReview,
-    unmappedCount: job.unmappedCount ?? rowsNeedingReview.length,
+    source: resolvedSource,
+    needsReview: source.needsReview,
+    unmappedCount: source.review.unmapped ?? rowsNeedingReview.length,
+    missingAccountCount: source.review.missingAccount,
+    missingPropertyCount: source.review.missingProperty,
+    invalidAccountCount: source.review.invalidAccount,
     rows: rowsNeedingReview,
   });
 }
