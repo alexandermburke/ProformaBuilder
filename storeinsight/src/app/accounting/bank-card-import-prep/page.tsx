@@ -1337,7 +1337,7 @@ export default function BankCardImportPrepPage() {
                       htmlFor="default-account"
                       className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
                     >
-                      Default Offset Account (optional)
+                      Unknown Account (optional)
                     </label>
                     <input
                     id="default-account"
