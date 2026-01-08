@@ -66,7 +66,9 @@ function formatTenantDepositReference(postMonth: string | null, journalDate: Dat
   return `Tenant Deposits ${month}.${year}`;
 }
 
-function applyTenantDepositRule(rows: ReturnType<typeof normalizeAll>["rows"]) {
+type NormalizeAllResult = Awaited<ReturnType<typeof normalizeAll>>;
+
+function applyTenantDepositRule(rows: NormalizeAllResult["rows"]) {
   const tenantPattern = /^deposit\s+tenant/i;
   return rows.map((row) => {
     if (!row.notes || !tenantPattern.test(row.notes.trim())) return row;
