@@ -34,6 +34,17 @@ type PlannedUpdate = {
 
 const updates: UpdateItem[] = [
   {
+    id: "2026-01-08",
+    date: "Jan 08, 2026",
+    title: "Bank & Card Import Prep export cleanup",
+    highlights: [
+      "Exports are now separated by source (bank, credit card, other bank) with per-source review counts and downloads.",
+      "Bill pay filtering expanded to catch STORE MANAGEMENT variants while keeping Draft detection intact.",
+      "Notes/DetailNotes rules updated for clearer owner-facing outputs and tenant deposit formatting.",
+    ],
+    tags: ["Accounting", "Imports"],
+  },
+  {
     id: "2025-11-11",
     date: "Nov 11, 2025",
     title: "Delinquency audit toggle & ESR hard mapping",
