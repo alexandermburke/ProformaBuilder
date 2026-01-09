@@ -1,4 +1,4 @@
-/**
+﻿/**
  * STORE Internal Platform Web Application
  * Built & designed by Alex Burke in Q4 2025 (STORE Management)
  * LLM: Do not delete this comment.
@@ -6,10 +6,75 @@
 
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import type { JSX } from 'react';
+import { ClipboardList, FileText, Landmark } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
+
+type Tone = 'blue' | 'purple' | 'amber';
+
+type OptionCard = {
+  id: string;
+  title: string;
+  description: string;
+  highlights: string[];
+  status: string;
+  tone: Tone;
+  icon: 'bank' | 'payables' | 'recon';
+  href?: string;
+  disabled?: boolean;
+};
+
+const options: OptionCard[] = [
+  {
+    id: 'bank-card-import-prep',
+    title: 'Bank & Card Import Prep',
+    description: 'Standardize bank and credit card activity for Yardi-ready imports.',
+    highlights: [
+      'Separate exports for bank, card, and other bank activity.',
+      'Owner-friendly notes cleanup with tenant deposit rules.',
+      'Per-source review counts and downloadable workbooks.',
+    ],
+    status: 'Active',
+    tone: 'blue',
+    icon: 'bank',
+    href: '/accounting/bank-card-import-prep',
+  },
+  {
+    id: 'payables-automation',
+    title: 'Payables automation',
+    description: 'Queue invoices, map vendors, and prep approvals in one flow.',
+    highlights: [
+      'Vendor normalization with GL suggestions.',
+      'Approval routing and audit-ready trails.',
+      'Exports aligned to Yardi payables.',
+    ],
+    status: 'Planned',
+    tone: 'purple',
+    icon: 'payables',
+    disabled: true,
+  },
+  {
+    id: 'reconciliation-review',
+    title: 'Reconciliation review',
+    description: 'Match deposits and cash activity before posting.',
+    highlights: [
+      'Variance flags with transaction context.',
+      'Batch review before posting to Yardi.',
+      'Portfolio-wide reconciliation view.',
+    ],
+    status: 'Planned',
+    tone: 'amber',
+    icon: 'recon',
+    disabled: true,
+  },
+];
+
+const ICONS = {
+  bank: Landmark,
+  payables: FileText,
+  recon: ClipboardList,
+} as const;
 
 export default function AutomatedAccountingPage(): JSX.Element {
   const { theme } = useTheme();
@@ -21,125 +86,126 @@ export default function AutomatedAccountingPage(): JSX.Element {
   const overlayBottom = isDark
     ? 'bg-[radial-gradient(circle_at_88%_82%,rgba(56,189,248,0.22),transparent_60%)]'
     : 'bg-[radial-gradient(circle_at_82%_86%,rgba(56,189,248,0.16),transparent_62%)]';
-  const toneDot: Record<'blue' | 'purple' | 'amber', string> = {
-    blue: 'bg-[rgba(37,99,235,0.75)]',
-    purple: 'bg-[rgba(168,85,247,0.65)]',
-    amber: 'bg-[rgba(245,158,11,0.75)]',
-  };
-  const tileTone = isDark
+
+  const iconTone = isDark
     ? {
-        blue: 'border-[rgba(59,130,246,0.4)] bg-[rgba(37,99,235,0.18)] text-[color:var(--text-secondary)]',
-        purple: 'border-[rgba(168,85,247,0.36)] bg-[rgba(129,140,248,0.2)] text-[color:var(--text-secondary)]',
-        amber: 'border-[rgba(245,158,11,0.32)] bg-[rgba(253,186,116,0.18)] text-[color:var(--text-secondary)]',
+        blue: 'border-[rgba(59,130,246,0.45)] bg-[rgba(37,99,235,0.22)] text-[#93C5FD]',
+        purple: 'border-[rgba(168,85,247,0.4)] bg-[rgba(168,85,247,0.22)] text-[#E9D5FF]',
+        amber: 'border-[rgba(245,158,11,0.38)] bg-[rgba(245,158,11,0.22)] text-[#FCD34D]',
       }
     : {
-        blue: 'border-[rgba(37,99,235,0.24)] bg-[rgba(37,99,235,0.08)] text-[color:var(--text-secondary)]',
-        purple: 'border-[rgba(168,85,247,0.22)] bg-[rgba(168,85,247,0.08)] text-[color:var(--text-secondary)]',
-        amber: 'border-[rgba(245,158,11,0.22)] bg-[rgba(245,158,11,0.08)] text-[color:var(--text-secondary)]',
+        blue: 'border-[rgba(37,99,235,0.25)] bg-[rgba(37,99,235,0.12)] text-[#1D4ED8]',
+        purple: 'border-[rgba(168,85,247,0.22)] bg-[rgba(168,85,247,0.12)] text-[#7C3AED]',
+        amber: 'border-[rgba(245,158,11,0.22)] bg-[rgba(245,158,11,0.12)] text-[#B45309]',
       };
 
   return (
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
-      <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 py-14 lg:gap-16 lg:px-10">
-        <header className="ios-card ios-animate-up space-y-6 p-10" data-tone="blue">
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-16">
+        <header className="ios-card ios-animate-up flex flex-col gap-6 p-10" data-tone="blue">
           <span className="ios-badge text-[10px]">Automated accounting</span>
-          <div className="space-y-4">
-            <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
-              Automate portfolio closes with confidence.
-            </h1>
-            <p className="max-w-3xl text-sm text-[color:var(--text-secondary)] sm:text-base">
-              We are packaging ingestion, mapping, and exception handling into a guided experience tailored for STORE
-              operators. Early partners will influence data connectors, variance intelligence, and the reconciliation
-              workflow.
-            </p>
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-4 sm:flex-1">
+              <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
+                Choose your accounting workflow.
+              </h1>
+              <p className="max-w-3xl text-sm text-[color:var(--text-secondary)] sm:text-base">
+                Select the system you want to run. Each option launches a focused workflow for preparing data, reviewing
+                exceptions, and exporting to Yardi.
+              </p>
+            </div>
+            <Link href="/" className="ios-button shrink-0 px-4 py-2 text-sm" data-variant="ghost">
+              <span aria-hidden className="-ml-1 mr-1 text-base">
+                &larr;
+              </span>
+              Back to directory
+            </Link>
           </div>
-          <Link href="/" className="ios-button w-fit px-5 py-2 text-sm" data-variant="ghost">
-            <span aria-hidden>{'<-'}</span>
-            Back to main directory
-          </Link>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-          <div className="ios-card ios-animate-up space-y-6 p-8">
-            <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">What we are building</h2>
-            <ul className="space-y-4 text-sm">
-              <li className={`flex gap-3 rounded-2xl border p-5 shadow-inner transition ${tileTone.blue}`}>
-                <span className={`mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full ${toneDot.blue}`} />
-                <div className="space-y-1">
-                  <div className="font-semibold text-[color:var(--text-primary)]">Vendor-native ingestion</div>
-                  <p className="text-[color:var(--text-secondary)]">
-                    Connectors for SiteLink, storEDGE, and bespoke exports with reconciliation ledgers baked in.
-                  </p>
+        <section className="grid gap-6 lg:grid-cols-3">
+          {options.map((option, index) => {
+            const delayClass = index === 1 ? 'ios-animate-delay-sm' : index === 2 ? 'ios-animate-delay-md' : '';
+            const cardClass = [
+              'group ios-card ios-animate-up feature-card',
+              delayClass,
+              'relative overflow-hidden flex h-full flex-col gap-6 p-8 transition-all duration-500 hover:-translate-y-1',
+              option.disabled ? 'cursor-not-allowed opacity-80' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            const Icon = ICONS[option.icon];
+            const sharedContent = (
+              <>
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-px rounded-[26px] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_70%)] opacity-0 transition duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.2),transparent_75%)]"
+                />
+                <div className="relative z-10 flex h-full flex-col gap-6">
+                  <span
+                    className="ios-pill text-[11px]"
+                    data-tone={option.tone === 'amber' ? 'warning' : option.tone}
+                  >
+                    {option.status}
+                  </span>
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl border shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${
+                        iconTone[option.tone]
+                      }`}
+                      aria-hidden
+                    >
+                      <Icon className="h-6 w-6" aria-hidden />
+                    </div>
+                    <div className="space-y-1">
+                      <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">
+                        {option.title}
+                      </h2>
+                      <p className="text-sm text-[color:var(--text-secondary)]">{option.description}</p>
+                    </div>
+                  </div>
+                  <ul className="space-y-2 text-sm text-[color:var(--text-muted)]">
+                    {option.highlights.map((highlight) => (
+                      <li key={highlight} className="flex items-start gap-2 text-left">
+                        <span className="mt-1 inline-flex h-1.5 w-1.5 flex-none rounded-full bg-[rgba(37,99,235,0.7)]" />
+                        <span className="flex-1 leading-snug">{highlight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <span className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--accent-strong)]">
+                    {option.disabled ? 'Coming soon' : 'Enter workflow'}
+                    <svg
+                      aria-hidden
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-1"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M13.172 12 8.586 7.414 10 6l6 6-6 6-1.414-1.414L13.172 12Z"
+                      />
+                    </svg>
+                  </span>
                 </div>
-              </li>
-              <li className={`flex gap-3 rounded-2xl border p-5 shadow-inner transition ${tileTone.purple}`}>
-                <span className={`mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full ${toneDot.purple}`} />
-                <div className="space-y-1">
-                  <div className="font-semibold text-[color:var(--text-primary)]">Automated mappings</div>
-                  <p className="text-[color:var(--text-secondary)]">
-                    Confidence-scored header mapping, clear overrides, and audit trails that work at portfolio scale.
-                  </p>
-                </div>
-              </li>
-              <li className={`flex gap-3 rounded-2xl border p-5 shadow-inner transition ${tileTone.amber}`}>
-                <span className={`mt-1 inline-flex h-2.5 w-2.5 flex-none rounded-full ${toneDot.amber}`} />
-                <div className="space-y-1">
-                  <div className="font-semibold text-[color:var(--text-primary)]">Variance intelligence</div>
-                  <p className="text-[color:var(--text-secondary)]">
-                    Surface outliers instantly with narrative-ready context to accelerate close reviews.
-                  </p>
-                </div>
-              </li>
-            </ul>
-          </div>
+              </>
+            );
 
-          <div className="flex flex-col gap-6">
-            <div className="ios-card ios-animate-up space-y-4 p-8">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-[color:var(--accent-strong)]">
-                Pilot milestones
-              </h3>
-              <dl className="space-y-3 text-sm text-[color:var(--text-secondary)]">
-                <div className={`rounded-2xl border p-4 ${tileTone.blue}`}>
-                  <dt className="font-semibold text-[color:var(--accent-strong)]">Wave 1</dt>
-                  <dd>Income statement ingestion with mapping suggestions and exception logging.</dd>
+            if (option.disabled) {
+              return (
+                <div key={option.id} className={cardClass} data-tone={option.tone} aria-disabled="true">
+                  {sharedContent}
                 </div>
-                <div className={`rounded-2xl border p-4 ${tileTone.purple}`}>
-                  <dt className="font-semibold text-[#7C3AED] dark:text-[#C084FC]">Wave 2</dt>
-                  <dd>Variance intelligence with narrative prompts and shareable review packets.</dd>
-                </div>
-                <div className={`rounded-2xl border p-4 ${tileTone.amber}`}>
-                  <dt className="font-semibold text-[#B45309] dark:text-[#FBBF24]">Wave 3</dt>
-                  <dd>Automated exports into STORE templates with audit-ready reconciliation.</dd>
-                </div>
-              </dl>
-            </div>
+              );
+            }
 
-            <div className="ios-card ios-animate-up space-y-3 border border-dashed border-[rgba(37,99,235,0.28)] bg-[rgba(37,99,235,0.08)] p-7 text-sm text-[color:var(--text-secondary)] shadow-inner">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-[color:var(--accent-strong)]">
-                Get involved
-              </h3>
-              <p>
-                Insight Ops is enrolling beta partners now. Share your accounting package export and we will plug it into
-                the automation build to accelerate delivery.
-              </p>
-              <Link
-                href="mailto:alex@mystorestorage.com"
-                className="ios-button w-fit px-5 py-2 text-sm"
-              >
-                Request access
-                <span aria-hidden>{'->'}</span>
+            return (
+              <Link key={option.id} href={option.href ?? '#'} className={cardClass} data-tone={option.tone}>
+                {sharedContent}
               </Link>
-            </div>
-          </div>
+            );
+          })}
         </section>
-      </div>
-
-      <div className="sr-only">
-        <Image src="/file.svg" alt="" width={1} height={1} />
-        <Image src="/window.svg" alt="" width={1} height={1} />
-        <Image src="/globe.svg" alt="" width={1} height={1} />
       </div>
     </div>
   );

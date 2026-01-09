@@ -43,7 +43,7 @@ const features: Feature[] = [
   {
     title: 'Accounting',
     description: 'Standardize bank and credit card spreadsheets for efficient, accurate Yardi imports.',
-    href: '/accounting/bank-card-import-prep',
+    href: '/accounting',
     status: 'WIP',
     tone: 'blue',
     icon: 'layers',
@@ -90,6 +90,20 @@ const HERO_STATS = [
 
 const PLATFORM_VERSION = '0.8.8';
 const NEXT_VERSION = '15.5.7';
+const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 const iconToneLight: Record<FeatureTone, string> = {
   blue: 'bg-[rgba(37,99,235,0.12)] text-[#1D4ED8]',
@@ -159,6 +173,27 @@ function FeatureIcon({ name, tone }: { name: FeatureIconKey; tone: FeatureTone }
         </svg>
       );
   }
+}
+
+function getOrdinalSuffix(day: number): string {
+  const remainder = day % 100;
+  if (remainder >= 11 && remainder <= 13) return 'th';
+  switch (day % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
+function formatHeroDate(date: Date): string {
+  const month = MONTH_LABELS[date.getMonth()] ?? '';
+  const day = date.getDate();
+  return `${month}, ${day}${getOrdinalSuffix(day)}`;
 }
 
 export default function DirectoryPage(): JSX.Element {
@@ -296,6 +331,9 @@ export default function DirectoryPage(): JSX.Element {
     ? 'bg-[radial-gradient(circle_at_85%_80%,rgba(56,189,248,0.18),transparent_60%)]'
     : 'bg-[radial-gradient(circle_at_82%_85%,rgba(125,211,252,0.16),transparent_62%)]';
   const iconTone = isDark ? iconToneDark : iconToneLight;
+  const heroStats = HERO_STATS.map((stat) =>
+    stat.label === 'Last update' ? { ...stat, value: formatHeroDate(new Date()) } : stat,
+  );
 
   return (
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
@@ -316,10 +354,15 @@ export default function DirectoryPage(): JSX.Element {
                 to open the tool you desire to use.
               </p>
               <div className="grid gap-4 pt-2 text-sm sm:grid-cols-3">
-                {HERO_STATS.map((stat) => (
+                {heroStats.map((stat) => (
                   <div key={stat.label} className="stat-card hero-stat rounded-2xl p-4">
                     <p className="hero-stat__label">{stat.label}</p>
-                    <p className="hero-stat__value">{stat.value}</p>
+                    <p
+                      className="hero-stat__value"
+                      suppressHydrationWarning={stat.label === 'Last update'}
+                    >
+                      {stat.value}
+                    </p>
                     <p className="hero-stat__detail">{stat.detail}</p>
                   </div>
                 ))}

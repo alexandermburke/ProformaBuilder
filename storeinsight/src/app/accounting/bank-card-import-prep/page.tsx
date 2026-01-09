@@ -793,9 +793,9 @@ export default function BankCardImportPrepPage() {
             <span className="owner-status-badge" data-tone={statusTone}>
               {statusLabel}
             </span>
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
+            <Link href="/accounting" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
               <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-              Back to directory
+              Back to accounting
             </Link>
           </div>
           <div className="grid gap-4 md:flex md:items-end md:justify-between">
