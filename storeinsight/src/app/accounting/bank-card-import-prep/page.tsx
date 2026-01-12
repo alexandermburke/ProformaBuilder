@@ -844,7 +844,7 @@ export default function BankCardImportPrepPage() {
                   return (
                     <div
                       key={card.key}
-                      className="flex h-full min-h-[220px] flex-col gap-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4 shadow-sm"
+                      className="bank-card-panel flex h-full min-h-[220px] flex-col gap-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4 shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
@@ -914,7 +914,7 @@ export default function BankCardImportPrepPage() {
                   );
                 })}
             </div>
-            <div className="mt-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-4">
+            <div className="bank-card-panel bank-card-panel--subtle mt-3 rounded-2xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-4">
               <button
                 type="button"
                 className="flex w-full items-center justify-between text-sm font-semibold text-[color:var(--text-primary)]"
@@ -933,7 +933,7 @@ export default function BankCardImportPrepPage() {
                       return (
                         <div
                           key={card.key}
-                          className="flex h-full min-h-[200px] flex-col gap-3 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4"
+                          className="bank-card-panel flex h-full min-h-[200px] flex-col gap-3 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/85 p-4"
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-1">
@@ -1002,7 +1002,7 @@ export default function BankCardImportPrepPage() {
                 </div>
               )}
             </div>
-            <div className="mt-4 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/75 p-4 text-sm text-[color:var(--text-secondary)]">
+            <div className="bank-card-panel bank-card-panel--subtle mt-4 rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/75 p-4 text-sm text-[color:var(--text-secondary)]">
               Separate uploads let us apply presets per bank/card exporter and reuse payee/GL crosswalks without
               collisions.
             </div>
@@ -1041,7 +1041,7 @@ export default function BankCardImportPrepPage() {
                   </button>
                 </div>
               </div>
-              <div className="rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
+              <div className="bank-card-inset rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
                 <p className="font-semibold text-[color:var(--text-primary)]">Counts</p>
                 <p>Bank rows: {counts.bank}</p>
                 <p>Card rows: {counts.card}</p>
@@ -1050,7 +1050,7 @@ export default function BankCardImportPrepPage() {
                 <p>Exported journal lines: {counts.output}</p>
               </div>
               {templateStats.templateTxCount > 0 && (
-                <div className="rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
+                <div className="bank-card-inset rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
                   <p className="font-semibold text-[color:var(--text-primary)]">Template mapping</p>
                   <p>Template transactions: {templateStats.templateTxCount}</p>
                   <p>Matched: {templateStats.matchedTxCount}</p>
@@ -1080,7 +1080,7 @@ export default function BankCardImportPrepPage() {
                   </ul>
                 </div>
               )}
-              <div className="rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
+              <div className="bank-card-inset rounded-xl border border-[color:var(--border-soft)]/70 bg-[color:var(--surface)]/80 p-3 text-xs text-[color:var(--text-secondary)]">
                 <p className="font-semibold text-[color:var(--text-primary)]">Logs</p>
                 <div className="mt-2 max-h-48 space-y-1 overflow-auto">
                   {logs.length === 0 ? (

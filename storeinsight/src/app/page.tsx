@@ -8,12 +8,12 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
 type FeatureTone = 'blue' | 'purple' | 'green';
-type FeatureIconKey = 'document' | 'layers' | 'globe';
+type FeatureIconKey = 'document' | 'layers' | 'globe' | 'target';
 
 type Feature = {
   title: string;
@@ -67,6 +67,20 @@ const features: Feature[] = [
       'Assemble owner decks with structured commentary sections',
       'Queue recurring owner report deliveries around asset manager cycles',
     ],
+  },
+  {
+    title: 'Comp Sets',
+    description: 'Benchmark STORE assets against competitor pricing.',
+    href: '/comp-sets',
+    status: 'Planned',
+    tone: 'blue',
+    icon: 'target',
+    highlights: [
+      'Import rate shops, rent rolls, and competitor snapshots',
+      'Normalize premiums, concessions, and occupancy deltas',
+      'Export comp set notes for underwriting decks',
+    ],
+    disabled: true,
   },
 ];
 
@@ -154,6 +168,26 @@ function FeatureIcon({ name, tone }: { name: FeatureIconKey; tone: FeatureTone }
           <path d="m4 16 8 4 8-4" />
         </svg>
       );
+    case 'target':
+      return (
+        <svg
+          viewBox="0 0 24 24"
+          className="h-7 w-7 text-current"
+          data-tone={tone}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="8" />
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 2v3" />
+          <path d="M12 19v3" />
+          <path d="M2 12h3" />
+          <path d="M19 12h3" />
+        </svg>
+      );
     case 'globe':
     default:
       return (
@@ -200,6 +234,8 @@ export default function DirectoryPage(): JSX.Element {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
+  const carouselRef = useRef<HTMLDivElement | null>(null);
+  const carouselPaused = useRef(false);
   const [flashDevMode, setFlashDevMode] = useState(false);
   const [devModeLoading, setDevModeLoading] = useState(true);
   const [devModeSaving, setDevModeSaving] = useState(false);
@@ -334,6 +370,164 @@ export default function DirectoryPage(): JSX.Element {
   const heroStats = HERO_STATS.map((stat) =>
     stat.label === 'Last update' ? { ...stat, value: formatHeroDate(new Date()) } : stat,
   );
+  const carouselItems = features.length > 1 ? [...features, ...features] : features;
+
+  useEffect(() => {
+    const container = carouselRef.current;
+    if (!container || features.length < 2) return;
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const shouldAnimate = !prefersReducedMotion.matches;
+
+    let rafId = 0;
+    let lastTime = 0;
+    const speed = 0.06; // px per ms
+    let resumeTimer = 0;
+    let dragPointerId: number | null = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragStartScroll = 0;
+    let isDragging = false;
+    let dragMoved = false;
+    const dragThreshold = 6;
+
+    const scheduleResume = () => {
+      if (resumeTimer) window.clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(() => {
+        carouselPaused.current = false;
+        lastTime = 0;
+      }, 1200);
+    };
+
+    const pause = () => {
+      carouselPaused.current = true;
+      if (resumeTimer) window.clearTimeout(resumeTimer);
+    };
+
+    const resume = () => {
+      if (isDragging) return;
+      scheduleResume();
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button && event.button !== 0) return;
+      pause();
+      dragPointerId = event.pointerId;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      dragStartScroll = container.scrollLeft;
+      isDragging = false;
+      dragMoved = false;
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (dragPointerId !== event.pointerId) return;
+      const deltaX = event.clientX - dragStartX;
+      const deltaY = event.clientY - dragStartY;
+
+      if (!isDragging) {
+        if (Math.hypot(deltaX, deltaY) < dragThreshold) return;
+        if (Math.abs(deltaY) > Math.abs(deltaX)) {
+          dragPointerId = null;
+          resume();
+          return;
+        }
+        isDragging = true;
+        dragMoved = true;
+        container.classList.add('is-dragging');
+        try {
+          container.setPointerCapture(event.pointerId);
+        } catch {
+          // ignore capture errors
+        }
+      }
+
+      if (isDragging) {
+        container.scrollLeft = dragStartScroll - deltaX;
+        lastTime = 0;
+        event.preventDefault();
+      }
+    };
+
+    const endDrag = () => {
+      if (isDragging && dragPointerId !== null) {
+        try {
+          container.releasePointerCapture(dragPointerId);
+        } catch {
+          // ignore capture errors
+        }
+      }
+      isDragging = false;
+      dragPointerId = null;
+      container.classList.remove('is-dragging');
+      resume();
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      pause();
+      const dominantDelta = Math.abs(event.deltaY) > Math.abs(event.deltaX);
+      if (dominantDelta) {
+        container.scrollLeft += event.deltaY;
+        event.preventDefault();
+      } else {
+        container.scrollLeft += event.deltaX;
+      }
+      scheduleResume();
+    };
+
+    const onClickCapture = (event: MouseEvent) => {
+      if (!dragMoved) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragMoved = false;
+    };
+
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerup', endDrag);
+    container.addEventListener('pointercancel', endDrag);
+    container.addEventListener('focusin', pause);
+    container.addEventListener('focusout', resume);
+    container.addEventListener('wheel', onWheel, { passive: false });
+    container.addEventListener('click', onClickCapture, true);
+
+    if (shouldAnimate) {
+      carouselPaused.current = false;
+      lastTime = 0;
+
+      const step = (timestamp: number) => {
+        if (!lastTime) lastTime = timestamp;
+        const delta = timestamp - lastTime;
+        lastTime = timestamp;
+
+        if (!carouselPaused.current) {
+          container.scrollLeft += delta * speed;
+          const resetAt = container.scrollWidth / 2;
+          if (container.scrollLeft >= resetAt) {
+            container.scrollLeft -= resetAt;
+          }
+        }
+
+        rafId = window.requestAnimationFrame(step);
+      };
+
+      container.scrollLeft = 0;
+      rafId = window.requestAnimationFrame(step);
+    }
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      if (resumeTimer) window.clearTimeout(resumeTimer);
+      container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerup', endDrag);
+      container.removeEventListener('pointercancel', endDrag);
+      container.removeEventListener('focusin', pause);
+      container.removeEventListener('focusout', resume);
+      container.removeEventListener('wheel', onWheel);
+      container.removeEventListener('click', onClickCapture, true);
+    };
+  }, []);
 
   return (
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
@@ -371,16 +565,18 @@ export default function DirectoryPage(): JSX.Element {
           </div>
         </header>
 
-        <section className="grid gap-6 lg:grid-cols-3">
-          {features.map((feature, index) => {
-            const delayClass = index === 1 ? 'ios-animate-delay-sm' : index === 2 ? 'ios-animate-delay-md' : '';
+        <section className="feature-carousel feature-carousel--scroll gap-6" ref={carouselRef}>
+          {carouselItems.map((feature, index) => {
+            const slotIndex = index % features.length;
+            const delayClass = slotIndex === 1 ? 'ios-animate-delay-sm' : slotIndex === 2 ? 'ios-animate-delay-md' : '';
             const cardClass = [
-              'group ios-card ios-animate-up feature-card',
+              'group ios-card ios-animate-up feature-card feature-carousel__card',
               delayClass,
-              'relative overflow-hidden flex flex-col gap-6 p-8 transition-all duration-500 hover:-translate-y-1',
+              'relative overflow-hidden flex h-full flex-col gap-6 p-8 transition-all duration-500',
             ]
               .filter(Boolean)
               .join(' ');
+            const isDuplicate = index >= features.length;
             const sharedContent = (
               <>
                 <span
@@ -435,11 +631,13 @@ export default function DirectoryPage(): JSX.Element {
             if (feature.disabled) {
               return (
                 <button
-                  key={feature.title}
+                  key={`${feature.title}-${index}`}
                   type="button"
                   onClick={() => handleUnavailable(feature.title)}
                   className={cardClass}
                   data-tone={feature.tone}
+                  tabIndex={isDuplicate ? -1 : undefined}
+                  aria-hidden={isDuplicate}
                 >
                   {sharedContent}
                 </button>
@@ -447,7 +645,14 @@ export default function DirectoryPage(): JSX.Element {
             }
 
             return (
-              <Link key={feature.title} href={feature.href} className={cardClass} data-tone={feature.tone}>
+              <Link
+                key={`${feature.title}-${index}`}
+                href={feature.href}
+                className={cardClass}
+                data-tone={feature.tone}
+                tabIndex={isDuplicate ? -1 : undefined}
+                aria-hidden={isDuplicate}
+              >
                 {sharedContent}
               </Link>
             );
