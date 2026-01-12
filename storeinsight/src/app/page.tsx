@@ -80,7 +80,6 @@ const features: Feature[] = [
       'Normalize premiums, concessions, and occupancy deltas',
       'Export comp set notes for underwriting decks',
     ],
-    disabled: true,
   },
 ];
 
@@ -381,7 +380,7 @@ export default function DirectoryPage(): JSX.Element {
 
     let rafId = 0;
     let lastTime = 0;
-    const speed = 0.06; // px per ms
+    const speed = 0.04; // px per ms
     let resumeTimer = 0;
     let dragPointerId: number | null = null;
     let dragStartX = 0;
