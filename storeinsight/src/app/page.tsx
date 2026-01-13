@@ -380,7 +380,7 @@ export default function DirectoryPage(): JSX.Element {
 
     let rafId = 0;
     let lastTime = 0;
-    const speed = 0.04; // px per ms
+    const speed = 0.04;
     let resumeTimer = 0;
     let dragPointerId: number | null = null;
     let dragStartX = 0;
