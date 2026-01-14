@@ -252,9 +252,9 @@ const BUDGET_LINES: BudgetLine[] = [
   { label: "Rental Income", baseKey: "RENTINC", page: 0 },
   { label: "Discounts", baseKey: "DISC", page: 0 },
   { label: "TOTAL RENTAL INCOME", baseKey: "TOTRENINC", page: 0 },
-  { label: "Tenant Fee Income", baseKey: "ADMFE", page: 0 },
+  { label: "Tenant Fee Income", baseKey: "ADMFEE", page: 0 },
   { label: "Tenant Income - Late Fees", baseKey: "LATEFEE", page: 0 },
-  { label: "Tenant Protection Fee", baseKey: "INSURT", page: 0 },
+  { label: "Tenant Protection Fee", baseKey: "INSUR", page: 0 },
   { label: "Tenant Income - Other", baseKey: "OTHER", page: 0 },
   { label: "Retail Sales", baseKey: "RETSAL", page: 0 },
   { label: "TOTAL INCOME", baseKey: "TOTALINC", page: 0 },
@@ -267,7 +267,7 @@ const BUDGET_LINES: BudgetLine[] = [
   { label: "Insurance", baseKey: "INSUREXP", page: 1 },
   { label: "Licenses & Permits", baseKey: "PERM", page: 1 },
   { label: "Management Fees", baseKey: "MGMT", page: 1 },
-  { label: "Management Fees - Staff Costs", baseKey: "MGMSTF", page: 1 },
+  { label: "Payroll Costs", baseKey: "MGMSTF", page: 1 },
   { label: "Office Supplies", baseKey: "OFFSUP", page: 1 },
   { label: "Professional Fees", baseKey: "PROF", page: 1 },
   { label: "Repairs & Maintenance", baseKey: "REP", page: 1 },
@@ -283,6 +283,7 @@ const BUDGET_LINES: BudgetLine[] = [
   { label: "TOTAL EXPENSES", baseKey: "TOTEXP", page: 1 },
   { label: "Interest Income", baseKey: "INTINC", page: 1 },
   { label: "NET INCOME", baseKey: "NETINC", page: 1 },
+  { label: "Secure Payment Fee", baseKey: "SECPP", page: 1 },
 ];
 
 const BUDGET_PAGES = [

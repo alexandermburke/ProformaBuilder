@@ -569,15 +569,15 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     ADMFEEYTDVAR: "ADMFEYTDVAR",
     ADMFEEYTDVARPER: "ADMFEYTDVARPER",
 
-    // Tenant Income - Insurance: INSURT* already populated
-    INSURCM: "INSURTCM",
-    INSURPTD: "INSURTPTD",
-    INSURVAR: "INSURTVAR",
-    INSURVARPER: "INSURTVARPER",
-    INSURYTD: "INSURTYTD",
-    INSURYTDBUD: "INSURTYTDBUD",
-    INSURYTDVAR: "INSURTYTDVAR",
-    INSURYTDVARPER: "INSURTYTDVARPER",
+    // Tenant Protection Fee: INSUREXP* already populated
+    INSURCM: "INSUREXPCM",
+    INSURPTD: "INSUREXPPTD",
+    INSURVAR: "INSUREXPVAR",
+    INSURVARPER: "INSUREXPVARPER",
+    INSURYTD: "INSUREXPYTD",
+    INSURYTDBUD: "INSUREXPYTDBUD",
+    INSURYTDVAR: "INSUREXPYTDVAR",
+    INSURYTDVARPER: "INSUREXPYTDVARPER",
 
     // Late Fees: LATEFEE* already populated
     LATFEECM: "LATEFEECM",
@@ -589,7 +589,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     LATFEEYTDVAR: "LATEFEEYTDVAR",
     LATFEEYTDVARPER: "LATEFEEYTDVARPER",
 
-    // Management Fees - Staff Costs: MGMSTF* already populated
+    // Payroll Costs: MGMSTF* already populated
     MGMTSTFCM: "MGMSTFCM",
     MGMTSTFPTD: "MGMSTFPTD",
     MGMTSTFVAR: "MGMSTFVAR",
