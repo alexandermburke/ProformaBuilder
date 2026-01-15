@@ -264,7 +264,7 @@ const BUDGET_LINES: BudgetLine[] = [
   { label: "Credit Card Merchant Fees", baseKey: "CCM", page: 1 },
   { label: "Dues & Subscriptions", baseKey: "DUES", page: 1 },
   { label: "Fire Prevention", baseKey: "FIRE", page: 1 },
-  { label: "Insurance", baseKey: "INSUREXP", page: 1 },
+  { label: "Insurance", baseKey: "INSURXP", page: 1 },
   { label: "Licenses & Permits", baseKey: "PERM", page: 1 },
   { label: "Management Fees", baseKey: "MGMT", page: 1 },
   { label: "Payroll Costs", baseKey: "MGMSTF", page: 1 },

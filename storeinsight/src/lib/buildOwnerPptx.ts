@@ -31,6 +31,7 @@ const MAPPING_ALIASES: Record<string, string> = {
 const BUDGET_ALIAS_BASES: Record<string, string> = {
   OTHEXP: "OTHEREXP",
   TOTOTHEXP: "TOTOTHEREXP",
+  INSURXP: "INSUREXP",
 };
 
 const BUDGET_SUFFIXES = [
@@ -483,6 +484,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     }
   }
 
+
   const templateTokenSet = new Set<string>(scannedTokenSet);
   if (templateTokens && templateTokens.length > 0) {
     for (const token of templateTokens) {
@@ -569,15 +571,15 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     ADMFEEYTDVAR: "ADMFEYTDVAR",
     ADMFEEYTDVARPER: "ADMFEYTDVARPER",
 
-    // Tenant Protection Fee: INSUREXP* already populated
-    INSURCM: "INSUREXPCM",
-    INSURPTD: "INSUREXPPTD",
-    INSURVAR: "INSUREXPVAR",
-    INSURVARPER: "INSUREXPVARPER",
-    INSURYTD: "INSUREXPYTD",
-    INSURYTDBUD: "INSUREXPYTDBUD",
-    INSURYTDVAR: "INSUREXPYTDVAR",
-    INSURYTDVARPER: "INSUREXPYTDVARPER",
+    // Tenant Protection Fee: INSURXP* already populated
+    INSURCM: "INSURXPCM",
+    INSURPTD: "INSURXPPTD",
+    INSURVAR: "INSURXPVAR",
+    INSURVARPER: "INSURXPVARPER",
+    INSURYTD: "INSURXPYTD",
+    INSURYTDBUD: "INSURXPYTDBUD",
+    INSURYTDVAR: "INSURXPYTDVAR",
+    INSURYTDVARPER: "INSURXPYTDVARPER",
 
     // Late Fees: LATEFEE* already populated
     LATFEECM: "LATEFEECM",
