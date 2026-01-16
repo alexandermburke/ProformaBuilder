@@ -273,10 +273,11 @@ function buildFlashEmailHtmlFromPng(
 }
 
 function formatMonthLabel(yyyyMm: string): string {
-  const [y, m] = yyyyMm.split("-").map(Number);
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return yyyyMm;
+  const [yStr, mStr] = yyyyMm.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
   const date = new Date(Date.UTC(y, m - 1, 1));
-  return new Intl.DateTimeFormat("en-US", { month: "short", year: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "2-digit", timeZone: "UTC" }).format(date);
 }
 
 function formatCurrencyNoDecimals(value: number): string {
@@ -296,22 +297,21 @@ function formatPercentLabel(value: number): string {
 }
 
 async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: string): Promise<Buffer> {
-  const hasPartialMonth = series.months[0] === "2026-01";
-  const months = hasPartialMonth ? series.months.slice(1) : series.months.slice();
-  const rent = hasPartialMonth ? series.grossAccruedRent.slice(1) : series.grossAccruedRent.slice();
-  const monthsRecent = months.slice(0, 7);
-  const rentRecent = rent.slice(0, 7);
-  console.log("[rent series]", { first: monthsRecent[0], last: monthsRecent[monthsRecent.length - 1] });
+  const monthsRecent = series.months.slice(0, 7);
+  const dataRecent = series.grossAccruedRent.slice(0, 7);
   const monthsAsc = monthsRecent.slice().reverse();
-  const rentAsc = rentRecent.slice().reverse();
+  const dataAsc = dataRecent.slice().reverse();
   const labels = monthsAsc.map(formatMonthLabel);
-  const data = rentAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0));
-  console.log({ propertyId, labels, data });
-  if (labels.length !== data.length) {
-    throw new Error("MoM series length mismatch");
+  const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0));
+  console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
+  if (monthsRecent[0] !== "2025-12") {
+    throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
   }
   if (labels[labels.length - 1] !== "Dec 25") {
-    console.warn("Missing newest month");
+    throw new Error(`Expected last label Dec 25, got ${labels[labels.length - 1]}`);
+  }
+  if (labels.length !== data.length) {
+    throw new Error("MoM series length mismatch");
   }
 
   const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
@@ -343,7 +343,7 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
           align: "top",
           offset: 4,
           color: "#111827",
-          font: { size: 12, weight: 600 },
+          font: { size: 16, weight: 600 },
           formatter: (value) => {
             const numeric = typeof value === "number" ? value : Number(value);
             return Number.isFinite(numeric) ? formatCurrencyNoDecimals(numeric) : "";
@@ -367,7 +367,7 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
             maxRotation: 0,
             minRotation: 0,
             padding: 12,
-            font: { size: 12, weight: 600 },
+            font: { size: 16, weight: 600 },
             color: "#111827",
           },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.08)" },
@@ -381,19 +381,21 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
 }
 
 async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): Promise<Buffer> {
-  const hasPartialMonth = series.months[0] === "2026-01";
-  const months = hasPartialMonth ? series.months.slice(1) : series.months.slice();
-  const occupied = hasPartialMonth ? series.occupiedPct.slice(1) : series.occupiedPct.slice();
-  const monthsAsc = months.slice().reverse();
-  const occAsc = occupied.slice().reverse();
+  const monthsRecent = series.months.slice(0, 7);
+  const dataRecent = series.occupiedPct.slice(0, 7);
+  const monthsAsc = monthsRecent.slice().reverse();
+  const dataAsc = dataRecent.slice().reverse();
   const labels = monthsAsc.map(formatMonthLabel);
-  const data = occAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : null));
-  console.log({ propertyId, labels, data });
-  if (labels.length !== data.length) {
-    throw new Error("MoM series length mismatch");
+  const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : null));
+  console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
+  if (monthsRecent[0] !== "2025-12") {
+    throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
   }
   if (labels[labels.length - 1] !== "Dec 25") {
-    console.warn("Missing newest month");
+    throw new Error(`Expected last label Dec 25, got ${labels[labels.length - 1]}`);
+  }
+  if (labels.length !== data.length) {
+    throw new Error("MoM series length mismatch");
   }
 
   const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
@@ -425,7 +427,7 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
           align: "top",
           offset: 4,
           color: "#111827",
-          font: { size: 12, weight: 600 },
+          font: { size: 16, weight: 600 },
           formatter: (value) => {
             const numeric = typeof value === "number" ? value : Number(value);
             return Number.isFinite(numeric) ? formatPercentLabel(numeric) : "";
@@ -451,7 +453,7 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
             maxRotation: 0,
             minRotation: 0,
             padding: 12,
-            font: { size: 12, weight: 600 },
+            font: { size: 16, weight: 600 },
             color: "#111827",
           },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.08)" },
