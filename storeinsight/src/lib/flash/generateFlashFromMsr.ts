@@ -168,6 +168,8 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
   const dataAsc = dataRecent.slice().reverse();
   const labels = monthsAsc.map(formatMonthLabel);
   const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0));
+  const maxValue = Math.max(0, ...data);
+  const yMax = Math.ceil(maxValue * 1.1);
   console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
   if (monthsRecent[0] !== "2025-12") {
     throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
@@ -179,6 +181,7 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
     throw new Error("MoM series length mismatch");
   }
 
+  const storeManagedPlugin = isPittmanProperty(propertyId) ? buildStoreManagedMarkerPlugin() : null;
   const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
     type: "line",
     data: {
@@ -197,6 +200,7 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
         },
       ],
     },
+    plugins: storeManagedPlugin ? [storeManagedPlugin] : [],
     options: {
       responsive: false,
       plugins: {
@@ -207,6 +211,8 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
           anchor: "end",
           align: "top",
           offset: 4,
+          clamp: true,
+          clip: true,
           color: "#111827",
           font: { size: 16, weight: 600 },
           formatter: (value) => {
@@ -215,10 +221,11 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
           },
         },
       },
-      layout: { padding: { top: 40, right: 120, bottom: 24, left: 60 } },
+      layout: { padding: { top: 70, right: 140, bottom: 24, left: 60 } },
       scales: {
         y: {
           beginAtZero: true,
+          suggestedMax: yMax,
           title: { display: true, text: "Dollars ($)" },
           ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 8 },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.1)" },
@@ -263,6 +270,7 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
     throw new Error("MoM series length mismatch");
   }
 
+  const storeManagedPlugin = isPittmanProperty(propertyId) ? buildStoreManagedMarkerPlugin() : null;
   const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
     type: "line",
     data: {
@@ -281,6 +289,7 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
         },
       ],
     },
+    plugins: storeManagedPlugin ? [storeManagedPlugin] : [],
     options: {
       responsive: false,
       plugins: {
@@ -677,6 +686,52 @@ function formatCurrencyNoDecimals(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
+}
+
+const normalizePropertyKey = (value: string): string => value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+const isPittmanProperty = (propertyId: string): boolean => {
+  const key = normalizePropertyKey(propertyId);
+  return key === "PITTMAN" || key === "PROP_PITTMAN";
+};
+
+function buildStoreManagedMarkerPlugin(targetLabel = "Nov 25", text = "STORE Managed"): Plugin<"line"> {
+  return {
+    id: "store-managed-marker",
+    afterDraw(chart) {
+      const labels = chart.data.labels;
+      if (!Array.isArray(labels)) return;
+      const idx = labels.indexOf(targetLabel);
+      if (idx === -1) return;
+      const xScale = chart.scales.x;
+      if (!xScale) return;
+      const x = xScale.getPixelForValue(idx);
+      const yScale = chart.scales.y;
+      const dataset = chart.data.datasets?.[0];
+      const rawValue = dataset?.data?.[idx];
+      const yVal = typeof rawValue === "number" ? rawValue : Number(rawValue);
+      if (!Number.isFinite(yVal) || !yScale) return;
+      const yLine = yScale.getPixelForValue(yVal);
+      const textY = yLine + 16;
+      const lineTop = yLine + 2;
+      const lineBottom = yLine + 14;
+      const { ctx } = chart;
+      ctx.save();
+      ctx.strokeStyle = "#4b5563";
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(x, lineTop);
+      ctx.lineTo(x, lineBottom);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.font = "600 14px Inter";
+      ctx.fillStyle = "#374151";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(text, x, textY);
+      ctx.restore();
+    },
+  };
 }
 
 function scrubHiddenCharactersFromZip(zip: PizZip): void {
