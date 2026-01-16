@@ -10,9 +10,11 @@ import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
 import { createCanvas } from "canvas";
 import { Chart as ChartJS, registerables, type ChartConfiguration, type Plugin } from "chart.js";
+import ChartDataLabels from "chartjs-plugin-datalabels";
 import "@/lib/chartFonts";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
+import { getMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { firestore, storage } from "@/server/firebaseAdmin";
 
@@ -23,7 +25,7 @@ type TokenMap = Record<string, string | number | unknown[]>;
 const chartWidth = 1200;
 const chartHeight = 650;
 const chartPixelRatio = 2;
-const whiteBackgroundPlugin: Plugin<"bar"> = {
+const whiteBackgroundPlugin: Plugin = {
   id: "customCanvasBackgroundColor",
   beforeDraw: (chart, _args, opts) => {
     const { ctx, width, height } = chart;
@@ -34,7 +36,7 @@ const whiteBackgroundPlugin: Plugin<"bar"> = {
     ctx.restore();
   },
 };
-ChartJS.register(...registerables, whiteBackgroundPlugin);
+ChartJS.register(...registerables, whiteBackgroundPlugin, ChartDataLabels);
 ChartJS.defaults.responsive = false;
 ChartJS.defaults.animation = false;
 ChartJS.defaults.devicePixelRatio = chartPixelRatio;
@@ -117,7 +119,10 @@ function resolveSofficePath(): string {
   return "soffice";
 }
 
-function renderChartBuffer(configuration: ChartConfiguration<"bar", number[], string>, mimeType: "image/png" | "image/jpeg"): Buffer {
+function renderChartBuffer(
+  configuration: ChartConfiguration<"line", Array<number | null>, string>,
+  mimeType: "image/png" | "image/jpeg",
+): Buffer {
   const canvas = createCanvas(chartWidth, chartHeight);
   const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#FFFFFF";
@@ -267,30 +272,63 @@ function buildFlashEmailHtmlFromPng(
   `;
 }
 
-async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
-  const labels = ["0-10", "11-30", "31-60", "61-90", "91-120", "121-180", "181-360", "361+"];
-  const data = [
-    tokens.ARAGING_0_10,
-    tokens.ARAGING_11_30,
-    tokens.ARAGING_31_60,
-    tokens.ARAGING_61_90,
-    tokens.ARAGING_91_120,
-    tokens.ARAGING_121_180,
-    tokens.ARAGING_181_360,
-    tokens.ARAGING_361_PLUS,
-  ].map(Number);
+function formatMonthLabel(yyyyMm: string): string {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return yyyyMm;
+  const date = new Date(Date.UTC(y, m - 1, 1));
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "2-digit" }).format(date);
+}
 
-  const configuration: ChartConfiguration<"bar", number[], string> = {
-    type: "bar",
+function formatCurrencyNoDecimals(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+function formatPercentLabel(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  const formatted = Number.isInteger(value) ? value.toString() : value.toFixed(1);
+  return `${formatted}%`;
+}
+
+async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: string): Promise<Buffer> {
+  const hasPartialMonth = series.months[0] === "2026-01";
+  const months = hasPartialMonth ? series.months.slice(1) : series.months.slice();
+  const rent = hasPartialMonth ? series.grossAccruedRent.slice(1) : series.grossAccruedRent.slice();
+  const monthsRecent = months.slice(0, 7);
+  const rentRecent = rent.slice(0, 7);
+  console.log("[rent series]", { first: monthsRecent[0], last: monthsRecent[monthsRecent.length - 1] });
+  const monthsAsc = monthsRecent.slice().reverse();
+  const rentAsc = rentRecent.slice().reverse();
+  const labels = monthsAsc.map(formatMonthLabel);
+  const data = rentAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0));
+  console.log({ propertyId, labels, data });
+  if (labels.length !== data.length) {
+    throw new Error("MoM series length mismatch");
+  }
+  if (labels[labels.length - 1] !== "Dec 25") {
+    console.warn("Missing newest month");
+  }
+
+  const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
+    type: "line",
     data: {
       labels,
       datasets: [
         {
-          label: "AR Dollars",
+          label: "Gross Accrued Rent ($)",
           data,
+          borderColor: "#3b52a1",
           backgroundColor: "#3b52a1",
-          borderRadius: 4,
-          borderWidth: 1,
+          borderWidth: 2,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 4,
+          pointBackgroundColor: "#3b52a1",
         },
       ],
     },
@@ -299,8 +337,20 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
       plugins: {
         legend: { display: false },
         title: { display: false },
+        datalabels: {
+          display: true,
+          anchor: "end",
+          align: "top",
+          offset: 4,
+          color: "#111827",
+          font: { size: 12, weight: 600 },
+          formatter: (value) => {
+            const numeric = typeof value === "number" ? value : Number(value);
+            return Number.isFinite(numeric) ? formatCurrencyNoDecimals(numeric) : "";
+          },
+        },
       },
-      layout: { padding: { top: 20, right: 24, bottom: 20, left: 50 } },
+      layout: { padding: { top: 40, right: 120, bottom: 24, left: 60 } },
       scales: {
         y: {
           beginAtZero: true,
@@ -310,8 +360,16 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
           border: { display: true, color: "#111827" },
         },
         x: {
-          title: { display: true, text: "Days" },
-          ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 6 },
+          offset: true,
+          title: { display: true, text: "Month" },
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+            padding: 12,
+            font: { size: 12, weight: 600 },
+            color: "#111827",
+          },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.08)" },
           border: { display: true, color: "#111827" },
         },
@@ -322,21 +380,37 @@ async function renderArAgingChart(tokens: TokenMap): Promise<Buffer> {
   return renderChartBuffer(configuration, "image/jpeg");
 }
 
-async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
-  const labels = ["Sqft", "Spaces", "Projected"];
-  const data = [tokens.OCCPCT_SQFT, tokens.OCCPCT_SPACES, tokens.OCCPCT_ECON].map(Number);
+async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): Promise<Buffer> {
+  const hasPartialMonth = series.months[0] === "2026-01";
+  const months = hasPartialMonth ? series.months.slice(1) : series.months.slice();
+  const occupied = hasPartialMonth ? series.occupiedPct.slice(1) : series.occupiedPct.slice();
+  const monthsAsc = months.slice().reverse();
+  const occAsc = occupied.slice().reverse();
+  const labels = monthsAsc.map(formatMonthLabel);
+  const data = occAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : null));
+  console.log({ propertyId, labels, data });
+  if (labels.length !== data.length) {
+    throw new Error("MoM series length mismatch");
+  }
+  if (labels[labels.length - 1] !== "Dec 25") {
+    console.warn("Missing newest month");
+  }
 
-  const configuration: ChartConfiguration<"bar", number[], string> = {
-    type: "bar",
+  const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
+    type: "line",
     data: {
       labels,
       datasets: [
         {
-          label: "Percent Occupied",
+          label: "Overall Occupancy (%)",
           data,
+          borderColor: "#4a4a4a",
           backgroundColor: "#4a4a4a",
-          borderRadius: 4,
-          borderWidth: 1,
+          borderWidth: 2,
+          fill: false,
+          pointRadius: 3,
+          pointHoverRadius: 4,
+          pointBackgroundColor: "#4a4a4a",
         },
       ],
     },
@@ -345,8 +419,20 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
       plugins: {
         legend: { display: false },
         title: { display: false },
+        datalabels: {
+          display: true,
+          anchor: "end",
+          align: "top",
+          offset: 4,
+          color: "#111827",
+          font: { size: 12, weight: 600 },
+          formatter: (value) => {
+            const numeric = typeof value === "number" ? value : Number(value);
+            return Number.isFinite(numeric) ? formatPercentLabel(numeric) : "";
+          },
+        },
       },
-      layout: { padding: { top: 40, right: 32, bottom: 24, left: 60 } },
+      layout: { padding: { top: 40, right: 120, bottom: 24, left: 60 } },
       scales: {
         y: {
           beginAtZero: true,
@@ -358,8 +444,16 @@ async function renderOccupancyChart(tokens: TokenMap): Promise<Buffer> {
           border: { display: true, color: "#111827" },
         },
         x: {
-          title: { display: true, text: "Type" },
-          ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 6 },
+          offset: true,
+          title: { display: true, text: "Month" },
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+            padding: 12,
+            font: { size: 12, weight: 600 },
+            color: "#111827",
+          },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.08)" },
           border: { display: true, color: "#111827" },
         },
@@ -499,12 +593,23 @@ export async function POST(req: NextRequest) {
   if (!property) {
     return NextResponse.json({ error: "Unknown propertyId" }, { status: 404 });
   }
+
+  const momSeries = getMoMSeries(propertyId);
+  if (!momSeries) {
+    return NextResponse.json(
+      { error: `No month-over-month series configured for propertyId "${propertyId}".` },
+      { status: 400 },
+    );
+  }
   const facilityOpenDate = property.facilityOpenDate;
   if (facilityOpenDate) {
     tokens.FACILITYOPENDATE = facilityOpenDate;
   }
 
-  const [arAgingChartJpeg, occupancyChartJpeg] = await Promise.all([renderArAgingChart(tokens), renderOccupancyChart(tokens)]);
+  const [rentChartJpeg, momOccupancyChartJpeg] = await Promise.all([
+    renderMoMGrossAccruedRentChart(momSeries, propertyId),
+    renderMoMOccupancyChart(momSeries, propertyId),
+  ]);
 
   const templatePath = path.join(process.cwd(), "public", "FLASHTEMPLATE.pptx");
 
@@ -524,8 +629,8 @@ export async function POST(req: NextRequest) {
       zip.file("ppt/media/image2.jpeg", heroImage);
     }
   }
-  zip.file("ppt/media/image3.jpeg", arAgingChartJpeg);
-  zip.file("ppt/media/image4.jpeg", occupancyChartJpeg);
+  zip.file("ppt/media/image3.jpeg", rentChartJpeg);
+  zip.file("ppt/media/image4.jpeg", momOccupancyChartJpeg);
   scrubHiddenCharactersFromZip(zip);
   const rendered = await renderTokensIntoZip(zip, tokens);
   let slidePngBuffer: Buffer | null = null;
