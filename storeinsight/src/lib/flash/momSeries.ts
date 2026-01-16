@@ -75,6 +75,7 @@ const MOM_SERIES_ALIASES: Record<string, keyof typeof MOM_SERIES_BY_PROPERTY> = 
   L001: "THE_GROVE",
   PROP_PITTMAN: "PITTMAN",
   PROP_THE_GROVE: "THE_GROVE",
+  W002: "PITTMAN",
 };
 
 export const getMoMSeries = (propertyId: string): MoMSeries | null => {
