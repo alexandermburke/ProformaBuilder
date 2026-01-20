@@ -132,6 +132,8 @@ export type OwnerPerformanceResult =
         latestMoveDateISO: string;
         hummingbirdRows: number;
         iprcRows: number;
+        rateTargetMonthKey: string;
+        iprcRowsMatched: number;
       };
     }
   | {
@@ -142,6 +144,7 @@ export type OwnerPerformanceResult =
 
 type IprcRow = {
   monthKey: string | null;
+  inEffectMonthKey: string | null;
   areaSqft: number;
   currentRent: number;
   newRent: number;
@@ -313,6 +316,9 @@ export function computeOwnerPerformance({
 
   const currentKey = monthKey(currentMonthStart);
   const previousKey = monthKey(previousMonthStart);
+  // Rate Management aligns to NEXTMONTH (current month + 1).
+  const nextMonthStart = addMonths(currentMonthStart, 1);
+  const rateTargetMonthKey = monthKey(startOfMonth(nextMonthStart));
   const currentStats = monthStats.get(currentKey) ?? createEmptyMonthStats();
   const previousStats = monthStats.get(previousKey) ?? createEmptyMonthStats();
 
@@ -372,7 +378,7 @@ export function computeOwnerPerformance({
     return iprcParse;
   }
 
-  const rateStats = aggregateIprc(iprcParse.rows, currentKey);
+  const rateStats = aggregateIprc(iprcParse.rows, rateTargetMonthKey);
   const rateTokens: RateManagementTokens = {
     NUMREN: formatInteger(rateStats.count),
     TOTSFT: formatInteger(rateStats.totalSqft),
@@ -402,6 +408,8 @@ export function computeOwnerPerformance({
       latestMoveDateISO: dateKey(latestMoveDate),
       hummingbirdRows: hummingbirdRowCount,
       iprcRows: iprcParse.rows.length,
+      rateTargetMonthKey,
+      iprcRowsMatched: rateStats.count,
     },
   };
 }
@@ -629,11 +637,20 @@ function parseIprcCsv(text: string):
   const header = rows[0].map((cell) => normalizeHeaderCell(cell));
   const findIndex = (candidates: string[]) => header.findIndex((value) => candidates.includes(value));
   const dtDateIdx = findIndex(["dtdate", "processeddate"]);
+  const inEffectIdx = findIndex(["dtineffect", "ineffect", "effectivedate", "dtineffectdate"]);
   const queueIdx = findIndex(["queue"]);
   const lenIdx = findIndex(["fltlength", "length"]);
   const widthIdx = findIndex(["fltwidth", "width"]);
   const curRentIdx = findIndex(["mnycurrentrent", "currentrent", "currentrate"]);
   const newRentIdx = findIndex(["mnynewrate", "newrent", "newrate"]);
+
+  if (inEffectIdx === -1) {
+    return {
+      ok: false,
+      code: "iprc_missing_columns",
+      message: "The IPRC CSV is missing dtInEffect (effective date), which is required for Rate Management.",
+    };
+  }
 
   if ([dtDateIdx, queueIdx, lenIdx, widthIdx, curRentIdx, newRentIdx].some((idx) => idx === -1)) {
     return {
@@ -648,6 +665,7 @@ function parseIprcCsv(text: string):
     const row = rows[i];
     if (!row || row.length === 0) continue;
     const processedDate = parseDateFromCell(row[dtDateIdx]);
+    const inEffectDate = parseDateFromCell(row[inEffectIdx]);
     const queue = row[queueIdx] ?? "";
     const length = toNumber(row[lenIdx]);
     const width = toNumber(row[widthIdx]);
@@ -656,8 +674,10 @@ function parseIprcCsv(text: string):
     const areaSqft = length * width;
     const letterMonth = deriveLetterMonth(queue, processedDate);
     const month = letterMonth ?? (processedDate ? startOfMonth(processedDate) : null);
+    const inEffectMonthKey = inEffectDate ? monthKey(startOfMonth(inEffectDate)) : null;
     parsed.push({
       monthKey: month ? monthKey(month) : null,
+      inEffectMonthKey,
       areaSqft,
       currentRent,
       newRent,
@@ -711,7 +731,7 @@ function monthNameToIndex(name: string): number | null {
   return null;
 }
 
-function aggregateIprc(rows: IprcRow[], monthKeyValue: string): RateManagementStats {
+function aggregateIprc(rows: IprcRow[], targetMonthKey: string): RateManagementStats {
   const initial: RateManagementStats = {
     count: 0,
     totalSqft: 0,
@@ -722,7 +742,8 @@ function aggregateIprc(rows: IprcRow[], monthKeyValue: string): RateManagementSt
   };
 
   for (const row of rows) {
-    if (!row.monthKey || row.monthKey !== monthKeyValue) continue;
+    // Rate management should align to the effective date, not when letters were processed/queued.
+    if (!row.inEffectMonthKey || row.inEffectMonthKey !== targetMonthKey) continue;
     initial.count += 1;
     initial.totalSqft += row.areaSqft;
     initial.baseRevenue += row.currentRent;

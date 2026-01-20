@@ -1,4 +1,3 @@
-// src/app/api/ai/suggest-mapping/route.ts
 import { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
