@@ -772,6 +772,12 @@ html.dark .ios-icon-button:hover {
   border-color: rgba(245, 158, 11, 0.24);
 }
 
+.ios-pill[data-tone="amber"] {
+  background: rgba(245, 158, 11, 0.18);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
 .ios-pill[data-tone="blue"] {
   background: rgba(37, 99, 235, 0.16);
   color: #1d4ed8;
@@ -1820,4 +1826,90 @@ html.dark .text-\[\#2563EB\] {
 html.dark .bg-\[\#0B1120\]\/50,
 html.dark .bg-\[\#0B1120\]\/60 {
   background-color: var(--overlay) !important;
+}
+
+/* --- Historical charts -------------------------------------------------- */
+@keyframes history-line-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes history-area-rise {
+  from {
+    opacity: 0;
+    transform: scaleY(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes history-bar-rise {
+  from {
+    opacity: 0.35;
+    transform: scaleY(0.15);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes history-donut-fill {
+  from {
+    stroke-dasharray: 0 100;
+  }
+  to {
+    stroke-dasharray: var(--value) calc(100 - var(--value));
+  }
+}
+
+.history-chart-line,
+.history-sparkline {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: history-line-draw 1.4s var(--ease-smooth) forwards;
+}
+
+.history-chart-area {
+  transform-origin: center bottom;
+  transform-box: fill-box;
+  animation: history-area-rise 1.1s var(--ease-smooth) forwards;
+}
+
+.history-chart-bar {
+  transform-origin: center bottom;
+  animation: history-bar-rise 1.1s var(--ease-smooth) forwards;
+}
+
+.history-donut-ring {
+  stroke-dasharray: var(--value) calc(100 - var(--value));
+  animation: history-donut-fill 1.4s var(--ease-smooth) forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+.history-chart-line,
+.history-chart-area,
+.history-chart-bar,
+.history-donut-ring,
+.history-sparkline {
+  will-change: transform, opacity, stroke-dashoffset;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-chart-line,
+  .history-chart-area,
+  .history-chart-bar,
+  .history-donut-ring,
+  .history-sparkline {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    stroke-dashoffset: 0;
+  }
 }

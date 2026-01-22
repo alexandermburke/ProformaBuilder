@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
-type FeatureTone = 'blue' | 'purple' | 'green';
+type FeatureTone = 'blue' | 'purple' | 'green' | 'amber';
 type FeatureIconKey = 'document' | 'layers' | 'globe' | 'target';
 
 type Feature = {
@@ -69,6 +69,19 @@ const features: Feature[] = [
     ],
   },
   {
+    title: 'Historical Data',
+    description: 'Review facility history and performance drilldowns.',
+    href: '/historical-data',
+    status: 'Active',
+    tone: 'amber',
+    icon: 'layers',
+    highlights: [
+      'Collections and AR aging trends with graphs',
+      'Pricing quality, variance, and rent cadence',
+      'Demand, autopay, and inventory drilldowns',
+    ],
+  },
+  {
     title: 'Comp Sets',
     description: 'Benchmark STORE assets against competitor pricing.',
     href: '/comp-sets',
@@ -122,12 +135,14 @@ const iconToneLight: Record<FeatureTone, string> = {
   blue: 'bg-[rgba(37,99,235,0.12)] text-[#1D4ED8]',
   purple: 'bg-[rgba(168,85,247,0.12)] text-[#7C3AED]',
   green: 'bg-[rgba(34,197,94,0.12)] text-[#047857]',
+  amber: 'bg-[rgba(245,158,11,0.12)] text-[#B45309]',
 };
 
 const iconToneDark: Record<FeatureTone, string> = {
   blue: 'bg-[rgba(59,130,246,0.22)] text-[#93C5FD]',
   purple: 'bg-[rgba(168,85,247,0.24)] text-[#C4B5FD]',
   green: 'bg-[rgba(34,197,94,0.22)] text-[#BBF7D0]',
+  amber: 'bg-[rgba(245,158,11,0.25)] text-[#FDE68A]',
 };
 
 function FeatureIcon({ name, tone }: { name: FeatureIconKey; tone: FeatureTone }): JSX.Element {
