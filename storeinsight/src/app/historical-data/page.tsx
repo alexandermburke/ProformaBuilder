@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import { CollectionsArSection } from '@/components/historical/CollectionsArSection';
 import { OperationalDrilldowns } from '@/components/historical/OperationalDrilldowns';
@@ -15,6 +15,11 @@ import { PricingRevenueQualitySection } from '@/components/historical/PricingRev
 import { useTheme } from '@/components/ThemeProvider';
 import { getMoMSeries, type MoMSeries } from '@/lib/flash/momSeries';
 import { buildAreaPath, buildLinePath, getChartPoints } from '@/lib/historical/chartUtils';
+import {
+  HISTORICAL_DATA_STORAGE_KEY,
+  parseHistoricalInput,
+  type HistoricalDataBundle,
+} from '@/lib/historical/dataInput';
 import { RANGE_KEYS, type RangeKey } from '@/lib/historical/placeholder';
 
 const PITTMAN_KEY = 'PITTMAN';
@@ -167,10 +172,28 @@ export default function HistoricalDataPage(): JSX.Element {
   const [range, setRange] = useState<RangeKey>('12M');
   const [section, setSection] = useState<SectionKey>('overview');
   const [selectedProperty, setSelectedProperty] = useState<PropertyKey>(PITTMAN_KEY);
+  const [customData, setCustomData] = useState<HistoricalDataBundle | null>(null);
+  const [customDataError, setCustomDataError] = useState<string | null>(null);
   const activeSectionLabel =
     SECTION_TABS.find((sectionOption) => sectionOption.id === section)?.label ?? 'Overview';
   const activeProperty = PROPERTY_OPTIONS.find((option) => option.id === selectedProperty) ?? PROPERTY_OPTIONS[0];
-  const activeSeries = PROPERTY_SERIES[activeProperty.id];
+  const dataByRange = customData?.historicalByRange;
+  const customSeries = customData?.momSeriesByProperty?.[activeProperty.id];
+  const activeSeries = customSeries ?? PROPERTY_SERIES[activeProperty.id];
+  const hasCustomData = Boolean(customData?.historicalByRange);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(HISTORICAL_DATA_STORAGE_KEY);
+    if (!stored) return;
+    const parsed = parseHistoricalInput(stored);
+    if (parsed.data) {
+      setCustomData(parsed.data);
+      setCustomDataError(null);
+    } else {
+      setCustomDataError(parsed.error ?? 'Stored historical data is invalid.');
+    }
+  }, []);
 
   const baseMonths = activeSeries?.months ?? [];
   const occupancyDesc = baseMonths.map((_, index) => {
@@ -253,7 +276,18 @@ export default function HistoricalDataPage(): JSX.Element {
         <header className="ios-card ios-animate-up space-y-6 p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="space-y-3">
-              <span className="ios-badge text-[10px]">Historical data</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="ios-badge text-[10px]">Historical data</span>
+                {customDataError ? (
+                  <span className="ios-pill text-[10px]" data-tone="warning">
+                    Custom data invalid
+                  </span>
+                ) : (
+                  <span className="ios-pill text-[10px]" data-tone={hasCustomData ? 'success' : 'neutral'}>
+                    {hasCustomData ? 'Custom data active' : 'Placeholder data'}
+                  </span>
+                )}
+              </div>
               <div className="space-y-2">
                 <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-3xl">
                   STORE per facility history
@@ -265,7 +299,10 @@ export default function HistoricalDataPage(): JSX.Element {
               </div>
             </div>
             <div className="flex flex-1 flex-wrap items-center gap-3">
-              <Link href="/" className="ios-button ml-auto px-4 py-2 text-sm" data-variant="secondary">
+              <Link href="/historical-data-upload" className="ios-button ml-auto px-4 py-2 text-sm" data-variant="ghost">
+                Upload data
+              </Link>
+              <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
                 <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
                 Back to directory
               </Link>
@@ -741,11 +778,15 @@ export default function HistoricalDataPage(): JSX.Element {
           </>
         ) : null}
 
-        {section === 'collections' ? <CollectionsArSection range={range} /> : null}
+        {section === 'collections' ? <CollectionsArSection range={range} dataByRange={dataByRange} /> : null}
 
-        {section === 'pricing' ? <PricingRevenueQualitySection range={range} /> : null}
+        {section === 'pricing' ? (
+          <PricingRevenueQualitySection range={range} dataByRange={dataByRange} />
+        ) : null}
 
-        {section === 'drilldowns' ? <OperationalDrilldowns range={range} /> : null}
+        {section === 'drilldowns' ? (
+          <OperationalDrilldowns range={range} dataByRange={dataByRange} />
+        ) : null}
       </div>
     </div>
   );

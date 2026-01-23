@@ -13,10 +13,15 @@ import {
   formatNumber,
   formatPercent,
 } from '@/lib/historical/format';
-import { getHistoricalPlaceholder, type RangeKey } from '@/lib/historical/placeholder';
+import {
+  getHistoricalPlaceholder,
+  type HistoricalPlaceholderData,
+  type RangeKey,
+} from '@/lib/historical/placeholder';
 
 type OperationalDrilldownsProps = {
   range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
 };
 
 type DrilldownTab = 'demand' | 'concessions' | 'autopay' | 'inventory';
@@ -35,7 +40,7 @@ const tabs: Array<{ id: DrilldownTab; label: string }> = [
   { id: 'inventory', label: 'Inventory' },
 ];
 
-export function OperationalDrilldowns({ range }: OperationalDrilldownsProps): JSX.Element {
+export function OperationalDrilldowns({ range, dataByRange }: OperationalDrilldownsProps): JSX.Element {
   // Future MSR wiring: Leads, Concessions, Autopay, and Unit inventory tabs.
   const [activeTab, setActiveTab] = useState<DrilldownTab>('demand');
 
@@ -70,25 +75,31 @@ export function OperationalDrilldowns({ range }: OperationalDrilldownsProps): JS
         </div>
 
         {activeTab === 'demand' ? (
-          <DemandFunnelPanel key={`${range}-demand`} range={range} />
+          <DemandFunnelPanel key={`${range}-demand`} range={range} dataByRange={dataByRange} />
         ) : null}
         {activeTab === 'concessions' ? (
-          <ConcessionsPanel key={`${range}-concessions`} range={range} />
+          <ConcessionsPanel key={`${range}-concessions`} range={range} dataByRange={dataByRange} />
         ) : null}
         {activeTab === 'autopay' ? (
-          <AutopayPanel key={`${range}-autopay`} range={range} />
+          <AutopayPanel key={`${range}-autopay`} range={range} dataByRange={dataByRange} />
         ) : null}
         {activeTab === 'inventory' ? (
-          <InventoryPanel key={`${range}-inventory`} range={range} />
+          <InventoryPanel key={`${range}-inventory`} range={range} dataByRange={dataByRange} />
         ) : null}
       </div>
     </section>
   );
 }
 
-function DemandFunnelPanel({ range }: { range: RangeKey }): JSX.Element {
+function DemandFunnelPanel({
+  range,
+  dataByRange,
+}: {
+  range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+}): JSX.Element {
   // Future MSR wiring: Leads funnel and move-in conversion details.
-  const data = getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
   const series = data.series.demand;
   const totalLeads = series.reduce(
     (sum, row) => sum + row.leadsWeb + row.leadsPhone + row.leadsWalkIn + row.leadsOther,
@@ -268,9 +279,15 @@ function DemandFunnelPanel({ range }: { range: RangeKey }): JSX.Element {
   );
 }
 
-function ConcessionsPanel({ range }: { range: RangeKey }): JSX.Element {
+function ConcessionsPanel({
+  range,
+  dataByRange,
+}: {
+  range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+}): JSX.Element {
   // Future MSR wiring: Discounts, Credits, Refunds, and Write-off tabs.
-  const data = getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
   const series = data.series.concessions;
 
   const totalPromos = series.reduce((sum, row) => sum + row.promos, 0);
@@ -334,9 +351,15 @@ function ConcessionsPanel({ range }: { range: RangeKey }): JSX.Element {
   );
 }
 
-function AutopayPanel({ range }: { range: RangeKey }): JSX.Element {
+function AutopayPanel({
+  range,
+  dataByRange,
+}: {
+  range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+}): JSX.Element {
   // Future MSR wiring: Autopay enrollment and insurance coverage detail.
-  const data = getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
   const series = data.series.autopay;
   const latest = series[series.length - 1];
 
@@ -386,9 +409,15 @@ function AutopayPanel({ range }: { range: RangeKey }): JSX.Element {
   );
 }
 
-function InventoryPanel({ range }: { range: RangeKey }): JSX.Element {
+function InventoryPanel({
+  range,
+  dataByRange,
+}: {
+  range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+}): JSX.Element {
   // Future MSR wiring: Unit inventory and occupancy detail.
-  const data = getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
   const series = data.series.inventory;
   const climatePoints = getChartPoints(
     series.map((row) => row.climate),

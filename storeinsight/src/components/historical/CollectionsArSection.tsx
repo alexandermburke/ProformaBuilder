@@ -5,15 +5,20 @@ import { SectionHeader } from './SectionHeader';
 import { SimpleTable } from './SimpleTable';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
 import { formatShortMonth } from '@/lib/historical/chartUtils';
-import { getHistoricalPlaceholder, type RangeKey } from '@/lib/historical/placeholder';
+import {
+  getHistoricalPlaceholder,
+  type HistoricalPlaceholderData,
+  type RangeKey,
+} from '@/lib/historical/placeholder';
 
 type CollectionsArSectionProps = {
   range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
 };
 
-export function CollectionsArSection({ range }: CollectionsArSectionProps): JSX.Element {
+export function CollectionsArSection({ range, dataByRange }: CollectionsArSectionProps): JSX.Element {
   // Future MSR wiring: Delinquencies, AR Summary, and Tenant ledgers.
-  const data = getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
   const series = data.series.arAging;
   const latest = series[series.length - 1];
   const totalPastDue =
@@ -119,31 +124,6 @@ export function CollectionsArSection({ range }: CollectionsArSectionProps): JSX.
             </div>
           </div>
         </ChartCard>
-
-        <ChartCard
-          key={`top-delinquencies-${range}`}
-          title="Top Delinquencies"
-          subtitle="Highest balances"
-          emptyMessage={
-            data.tables.topDelinquencies.length === 0
-              ? 'No delinquent tenants found for this range.'
-              : undefined
-          }
-        >
-          <SimpleTable
-            rows={data.tables.topDelinquencies}
-            columns={[
-              { header: 'Tenant', accessor: (row) => row.tenant, className: 'text-[color:var(--text-primary)]' },
-              { header: 'Unit', accessor: (row) => row.unit },
-              { header: 'Days late', accessor: (row) => formatNumber(row.daysLate), align: 'right' },
-              { header: 'Balance', accessor: (row) => formatCurrency(row.balance), align: 'right' },
-              { header: 'Start date', accessor: (row) => row.startDate },
-            ]}
-            rowKey={(row) => `${row.tenant}-${row.unit}`}
-            emptyMessage="No delinquency rows yet."
-          />
-        </ChartCard>
-
         <ChartCard
           key={`overlock-risk-${range}`}
           title="Overlock Risk"

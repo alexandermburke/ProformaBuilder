@@ -4,10 +4,15 @@ import { KpiRow } from './KpiRow';
 import { SectionHeader } from './SectionHeader';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
 import { buildLinePath, formatShortMonth, getChartPoints } from '@/lib/historical/chartUtils';
-import { getHistoricalPlaceholder, type RangeKey } from '@/lib/historical/placeholder';
+import {
+  getHistoricalPlaceholder,
+  type HistoricalPlaceholderData,
+  type RangeKey,
+} from '@/lib/historical/placeholder';
 
 type PricingRevenueQualitySectionProps = {
   range: RangeKey;
+  dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
 };
 
 const CHART_WIDTH = 520;
@@ -17,9 +22,12 @@ const CHART_PADDING = 24;
 const average = (values: number[]): number =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
-export function PricingRevenueQualitySection({ range }: PricingRevenueQualitySectionProps): JSX.Element {
+export function PricingRevenueQualitySection({
+  range,
+  dataByRange,
+}: PricingRevenueQualitySectionProps): JSX.Element {
   // Future MSR wiring: Rental Rate, Rent Changes, and Occupancy detail tabs.
-  const data = getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
   const series = data.series.pricing;
   const latest = series[series.length - 1];
 
@@ -31,7 +39,7 @@ export function PricingRevenueQualitySection({ range }: PricingRevenueQualitySec
   const setPoints = getChartPoints(setRates, CHART_WIDTH, CHART_HEIGHT, CHART_PADDING, rateMin, rateMax);
   const sellPoints = getChartPoints(sellRates, CHART_WIDTH, CHART_HEIGHT, CHART_PADDING, rateMin, rateMax);
 
-  const varianceSeries = series.map((row) => row.variancePct);
+  const varianceSeries = series.map((row) => (Number.isFinite(row.variancePct) ? row.variancePct : 0));
   const varianceSlice = varianceSeries.slice(-12);
   const avgVariance = average(varianceSlice);
   const maxVariance = Math.max(1, ...varianceSeries.map((value) => Math.abs(value)));
