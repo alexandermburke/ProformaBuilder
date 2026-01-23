@@ -18,7 +18,7 @@ export default async function HistoricalDataPage(): Promise<JSX.Element> {
       try {
         const result = await getPropertyHistoricalFromFirebase(id);
         return { id, result, fetchFailed: false };
-      } catch (error) {
+      } catch {
         return { id, result: { data: null, updatedAt: null }, fetchFailed: true };
       }
     }),

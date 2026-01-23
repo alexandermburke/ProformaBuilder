@@ -104,7 +104,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
       }
       setCreateResult(data as CreateResult);
       setCreateStatus('Token generated.');
-    } catch (error) {
+    } catch {
       setCreateError('Failed to create share link.');
     } finally {
       setIsCreating(false);
@@ -144,7 +144,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         return;
       }
       setValidateResult(data as ValidateResult);
-    } catch (error) {
+    } catch {
       setValidateError('Validation failed.');
     } finally {
       setIsValidating(false);
@@ -177,7 +177,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         return;
       }
       setRevokeStatus('Share link revoked.');
-    } catch (error) {
+    } catch {
       setRevokeError('Failed to revoke share link.');
     } finally {
       setIsRevoking(false);
@@ -211,7 +211,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
       setRevokeId(created.id);
       await handleValidate(created.url);
       setTestStatus('Token generated and validated.');
-    } catch (error) {
+    } catch {
       setCreateError('Failed to create share link.');
     } finally {
       setIsTesting(false);
@@ -236,7 +236,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         return;
       }
       setFirebaseStatus(data as FirebaseStatus);
-    } catch (error) {
+    } catch {
       setFirebaseError('Failed to load Firebase status.');
     } finally {
       setIsCheckingStatus(false);

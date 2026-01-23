@@ -14,7 +14,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const result = await validateShareToken(token, { markUsed: false });
     return NextResponse.json({ status: result.status, record: result.record ?? null });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ status: 'INVALID' }, { status: 500 });
   }
 }

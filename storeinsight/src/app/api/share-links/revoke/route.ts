@@ -16,7 +16,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ ok: false, message: 'Share link not found.' }, { status: 404 });
     }
     return NextResponse.json({ ok: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ ok: false, message: 'Failed to revoke share link.' }, { status: 500 });
   }
 }

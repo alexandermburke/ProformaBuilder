@@ -2,7 +2,6 @@ import type { JSX } from 'react';
 import { ChartCard } from './ChartCard';
 import { KpiRow } from './KpiRow';
 import { SectionHeader } from './SectionHeader';
-import { SimpleTable } from './SimpleTable';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
 import { formatShortMonth } from '@/lib/historical/chartUtils';
 import { getEmptyHistoricalData } from '@/lib/historical/emptyData';

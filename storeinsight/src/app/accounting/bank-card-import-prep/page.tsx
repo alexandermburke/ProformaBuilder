@@ -199,7 +199,6 @@ export default function BankCardImportPrepPage() {
   const [missingCashAccount, setMissingCashAccount] = useState(false);
   const [cashAccount, setCashAccount] = useState("");
   const [unmappedRows, setUnmappedRows] = useState<ReviewRow[]>([]);
-  const [unmappedCount, setUnmappedCount] = useState(0);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [unmappedError, setUnmappedError] = useState<string | null>(null);
@@ -396,7 +395,6 @@ export default function BankCardImportPrepPage() {
 
       if (data.source) setActiveReviewSource(data.source);
       setUnmappedRows(mapped);
-      setUnmappedCount(data.unmappedCount ?? mapped.length);
       if (data.needsReview && !hasOpenedReviewRef.current) {
         hasOpenedReviewRef.current = true;
         setShowReviewModal(true);
@@ -445,7 +443,6 @@ export default function BankCardImportPrepPage() {
       setNeedsReview(Boolean(data.needsReview));
       const isMissingCash = Boolean(data.missingCashAccount);
       setMissingCashAccount(isMissingCash);
-      setUnmappedCount(data.unmappedCount ?? 0);
       const receivedCounts = data.counts ?? { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 };
       setCounts({
         bank: receivedCounts.bank ?? 0,
@@ -537,7 +534,6 @@ export default function BankCardImportPrepPage() {
     setNeedsReview(false);
     setMissingCashAccount(false);
     setUnmappedRows([]);
-    setUnmappedCount(0);
     setSourceSummaries(emptySources());
     setActiveReviewSource("bank");
     setDefaultOffsetAccount("");
@@ -704,7 +700,6 @@ export default function BankCardImportPrepPage() {
       };
 
       setNeedsReview(Boolean(data.needsReview));
-      setUnmappedCount(data.unmappedCount ?? 0);
       if (data.needsReview) {
         setProcessing(false);
         setUnmappedError(data.error || "Missing required Property_Name or Account.");

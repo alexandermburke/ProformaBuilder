@@ -14,7 +14,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const status = await getPropertyHistoricalStatus(propertyId);
     return NextResponse.json(status);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null },
       { status: 500 },

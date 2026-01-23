@@ -84,7 +84,7 @@ export default function TermsOfServicePage(): JSX.Element {
               <h2 className="text-base font-semibold text-[color:var(--text-primary)]">5. Data accuracy</h2>
               <p className="mt-2">
                 Dashboards are generated from uploaded data and may contain errors or delays. The service is provided
-                "as is" without warranties of accuracy, completeness, or availability.
+                as-is without warranties of accuracy, completeness, or availability.
               </p>
             </div>
 

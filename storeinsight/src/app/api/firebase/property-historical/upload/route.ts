@@ -26,7 +26,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const result = await savePropertyHistoricalToFirebase(propertyId, payload);
     return NextResponse.json({ ok: true, updatedAt: result.updatedAt, validation });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ ok: false, message: 'Failed to upload data.' }, { status: 500 });
   }
 }

@@ -15,7 +15,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { id, token, expiresAt } = await createShareLink(propertyId, investorId);
     const url = `${request.nextUrl.origin}/dash/t/${token}`;
     return NextResponse.json({ id, url, expiresAt });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ ok: false, message: 'Failed to create share link.' }, { status: 500 });
   }
 }

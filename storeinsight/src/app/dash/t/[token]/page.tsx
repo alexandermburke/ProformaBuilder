@@ -39,7 +39,7 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
   let validation;
   try {
     validation = await validateShareToken(token, { markUsed: true });
-  } catch (error) {
+  } catch {
     return renderStatus({
       title: 'Access unavailable',
       message: 'We could not validate this link. Please request a new link.',

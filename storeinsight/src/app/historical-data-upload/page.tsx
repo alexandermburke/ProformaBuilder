@@ -50,7 +50,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
     try {
       await navigator.clipboard.writeText(templateString);
       setTemplateStatus('Template copied.');
-    } catch (error) {
+    } catch {
       setTemplateStatus('Copy failed.');
     }
   };
@@ -107,7 +107,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
       if (data?.validation) {
         setValidationSummary(data.validation);
       }
-    } catch (error) {
+    } catch {
       setDataError('Upload failed.');
     } finally {
       setIsUploading(false);
