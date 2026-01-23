@@ -13,6 +13,7 @@ import {
   formatNumber,
   formatPercent,
 } from '@/lib/historical/format';
+import { getEmptyHistoricalData } from '@/lib/historical/emptyData';
 import {
   getHistoricalPlaceholder,
   type HistoricalPlaceholderData,
@@ -22,6 +23,7 @@ import {
 type OperationalDrilldownsProps = {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 };
 
 type DrilldownTab = 'demand' | 'concessions' | 'autopay' | 'inventory';
@@ -40,7 +42,18 @@ const tabs: Array<{ id: DrilldownTab; label: string }> = [
   { id: 'inventory', label: 'Inventory' },
 ];
 
-export function OperationalDrilldowns({ range, dataByRange }: OperationalDrilldownsProps): JSX.Element {
+const TAB_MOBILE_LABELS: Record<DrilldownTab, string> = {
+  demand: 'Demand',
+  concessions: 'Concess',
+  autopay: 'Autopay',
+  inventory: 'Units',
+};
+
+export function OperationalDrilldowns({
+  range,
+  dataByRange,
+  allowPlaceholder = true,
+}: OperationalDrilldownsProps): JSX.Element {
   // Future MSR wiring: Leads, Concessions, Autopay, and Unit inventory tabs.
   const [activeTab, setActiveTab] = useState<DrilldownTab>('demand');
 
@@ -66,8 +79,10 @@ export function OperationalDrilldowns({ range, dataByRange }: OperationalDrilldo
                     : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
                 ].join(' ')}
                 aria-pressed={activeTab === tab.id}
+                aria-label={tab.label}
               >
-                {tab.label}
+                <span className="text-[10px] sm:hidden">{TAB_MOBILE_LABELS[tab.id]}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
               </button>
             ))}
           </div>
@@ -75,16 +90,36 @@ export function OperationalDrilldowns({ range, dataByRange }: OperationalDrilldo
         </div>
 
         {activeTab === 'demand' ? (
-          <DemandFunnelPanel key={`${range}-demand`} range={range} dataByRange={dataByRange} />
+          <DemandFunnelPanel
+            key={`${range}-demand`}
+            range={range}
+            dataByRange={dataByRange}
+            allowPlaceholder={allowPlaceholder}
+          />
         ) : null}
         {activeTab === 'concessions' ? (
-          <ConcessionsPanel key={`${range}-concessions`} range={range} dataByRange={dataByRange} />
+          <ConcessionsPanel
+            key={`${range}-concessions`}
+            range={range}
+            dataByRange={dataByRange}
+            allowPlaceholder={allowPlaceholder}
+          />
         ) : null}
         {activeTab === 'autopay' ? (
-          <AutopayPanel key={`${range}-autopay`} range={range} dataByRange={dataByRange} />
+          <AutopayPanel
+            key={`${range}-autopay`}
+            range={range}
+            dataByRange={dataByRange}
+            allowPlaceholder={allowPlaceholder}
+          />
         ) : null}
         {activeTab === 'inventory' ? (
-          <InventoryPanel key={`${range}-inventory`} range={range} dataByRange={dataByRange} />
+          <InventoryPanel
+            key={`${range}-inventory`}
+            range={range}
+            dataByRange={dataByRange}
+            allowPlaceholder={allowPlaceholder}
+          />
         ) : null}
       </div>
     </section>
@@ -94,12 +129,14 @@ export function OperationalDrilldowns({ range, dataByRange }: OperationalDrilldo
 function DemandFunnelPanel({
   range,
   dataByRange,
+  allowPlaceholder = true,
 }: {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 }): JSX.Element {
   // Future MSR wiring: Leads funnel and move-in conversion details.
-  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? (allowPlaceholder ? getHistoricalPlaceholder(range) : getEmptyHistoricalData());
   const series = data.series.demand;
   const totalLeads = series.reduce(
     (sum, row) => sum + row.leadsWeb + row.leadsPhone + row.leadsWalkIn + row.leadsOther,
@@ -282,12 +319,14 @@ function DemandFunnelPanel({
 function ConcessionsPanel({
   range,
   dataByRange,
+  allowPlaceholder = true,
 }: {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 }): JSX.Element {
   // Future MSR wiring: Discounts, Credits, Refunds, and Write-off tabs.
-  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? (allowPlaceholder ? getHistoricalPlaceholder(range) : getEmptyHistoricalData());
   const series = data.series.concessions;
 
   const totalPromos = series.reduce((sum, row) => sum + row.promos, 0);
@@ -354,12 +393,14 @@ function ConcessionsPanel({
 function AutopayPanel({
   range,
   dataByRange,
+  allowPlaceholder = true,
 }: {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 }): JSX.Element {
   // Future MSR wiring: Autopay enrollment and insurance coverage detail.
-  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? (allowPlaceholder ? getHistoricalPlaceholder(range) : getEmptyHistoricalData());
   const series = data.series.autopay;
   const latest = series[series.length - 1];
 
@@ -412,12 +453,14 @@ function AutopayPanel({
 function InventoryPanel({
   range,
   dataByRange,
+  allowPlaceholder = true,
 }: {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 }): JSX.Element {
   // Future MSR wiring: Unit inventory and occupancy detail.
-  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? (allowPlaceholder ? getHistoricalPlaceholder(range) : getEmptyHistoricalData());
   const series = data.series.inventory;
   const climatePoints = getChartPoints(
     series.map((row) => row.climate),
@@ -550,7 +593,7 @@ function InventoryPanel({
       </ChartCard>
 
       <ChartCard
-        title="Vacant Units (sample)"
+        title="Vacant Units"
         subtitle="Recent vacancy list"
         emptyMessage={
           data.tables.vacantUnits.length === 0 ? 'Vacant unit list will appear once MSR is wired.' : undefined

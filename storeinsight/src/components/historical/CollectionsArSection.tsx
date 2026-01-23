@@ -5,6 +5,7 @@ import { SectionHeader } from './SectionHeader';
 import { SimpleTable } from './SimpleTable';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
 import { formatShortMonth } from '@/lib/historical/chartUtils';
+import { getEmptyHistoricalData } from '@/lib/historical/emptyData';
 import {
   getHistoricalPlaceholder,
   type HistoricalPlaceholderData,
@@ -14,11 +15,16 @@ import {
 type CollectionsArSectionProps = {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 };
 
-export function CollectionsArSection({ range, dataByRange }: CollectionsArSectionProps): JSX.Element {
+export function CollectionsArSection({
+  range,
+  dataByRange,
+  allowPlaceholder = true,
+}: CollectionsArSectionProps): JSX.Element {
   // Future MSR wiring: Delinquencies, AR Summary, and Tenant ledgers.
-  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? (allowPlaceholder ? getHistoricalPlaceholder(range) : getEmptyHistoricalData());
   const series = data.series.arAging;
   const latest = series[series.length - 1];
   const totalPastDue =

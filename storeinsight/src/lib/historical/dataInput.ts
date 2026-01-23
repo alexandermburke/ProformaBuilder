@@ -13,6 +13,21 @@ export type HistoricalDataBundle = {
   momSeriesByProperty?: Record<string, MoMSeries>;
 };
 
+export type PropertyHistoricalPayload = {
+  historicalByRange: HistoricalDataByRange;
+  momSeries?: MoMSeries;
+};
+
+export type PropertyHistoricalValidationResult = {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  summary: {
+    rangeMonthCounts: Record<RangeKey, number>;
+    momSeriesLength?: number;
+  };
+};
+
 export const HISTORICAL_DATA_STORAGE_KEY = 'storeinsight:historical-data-input';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -111,6 +126,151 @@ export const parseHistoricalInput = (raw: string): { data?: HistoricalDataBundle
     data: {
       historicalByRange,
       momSeriesByProperty: Object.keys(momSeriesByProperty).length ? momSeriesByProperty : undefined,
+    },
+  };
+};
+
+const normalizeMoMSeriesValue = (value: unknown): MoMSeries | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (!Array.isArray(value.months) || !Array.isArray(value.grossAccruedRent) || !Array.isArray(value.occupiedPct)) {
+    return undefined;
+  }
+  return normalizeMoMSeries(value as MoMSeries);
+};
+
+export const parsePropertyHistoricalInput = (
+  raw: string,
+  propertyId?: string,
+): { data?: PropertyHistoricalPayload; error?: string } => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: 'Invalid JSON. Ensure the payload is valid JSON.' };
+  }
+  if (!isRecord(parsed)) return { error: 'Top-level payload must be an object.' };
+  const payload = parsed as Record<string, unknown>;
+
+  const historicalByRange =
+    coerceHistoricalByRange(payload.historicalByRange) ??
+    coerceHistoricalByRange(payload.ranges) ??
+    (RANGE_KEYS.every((key) => key in payload) ? coerceHistoricalByRange(payload) : null) ??
+    (hasHistoricalShape(payload)
+      ? {
+          '3M': payload as HistoricalPlaceholderData,
+          '6M': payload as HistoricalPlaceholderData,
+          '12M': payload as HistoricalPlaceholderData,
+        }
+      : null);
+
+  if (!historicalByRange) {
+    return {
+      error: 'historicalByRange must include 3M, 6M, and 12M datasets with series, tables, and metrics.',
+    };
+  }
+
+  const momSeriesDirect = normalizeMoMSeriesValue(payload.momSeries);
+  const momSeriesByProperty = normalizeMoMSeriesMap(payload.momSeriesByProperty);
+  const momSeries =
+    momSeriesDirect ||
+    (propertyId ? momSeriesByProperty[propertyId] : undefined) ||
+    (Object.keys(momSeriesByProperty).length === 1 ? Object.values(momSeriesByProperty)[0] : undefined);
+
+  return {
+    data: {
+      historicalByRange,
+      momSeries,
+    },
+  };
+};
+
+export const validatePropertyHistoricalPayload = (
+  payload: PropertyHistoricalPayload,
+): PropertyHistoricalValidationResult => {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const rangeMonthCounts = {} as Record<RangeKey, number>;
+  const seriesKeys = ['arAging', 'pricing', 'demand', 'concessions', 'autopay', 'inventory'] as const;
+  const tableKeys = ['topDelinquencies', 'staleRentExposure', 'vacantUnits'] as const;
+
+  for (const range of RANGE_KEYS) {
+    const rangeData = payload.historicalByRange[range];
+    if (!rangeData) {
+      errors.push(`Missing ${range} data.`);
+      rangeMonthCounts[range] = 0;
+      continue;
+    }
+    const series = rangeData.series as Record<string, Array<{ month?: string }>>;
+    let baselineMonths: string[] = [];
+    for (const key of seriesKeys) {
+      const rows = series[key];
+      if (!Array.isArray(rows)) {
+        errors.push(`${range} series.${key} must be an array.`);
+        continue;
+      }
+      if (!baselineMonths.length && rows.length) {
+        baselineMonths = rows.map((row) => row?.month ?? '').filter(Boolean);
+      }
+    }
+    rangeMonthCounts[range] = baselineMonths.length;
+
+    if (!baselineMonths.length) {
+      warnings.push(`${range} has no month entries across series.`);
+    }
+
+    for (const key of seriesKeys) {
+      const rows = series[key];
+      if (!Array.isArray(rows)) continue;
+      if (baselineMonths.length && rows.length !== baselineMonths.length) {
+        errors.push(`${range} series.${key} length ${rows.length} does not match ${baselineMonths.length}.`);
+      }
+      rows.forEach((row, index) => {
+        if (!row?.month || typeof row.month !== 'string') {
+          errors.push(`${range} series.${key}[${index}] is missing a month string.`);
+          return;
+        }
+        if (baselineMonths[index] && row.month !== baselineMonths[index]) {
+          errors.push(`${range} series.${key}[${index}] month ${row.month} does not match ${baselineMonths[index]}.`);
+        }
+      });
+    }
+
+    const tables = rangeData.tables as Record<string, unknown>;
+    for (const key of tableKeys) {
+      if (!Array.isArray(tables?.[key])) {
+        errors.push(`${range} tables.${key} must be an array.`);
+      }
+    }
+  }
+
+  if (payload.momSeries) {
+    const { months, grossAccruedRent, occupiedPct } = payload.momSeries;
+    if (!Array.isArray(months) || !Array.isArray(grossAccruedRent) || !Array.isArray(occupiedPct)) {
+      errors.push('momSeries must include months, grossAccruedRent, and occupiedPct arrays.');
+    } else {
+      const minLength = Math.min(months.length, grossAccruedRent.length, occupiedPct.length);
+      if (months.length !== grossAccruedRent.length || months.length !== occupiedPct.length) {
+        errors.push('momSeries arrays must be the same length.');
+      }
+      if (minLength === 0) {
+        warnings.push('momSeries arrays are empty.');
+      }
+      if (minLength > 0 && !months.every((value) => typeof value === 'string' && value.trim())) {
+        errors.push('momSeries.months must contain YYYY-MM strings.');
+      }
+      rangeMonthCounts['12M'] = rangeMonthCounts['12M'] ?? 0;
+    }
+  } else {
+    warnings.push('momSeries is missing; overview charts will not render.');
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    summary: {
+      rangeMonthCounts,
+      momSeriesLength: payload.momSeries?.months?.length,
     },
   };
 };

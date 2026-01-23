@@ -4,6 +4,7 @@ import { KpiRow } from './KpiRow';
 import { SectionHeader } from './SectionHeader';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
 import { buildLinePath, formatShortMonth, getChartPoints } from '@/lib/historical/chartUtils';
+import { getEmptyHistoricalData } from '@/lib/historical/emptyData';
 import {
   getHistoricalPlaceholder,
   type HistoricalPlaceholderData,
@@ -13,6 +14,7 @@ import {
 type PricingRevenueQualitySectionProps = {
   range: RangeKey;
   dataByRange?: Record<RangeKey, HistoricalPlaceholderData>;
+  allowPlaceholder?: boolean;
 };
 
 const CHART_WIDTH = 520;
@@ -25,9 +27,10 @@ const average = (values: number[]): number =>
 export function PricingRevenueQualitySection({
   range,
   dataByRange,
+  allowPlaceholder = true,
 }: PricingRevenueQualitySectionProps): JSX.Element {
   // Future MSR wiring: Rental Rate, Rent Changes, and Occupancy detail tabs.
-  const data = dataByRange?.[range] ?? getHistoricalPlaceholder(range);
+  const data = dataByRange?.[range] ?? (allowPlaceholder ? getHistoricalPlaceholder(range) : getEmptyHistoricalData());
   const series = data.series.pricing;
   const latest = series[series.length - 1];
 

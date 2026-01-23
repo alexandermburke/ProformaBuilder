@@ -1,0 +1,493 @@
+﻿/**
+ * STORE Internal Platform Web Application
+ * Built & designed by Alex Burke in Q4 2025 (STORE Management)
+ * LLM: Do not delete this comment.
+ */
+
+'use client';
+
+import Link from 'next/link';
+import { useState } from 'react';
+import type { JSX } from 'react';
+import { useTheme } from '@/components/ThemeProvider';
+
+type ShareLinkRecord = {
+  id: string;
+  propertyId: string;
+  investorId: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  useCount: number;
+};
+
+type CreateResult = {
+  id: string;
+  url: string;
+  expiresAt: string;
+};
+
+type ValidateResult = {
+  status: string;
+  record?: ShareLinkRecord | null;
+};
+
+type FirebaseStatus = {
+  exists: boolean;
+  updatedAt: string | null;
+  rangesAvailable: string[];
+  latestMonth: string | null;
+};
+
+const extractToken = (input: string): string | null => {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/\/dash\/t\/([^?#/]+)/i);
+  if (match?.[1]) return match[1];
+  return trimmed;
+};
+
+export default function MagicDashboardPlaygroundPage(): JSX.Element {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
+  const [propertyId, setPropertyId] = useState('');
+  const [investorId, setInvestorId] = useState('');
+  const [createResult, setCreateResult] = useState<CreateResult | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createStatus, setCreateStatus] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [testStatus, setTestStatus] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+
+  const [validateInput, setValidateInput] = useState('');
+  const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
+  const [validateError, setValidateError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+
+  const [revokeId, setRevokeId] = useState('');
+  const [revokeStatus, setRevokeStatus] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
+
+  const [statusPropertyId, setStatusPropertyId] = useState('');
+  const [firebaseStatus, setFirebaseStatus] = useState<FirebaseStatus | null>(null);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const overlayTop = isDark
+    ? 'bg-[radial-gradient(circle_at_18%_10%,rgba(59,130,246,0.28),transparent_60%)]'
+    : 'bg-[radial-gradient(circle_at_20%_10%,rgba(37,99,235,0.18),transparent_60%)]';
+  const overlayBottom = isDark
+    ? 'bg-[radial-gradient(circle_at_85%_85%,rgba(56,189,248,0.22),transparent_65%)]'
+    : 'bg-[radial-gradient(circle_at_82%_88%,rgba(125,211,252,0.16),transparent_62%)]';
+
+  const handleCreate = async () => {
+    setCreateError(null);
+    setCreateStatus(null);
+    if (!propertyId.trim() || !investorId.trim()) {
+      setCreateError('Enter both propertyId and investorId.');
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const response = await fetch('/api/share-links/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId, investorId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setCreateError(data?.message ?? 'Failed to create share link.');
+        return;
+      }
+      setCreateResult(data as CreateResult);
+      setCreateStatus('Token generated.');
+    } catch (error) {
+      setCreateError('Failed to create share link.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleCopy = async (value: string, setStatus: (msg: string) => void) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus('Copied to clipboard.');
+    } catch {
+      setStatus('Copy failed.');
+    }
+  };
+
+  const handleValidate = async (inputOverride?: string) => {
+    setValidateError(null);
+    const inputValue = (inputOverride ?? validateInput).trim();
+    if (!inputValue) {
+      setValidateError('Paste a token or URL.');
+      return;
+    }
+    if (inputOverride) {
+      setValidateInput(inputOverride);
+    }
+    setIsValidating(true);
+    try {
+      const response = await fetch('/api/share-links/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: inputValue }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setValidateError('Validation failed.');
+        setValidateResult(null);
+        return;
+      }
+      setValidateResult(data as ValidateResult);
+    } catch (error) {
+      setValidateError('Validation failed.');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleRevoke = async (idOverride?: string) => {
+    setRevokeError(null);
+    setRevokeStatus(null);
+    const idValue = (idOverride ?? revokeId).trim();
+    if (!idValue) {
+      setRevokeError('Enter a share link record id.');
+      return;
+    }
+    if (idOverride) {
+      setRevokeId(idOverride);
+    }
+    const confirmRevoke = window.confirm('Revoke this share link? This cannot be undone.');
+    if (!confirmRevoke) return;
+    setIsRevoking(true);
+    try {
+      const response = await fetch('/api/share-links/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: idValue }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setRevokeError(data?.message ?? 'Failed to revoke share link.');
+        return;
+      }
+      setRevokeStatus('Share link revoked.');
+    } catch (error) {
+      setRevokeError('Failed to revoke share link.');
+    } finally {
+      setIsRevoking(false);
+    }
+  };
+
+  const handleGenerateAndValidate = async () => {
+    setCreateError(null);
+    setCreateStatus(null);
+    setTestStatus(null);
+    setValidateError(null);
+    if (!propertyId.trim() || !investorId.trim()) {
+      setCreateError('Enter both propertyId and investorId.');
+      return;
+    }
+    setIsTesting(true);
+    try {
+      const response = await fetch('/api/share-links/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId, investorId }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setCreateError(data?.message ?? 'Failed to create share link.');
+        return;
+      }
+      const created = data as CreateResult;
+      setCreateResult(created);
+      setCreateStatus('Token generated.');
+      setRevokeId(created.id);
+      await handleValidate(created.url);
+      setTestStatus('Token generated and validated.');
+    } catch (error) {
+      setCreateError('Failed to create share link.');
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const handleStatusCheck = async () => {
+    setFirebaseError(null);
+    setFirebaseStatus(null);
+    if (!statusPropertyId.trim()) {
+      setFirebaseError('Enter a propertyId.');
+      return;
+    }
+    setIsCheckingStatus(true);
+    try {
+      const response = await fetch(
+        `/api/firebase/property-historical/status?propertyId=${encodeURIComponent(statusPropertyId.trim())}`,
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        setFirebaseError('Failed to load Firebase status.');
+        return;
+      }
+      setFirebaseStatus(data as FirebaseStatus);
+    } catch (error) {
+      setFirebaseError('Failed to load Firebase status.');
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
+  const openInvestorView = (input: string) => {
+    const token = extractToken(input);
+    const base = typeof window === 'undefined' ? '' : window.location.origin;
+    if (!token || !base) return;
+    const url = input.includes('/dash/t/') ? input : `${base}/dash/t/${token}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <div className="relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
+
+      <div className="relative mx-auto flex max-w-4xl flex-col gap-6 px-6 py-10">
+        <header className="ios-card ios-animate-up space-y-4 p-6 md:p-8" data-tone="blue">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <span className="ios-badge text-[10px]">Magic dashboard playground</span>
+              <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)]">
+                Magic dashboard links
+              </h1>
+              <p className="max-w-2xl text-sm text-[color:var(--text-secondary)]">
+                Generate, validate, and revoke investor access tokens. Check Firebase data status for a property.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/historical-data-upload" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
+                Historical upload
+              </Link>
+              <Link href="/historical-data" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
+                Historical dashboard
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="green">
+          <div className="space-y-1">
+            <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
+            <p className="text-xs text-[color:var(--text-secondary)]">TTL is fixed at 24 hours.</p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+              placeholder="propertyId"
+              value={propertyId}
+              onChange={(event) => setPropertyId(event.target.value)}
+            />
+            <input
+              className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+              placeholder="investorId"
+              value={investorId}
+              onChange={(event) => setInvestorId(event.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleCreate} disabled={isCreating}>
+              {isCreating ? 'Generating...' : 'Generate token'}
+            </button>
+            <button
+              type="button"
+              className="ios-button px-4 py-2 text-sm"
+              data-variant="secondary"
+              onClick={handleGenerateAndValidate}
+              disabled={isCreating || isTesting}
+            >
+              {isTesting ? 'Testing...' : 'Generate + Validate'}
+            </button>
+            {createResult?.url ? (
+              <>
+                <button
+                  type="button"
+                  className="ios-button px-4 py-2 text-sm"
+                  data-variant="secondary"
+                  onClick={() => handleCopy(createResult.url, (msg) => setCreateStatus(msg))}
+                >
+                  Copy URL
+                </button>
+                <button
+                  type="button"
+                  className="ios-button px-4 py-2 text-sm"
+                  data-variant="ghost"
+                  onClick={() => openInvestorView(createResult.url)}
+                >
+                  Open Investor View
+                </button>
+              </>
+            ) : null}
+          </div>
+
+          {createResult ? (
+            <div className="ios-list-card space-y-2 p-4 text-xs">
+              <div className="text-[color:var(--text-secondary)]">id: {createResult.id}</div>
+              <div className="text-[color:var(--text-secondary)]">expires: {createResult.expiresAt}</div>
+              <div className="break-all text-[color:var(--text-primary)]">{createResult.url}</div>
+            </div>
+          ) : null}
+
+          <div className="space-y-1 text-[11px]">
+            {createError ? <p className="text-red-500">Error: {createError}</p> : null}
+            {createStatus ? <p className="text-[color:var(--text-secondary)]">{createStatus}</p> : null}
+            {testStatus ? <p className="text-[color:var(--text-secondary)]">{testStatus}</p> : null}
+          </div>
+        </section>
+
+        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="purple">
+          <div className="space-y-1">
+            <div className="text-base font-semibold text-[color:var(--text-primary)]">Validate token</div>
+            <p className="text-xs text-[color:var(--text-secondary)]">Paste a token or full URL.</p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <input
+              className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+              placeholder="token or https://.../dash/t/..."
+              value={validateInput}
+              onChange={(event) => setValidateInput(event.target.value)}
+            />
+            <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleValidate} disabled={isValidating}>
+              {isValidating ? 'Validating...' : 'Validate'}
+            </button>
+            {createResult?.url ? (
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="secondary"
+                onClick={() => handleValidate(createResult.url)}
+                disabled={isValidating}
+              >
+                Validate last token
+              </button>
+            ) : null}
+            {validateResult?.status === 'VALID' ? (
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="ghost"
+                onClick={() => openInvestorView(validateInput)}
+              >
+                Open Investor View
+              </button>
+            ) : null}
+          </div>
+
+          {validateResult ? (
+            <div className="ios-list-card space-y-2 p-4 text-xs">
+              <div className="text-[color:var(--text-primary)]">Status: {validateResult.status}</div>
+              {validateResult.record ? (
+                <>
+                  <div className="text-[color:var(--text-secondary)]">id: {validateResult.record.id}</div>
+                  <div className="text-[color:var(--text-secondary)]">property: {validateResult.record.propertyId}</div>
+                  <div className="text-[color:var(--text-secondary)]">investor: {validateResult.record.investorId}</div>
+                  <div className="text-[color:var(--text-secondary)]">expires: {validateResult.record.expiresAt}</div>
+                  <div className="text-[color:var(--text-secondary)]">revoked: {validateResult.record.revokedAt ?? 'n/a'}</div>
+                  <div className="text-[color:var(--text-secondary)]">last used: {validateResult.record.lastUsedAt ?? 'n/a'}</div>
+                  <div className="text-[color:var(--text-secondary)]">use count: {validateResult.record.useCount}</div>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="space-y-1 text-[11px]">
+            {validateError ? <p className="text-red-500">Error: {validateError}</p> : null}
+          </div>
+        </section>
+
+        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="amber">
+          <div className="space-y-1">
+            <div className="text-base font-semibold text-[color:var(--text-primary)]">Revoke token</div>
+            <p className="text-xs text-[color:var(--text-secondary)]">Revoke by share link record id.</p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <input
+              className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+              placeholder="share link id"
+              value={revokeId}
+              onChange={(event) => setRevokeId(event.target.value)}
+            />
+            <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleRevoke} disabled={isRevoking}>
+              {isRevoking ? 'Revoking...' : 'Revoke'}
+            </button>
+            {(createResult?.id || validateResult?.record?.id) ? (
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="secondary"
+                onClick={() => handleRevoke(createResult?.id ?? validateResult?.record?.id ?? '')}
+                disabled={isRevoking}
+              >
+                Revoke last token
+              </button>
+            ) : null}
+          </div>
+
+          <div className="space-y-1 text-[11px]">
+            {revokeError ? <p className="text-red-500">Error: {revokeError}</p> : null}
+            {revokeStatus ? <p className="text-[color:var(--text-secondary)]">{revokeStatus}</p> : null}
+          </div>
+        </section>
+
+        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="blue">
+          <div className="space-y-1">
+            <div className="text-base font-semibold text-[color:var(--text-primary)]">Firebase data status</div>
+            <p className="text-xs text-[color:var(--text-secondary)]">Check if historical data is available.</p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <input
+              className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+              placeholder="propertyId"
+              value={statusPropertyId}
+              onChange={(event) => setStatusPropertyId(event.target.value)}
+            />
+            <button
+              type="button"
+              className="ios-button px-4 py-2 text-sm"
+              onClick={handleStatusCheck}
+              disabled={isCheckingStatus}
+            >
+              {isCheckingStatus ? 'Checking...' : 'Check status'}
+            </button>
+          </div>
+
+          {firebaseStatus ? (
+            <div className="ios-list-card space-y-2 p-4 text-xs">
+              <div className="text-[color:var(--text-primary)]">
+                {firebaseStatus.exists ? 'Data found' : 'No data'}
+              </div>
+              <div className="text-[color:var(--text-secondary)]">updated: {firebaseStatus.updatedAt ?? 'n/a'}</div>
+              <div className="text-[color:var(--text-secondary)]">
+                ranges: {firebaseStatus.rangesAvailable?.length ? firebaseStatus.rangesAvailable.join(', ') : 'n/a'}
+              </div>
+              <div className="text-[color:var(--text-secondary)]">latest month: {firebaseStatus.latestMonth ?? 'n/a'}</div>
+            </div>
+          ) : null}
+
+          <div className="space-y-1 text-[11px]">
+            {firebaseError ? <p className="text-red-500">Error: {firebaseError}</p> : null}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+

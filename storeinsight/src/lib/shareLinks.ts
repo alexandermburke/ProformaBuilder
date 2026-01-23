@@ -1,0 +1,169 @@
+﻿/**
+ * STORE Internal Platform Web Application
+ * Built & designed by Alex Burke in Q4 2025 (STORE Management)
+ * LLM: Do not delete this comment.
+ */
+
+import crypto from 'crypto';
+import admin from 'firebase-admin';
+import { firestore } from '@/server/firebaseAdmin';
+
+const COLLECTION = 'dashboard_share_links';
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type ShareLinkStatus = 'VALID' | 'EXPIRED' | 'REVOKED' | 'NOT_FOUND' | 'INVALID';
+
+export type ShareLinkRecord = {
+  id: string;
+  propertyId: string;
+  investorId: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+  useCount: number;
+};
+
+const toIsoString = (value: unknown): string | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return new Date(value).toISOString();
+  if (typeof value === 'number') return new Date(value).toISOString();
+  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString();
+  }
+  return null;
+};
+
+const toMillis = (value: unknown): number | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return new Date(value).getTime();
+  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().getTime();
+  }
+  return null;
+};
+
+const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord => ({
+  id,
+  propertyId: (data.property_id ?? '').toString(),
+  investorId: (data.investor_id ?? '').toString(),
+  expiresAt: toIsoString(data.expires_at),
+  revokedAt: toIsoString(data.revoked_at),
+  createdAt: toIsoString(data.created_at),
+  lastUsedAt: toIsoString(data.last_used_at),
+  useCount: Number(data.use_count ?? 0),
+});
+
+const generateToken = (): string => crypto.randomBytes(32).toString('hex');
+const hashToken = (token: string): string => crypto.createHash('sha256').update(token).digest('hex');
+
+export const extractTokenFromInput = (input: string): string | null => {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/\/dash\/t\/([^?#/]+)/i);
+  if (match?.[1]) return match[1];
+  return trimmed;
+};
+
+export async function createShareLink(
+  propertyId: string,
+  investorId: string,
+): Promise<{ id: string; token: string; expiresAt: string }> {
+  if (!firestore) {
+    throw new Error('Firebase is not configured.');
+  }
+  const normalizedProperty = propertyId.trim();
+  const normalizedInvestor = investorId.trim();
+  if (!normalizedProperty || !normalizedInvestor) {
+    throw new Error('propertyId and investorId are required.');
+  }
+  const token = generateToken();
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+
+  const docRef = firestore.collection(COLLECTION).doc();
+  await docRef.set({
+    id: docRef.id,
+    token_hash: tokenHash,
+    property_id: normalizedProperty,
+    investor_id: normalizedInvestor,
+    expires_at: admin.firestore.Timestamp.fromDate(expiresAt),
+    revoked_at: null,
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    last_used_at: null,
+    use_count: 0,
+  });
+
+  return {
+    id: docRef.id,
+    token,
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
+export async function validateShareToken(
+  token: string,
+  options?: { markUsed?: boolean },
+): Promise<{ status: ShareLinkStatus; record?: ShareLinkRecord }> {
+  if (!firestore) {
+    throw new Error('Firebase is not configured.');
+  }
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return { status: 'INVALID' };
+  }
+  const tokenHash = hashToken(normalizedToken);
+  const snapshot = await firestore.collection(COLLECTION).where('token_hash', '==', tokenHash).limit(1).get();
+  if (snapshot.empty) {
+    return { status: 'NOT_FOUND' };
+  }
+
+  const doc = snapshot.docs[0];
+  const data = doc.data();
+  const record = buildRecord(doc.id, data);
+  const expiresAtMs = toMillis(data.expires_at);
+  const revokedAtMs = toMillis(data.revoked_at);
+  const now = Date.now();
+
+  if (revokedAtMs) {
+    return { status: 'REVOKED', record };
+  }
+  if (expiresAtMs && expiresAtMs < now) {
+    return { status: 'EXPIRED', record };
+  }
+
+  if (options?.markUsed) {
+    await doc.ref.set(
+      {
+        last_used_at: admin.firestore.FieldValue.serverTimestamp(),
+        use_count: admin.firestore.FieldValue.increment(1),
+      },
+      { merge: true },
+    );
+  }
+
+  return { status: 'VALID', record };
+}
+
+export async function revokeShareLink(id: string): Promise<boolean> {
+  if (!firestore) {
+    throw new Error('Firebase is not configured.');
+  }
+  const normalizedId = id.trim();
+  if (!normalizedId) return false;
+  const docRef = firestore.collection(COLLECTION).doc(normalizedId);
+  const snapshot = await docRef.get();
+  if (!snapshot.exists) return false;
+  await docRef.set(
+    {
+      revoked_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  return true;
+}
+
