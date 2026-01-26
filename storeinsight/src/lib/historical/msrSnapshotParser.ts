@@ -527,6 +527,9 @@ const formatMonthIso = (date: Date | null): string | undefined => {
   return `${yyyy}-${mm}`;
 };
 
+const hasAnyValues = (record: object | null | undefined): boolean =>
+  Object.values(record ?? {}).some((value) => value != null);
+
 const sheetToGrid = (sheet: XLSX.WorkSheet): Grid =>
   XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null }) as Grid;
 
@@ -1994,18 +1997,18 @@ export function parseMsrWorkbook(buffer: ArrayBuffer | Buffer): MsrParseResult {
     Object.assign(snapshot, extractMsrSheet(msrGrid, msrSheet, warnings));
 
     const occupancyResult = extractSpaceOccupancyFromMsr(msrGrid, warnings);
-    if (Object.values(occupancyResult.occupancy).some((value) => value != null)) {
+    if (hasAnyValues(occupancyResult.occupancy)) {
       snapshot.occupancy = { ...snapshot.occupancy, ...occupancyResult.occupancy };
     }
 
     const rentalResult = extractRentalActivityFromMsr(msrGrid, warnings);
-    if (Object.values(rentalResult.rentals).some((value) => value != null)) {
+    if (hasAnyValues(rentalResult.rentals)) {
       snapshot.rentals = { ...snapshot.rentals, ...rentalResult.rentals };
     }
     msrTableDiagnostics.rentalActivity = rentalResult.diagnostics;
 
     const leadsResult = extractLeadsFromMsr(msrGrid, warnings, snapshot.rentals);
-    if (Object.values(leadsResult.leads).some((value) => value != null)) {
+    if (hasAnyValues(leadsResult.leads)) {
       snapshot.leads = { ...snapshot.leads, ...leadsResult.leads };
     }
     msrTableDiagnostics.leads = leadsResult.diagnostics;
@@ -2147,10 +2150,10 @@ export function parseMsrWorkbook(buffer: ArrayBuffer | Buffer): MsrParseResult {
   Object.assign(snapshot, mergeSnapshot(snapshot, concessionsResult.snapshot));
 
   const leads = snapshot.leads ?? {};
-  const channelValues = [leads.webMtd, leads.walkInMtd, leads.phoneMtd, leads.otherMtd];
-  const hasChannelValues = channelValues.some((value) => isFiniteNumber(value));
+  const channelValues = [leads.webMtd, leads.walkInMtd, leads.phoneMtd, leads.otherMtd].filter(isFiniteNumber);
+  const hasChannelValues = channelValues.length > 0;
   if (hasChannelValues && !isFiniteNumber(leads.totalMtd)) {
-    leads.totalMtd = channelValues.reduce((sum, value) => sum + (isFiniteNumber(value) ? value : 0), 0);
+    leads.totalMtd = channelValues.reduce((sum, value) => sum + value, 0);
   }
 
   leads.byChannelMtd = {
@@ -2180,7 +2183,7 @@ export function parseMsrWorkbook(buffer: ArrayBuffer | Buffer): MsrParseResult {
   }
   leads.conversionPct = isFiniteNumber(leads.conversionRatePctMtd)
     ? leads.conversionRatePctMtd
-    : null;
+    : undefined;
   snapshot.leads = leads;
 
   const unitMix = snapshot.unitMix;
