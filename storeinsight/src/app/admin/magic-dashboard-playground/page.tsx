@@ -431,7 +431,14 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
               value={revokeId}
               onChange={(event) => setRevokeId(event.target.value)}
             />
-            <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleRevoke} disabled={isRevoking}>
+            <button
+              type="button"
+              className="ios-button px-4 py-2 text-sm"
+              onClick={() => {
+                void handleRevoke();
+              }}
+              disabled={isRevoking}
+            >
               {isRevoking ? 'Revoking...' : 'Revoke'}
             </button>
             {(createResult?.id || validateResult?.record?.id) ? (
