@@ -493,6 +493,11 @@ const coercePercent = (value: CellValue): number | null => {
   return numeric;
 };
 
+const coercePercentOptional = (value: CellValue): number | undefined => {
+  const percent = coercePercent(value);
+  return percent == null ? undefined : percent;
+};
+
 const coerceDate = (value: CellValue): Date | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -894,9 +899,9 @@ const extractMsrSheet = (
       const values = collectRowNumbers(row, autopayRow.col + 1);
       snapshot.autopay = {
         enrolledCount: values[0],
-        enrolledPct: values[1] != null ? coercePercent(values[1]) : undefined,
+        enrolledPct: coercePercentOptional(values[1]),
         autopayCount: values[0],
-        autopayPct: values[1] != null ? coercePercent(values[1]) : undefined,
+        autopayPct: coercePercentOptional(values[1]),
       };
     } else {
       warnings.push('MSR sheet: Autopay Enrollment row not found.');
@@ -907,7 +912,7 @@ const extractMsrSheet = (
       const values = collectRowNumbers(row, coverageRow.col + 1);
       snapshot.coverage = {
         enrolledCount: values[0],
-        enrolledPct: values[1] != null ? coercePercent(values[1]) : undefined,
+        enrolledPct: coercePercentOptional(values[1]),
       };
     } else {
       warnings.push('MSR sheet: Coverage Enrollment row not found.');
