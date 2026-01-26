@@ -760,12 +760,8 @@ const selectKpiTable = (
   candidates: KpiTableCandidate[],
   labelMap: Record<string, string[]>,
 ): KpiTableMatch => {
-  let best: {
-    table: KpiTableCandidate;
-    matchedRows: Record<string, { label: string; cells: CellValue[] }>;
-    matchedLabels: string[];
-    hits: number;
-  } | null = null;
+  let best: KpiTableMatch = { table: null, matchedRows: {}, matchedLabels: [] };
+  let bestHits = 0;
 
   candidates.forEach((candidate) => {
     const matchedRows: Record<string, { label: string; cells: CellValue[] }> = {};
@@ -777,19 +773,13 @@ const selectKpiTable = (
       matchedLabels.push(row.label);
     });
     const hits = Object.keys(matchedRows).length;
-    if (!best || hits > best.hits) {
-      best = { table: candidate, matchedRows, matchedLabels, hits };
+    if (hits > bestHits) {
+      best = { table: candidate, matchedRows, matchedLabels };
+      bestHits = hits;
     }
   });
 
-  if (!best) {
-    return { table: null, matchedRows: {}, matchedLabels: [] };
-  }
-  return {
-    table: best.table,
-    matchedRows: best.matchedRows,
-    matchedLabels: best.matchedLabels,
-  };
+  return best;
 };
 
 const buildSectionFlags = (snapshot: MsrSnapshotPayload): MsrParseSectionFlags => ({
