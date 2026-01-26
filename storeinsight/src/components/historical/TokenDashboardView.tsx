@@ -21,6 +21,7 @@ export type MsrSnapshot = {
   monthIso?: string;
   month?: string;
   reportMonth?: string;
+  reportDate?: string;
   asOfDate?: string | Date | { toDate?: () => Date };
   propertyName?: string;
   occupancy?: {
@@ -137,6 +138,8 @@ type SeriesPoint = {
   value: number;
 };
 
+type SignalTone = 'success' | 'warning' | 'neutral';
+
 const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
   { key: '3M', months: 3 },
   { key: '6M', months: 6 },
@@ -171,6 +174,12 @@ const CHART_PADDING = 26;
 const SMALL_CHART_WIDTH = 520;
 const SMALL_CHART_HEIGHT = 180;
 const SMALL_CHART_PADDING = 24;
+const PRICING_CHART_WIDTH = 520;
+const PRICING_CHART_HEIGHT = 180;
+const PRICING_CHART_PADDING = 24;
+const SPARK_WIDTH = 140;
+const SPARK_HEIGHT = 44;
+const SPARK_PADDING = 6;
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
@@ -238,7 +247,31 @@ const formatSignedNumber = (value: number | null | undefined): string => {
   return `${sign}${formatNumber(Math.abs(value))}`;
 };
 
+const deriveTrendStatus = (delta: number | null | undefined): { label: string; tone: SignalTone } => {
+  if (!isFiniteNumber(delta)) return { label: 'Limited history', tone: 'neutral' };
+  if (delta >= 1) return { label: 'Rising', tone: 'success' };
+  if (delta <= -1) return { label: 'Softening', tone: 'warning' };
+  return { label: 'Stable', tone: 'neutral' };
+};
+
 const formatMonthLabel = (monthIso: string): string => formatShortMonth(monthIso);
+
+const formatSnapshotDate = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString().slice(0, 10);
+  }
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number') return new Date(value).toISOString().slice(0, 10);
+  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString().slice(0, 10);
+  }
+  return null;
+};
 
 const getTopDelinquencies = (snapshot: MsrSnapshot) => {
   const direct = snapshot.topDelinquencies;
@@ -319,6 +352,9 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
   const latestSnapshot = rangeSnapshots[rangeSnapshots.length - 1]?.snapshot ?? sortedSnapshots[sortedSnapshots.length - 1]?.snapshot ?? null;
   const latestMonthIso = latestSnapshot ? getMonthFromSnapshot(latestSnapshot) : null;
   const latestMonthLabel = latestMonthIso ? formatMonthLabel(latestMonthIso) : null;
+  const latestDateLabel = latestSnapshot
+    ? formatSnapshotDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate)
+    : null;
 
   const seriesEntries = useMemo(
     () => rangeSnapshots.filter((entry) => entry.monthIso),
@@ -384,6 +420,16 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
   const netRevenueTotal = netRevenueValues.reduce((sum, value) => sum + value, 0);
   const netRevenueMax = Math.max(1, ...netRevenueValues);
 
+  const sparkValues = occupancySeries.map((point) => point.value);
+  const sparkHasHistory = sparkValues.length >= 2;
+  const sparkPoints = sparkHasHistory
+    ? getChartPoints(sparkValues, SPARK_WIDTH, SPARK_HEIGHT, SPARK_PADDING)
+    : [];
+  const sparkPath = sparkHasHistory ? buildLinePath(sparkPoints) : '';
+  const sparkPoint = sparkHasHistory ? sparkPoints[sparkPoints.length - 1] : null;
+  const occupancyDelta = sparkHasHistory ? sparkValues[sparkValues.length - 1] - sparkValues[0] : null;
+  const trendStatus = deriveTrendStatus(occupancyDelta);
+
   const unitMix = latestSnapshot?.unitMix;
   const occupiedByType = unitMix?.occupiedRsfByType ?? {};
   const unitMixEntries = Object.entries(occupiedByType).filter(([, value]) => isFiniteNumber(value) && value > 0);
@@ -432,7 +478,11 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                 </h1>
                 <p className="max-w-2xl text-sm text-[color:var(--text-secondary)]">
                   {propertyName}
-                  {latestMonthLabel ? ` - As of ${latestMonthLabel}` : ''}
+                  {latestDateLabel
+                    ? ` - As of ${latestDateLabel}`
+                    : latestMonthLabel
+                      ? ` - As of ${latestMonthLabel}`
+                      : ''}
                 </p>
               </div>
             </div>
@@ -700,7 +750,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
               </ChartCard>
             </section>
 
-            <section>
+            <section className="grid gap-6 lg:grid-cols-2">
               <ChartCard
                 title="Monthly Net Revenue (MTD)"
                 subtitle="Net revenue per snapshot"
@@ -744,6 +794,98 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                   ))}
                 </div>
               </ChartCard>
+
+              <div className="ios-card ios-animate-up space-y-6 p-6" data-tone="green">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="text-lg font-semibold text-[color:var(--text-primary)]">Snapshot signals</div>
+                    <div className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
+                      MSR trend highlights
+                    </div>
+                  </div>
+                  <span className="ios-pill text-[10px]" data-tone="neutral">
+                    Range {range}
+                  </span>
+                </div>
+
+                <div className="ios-list-card flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-[color:var(--text-primary)]">{propertyName}</div>
+                    <div className="text-xs text-[color:var(--text-secondary)]">
+                      {latestDateLabel
+                        ? `As of ${latestDateLabel}`
+                        : latestMonthLabel
+                          ? `As of ${latestMonthLabel}`
+                          : 'Latest MSR snapshot'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-wrap items-center justify-between gap-4 sm:justify-end">
+                    <div className="min-w-[140px]">
+                      {sparkHasHistory ? (
+                        <svg
+                          viewBox={`0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`}
+                          className="h-12 w-full"
+                          role="img"
+                          aria-label="Occupancy trend sparkline"
+                        >
+                          <path
+                            d={sparkPath}
+                            fill="none"
+                            stroke="rgba(37,99,235,0.9)"
+                            strokeWidth={2}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            pathLength={1}
+                            className="history-sparkline"
+                            style={{ animationDelay: '0.1s' }}
+                          />
+                          {sparkPoint ? (
+                            <circle
+                              cx={sparkPoint.x}
+                              cy={sparkPoint.y}
+                              r={3.5}
+                              fill="#ffffff"
+                              stroke="rgba(37,99,235,0.9)"
+                              strokeWidth={1.5}
+                            />
+                          ) : null}
+                        </svg>
+                      ) : (
+                        <div className="text-xs text-[color:var(--text-secondary)]">Not enough history yet</div>
+                      )}
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                        Occupancy
+                      </div>
+                      <div className="text-base font-semibold text-[color:var(--text-primary)] tabular-nums">
+                        {formatMaybePercent(occupancyValue)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                        Net revenue (MTD)
+                      </div>
+                      <div className="text-base font-semibold text-[color:var(--text-primary)] tabular-nums">
+                        {formatMaybeCurrency(netRevenueValue)}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                        Net move-ins (MTD)
+                      </div>
+                      <div className="text-base font-semibold text-[color:var(--text-primary)] tabular-nums">
+                        {formatSignedNumber(netMoveInsValue)}
+                      </div>
+                    </div>
+                    <span className="ios-pill text-[10px]" data-tone={trendStatus.tone}>
+                      {trendStatus.label}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </section>
           </>
         ) : null}
@@ -753,7 +895,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
         ) : null}
 
         {section === 'pricing' ? (
-          <PricingSection latestSnapshot={latestSnapshot} />
+          <PricingSection latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
         ) : null}
 
         {section === 'drilldowns' ? (
@@ -952,7 +1094,13 @@ function CollectionsSection({
   );
 }
 
-function PricingSection({ latestSnapshot }: { latestSnapshot: MsrSnapshot | null }): JSX.Element {
+function PricingSection({
+  latestSnapshot,
+  seriesEntries,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+}): JSX.Element {
   const pricing = latestSnapshot?.pricing;
   const currentRent = pricing?.avgCurrentRentOccupied;
   const sellRate = pricing?.avgSellRateOccupied;
@@ -968,6 +1116,62 @@ function PricingSection({ latestSnapshot }: { latestSnapshot: MsrSnapshot | null
   const staleRentByType = pricing?.noRentChange12MoByType ?? null;
   const staleRentEntries = staleRentByType ? Object.entries(staleRentByType) : [];
   const staleRentTotal = staleRentEntries.reduce((sum, [, value]) => sum + (isFiniteNumber(value) ? value : 0), 0);
+  const staleRentSegments = useMemo(() => {
+    if (!staleRentEntries.length || staleRentTotal <= 0) return [];
+    const sorted = staleRentEntries
+      .map(([label, value]) => ({ label, value: isFiniteNumber(value) ? value : 0 }))
+      .filter((entry) => entry.value > 0)
+      .sort((a, b) => b.value - a.value);
+    const top = sorted.slice(0, 4);
+    const otherValue = sorted.slice(4).reduce((sum, entry) => sum + entry.value, 0);
+    const final = otherValue > 0 ? [...top, { label: 'Other', value: otherValue }] : top;
+    let offset = 0;
+    return final.map((entry, index) => {
+      const percent = (entry.value / staleRentTotal) * 100;
+      const start = 25 - offset;
+      offset += percent;
+      return {
+        label: entry.label,
+        value: entry.value,
+        percent,
+        offset: start,
+        color: UNIT_MIX_COLORS[index % UNIT_MIX_COLORS.length],
+        delay: `${index * 0.12}s`,
+      };
+    });
+  }, [staleRentEntries, staleRentTotal]);
+
+  const rateSeries = seriesEntries
+    .map((entry) => ({
+      monthIso: entry.monthIso,
+      current: entry.snapshot.pricing?.avgCurrentRentOccupied,
+      sell: entry.snapshot.pricing?.avgSellRateOccupied,
+    }))
+    .filter((entry): entry is { monthIso: string; current: number; sell: number } => {
+      return Boolean(entry.monthIso) && isFiniteNumber(entry.current) && isFiniteNumber(entry.sell);
+    });
+  const currentRates = rateSeries.map((entry) => entry.current);
+  const sellRates = rateSeries.map((entry) => entry.sell);
+  const combinedRates = [...currentRates, ...sellRates];
+  const rateMin = combinedRates.length ? Math.min(...combinedRates) : 0;
+  const rateMax = combinedRates.length ? Math.max(...combinedRates) : 1;
+  const currentPoints = getChartPoints(
+    currentRates,
+    PRICING_CHART_WIDTH,
+    PRICING_CHART_HEIGHT,
+    PRICING_CHART_PADDING,
+    rateMin,
+    rateMax,
+  );
+  const sellPoints = getChartPoints(
+    sellRates,
+    PRICING_CHART_WIDTH,
+    PRICING_CHART_HEIGHT,
+    PRICING_CHART_PADDING,
+    rateMin,
+    rateMax,
+  );
+  const rateEmptyMessage = getSeriesEmptyMessage(currentRates, seriesEntries.length);
 
   return (
     <section className="space-y-6">
@@ -983,6 +1187,83 @@ function PricingSection({ latestSnapshot }: { latestSnapshot: MsrSnapshot | null
             ]}
             columns={3}
           />
+          {rateEmptyMessage ? (
+            <div className="ios-list-card border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 text-sm text-[color:var(--text-secondary)] shadow-inner">
+              {rateEmptyMessage}
+            </div>
+          ) : (
+            <div className="rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
+              <svg viewBox={`0 0 ${PRICING_CHART_WIDTH} ${PRICING_CHART_HEIGHT}`} className="h-44 w-full" role="img">
+                <defs>
+                  <linearGradient id="token-current-rate-line" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="rgba(37,99,235,0.9)" />
+                    <stop offset="100%" stopColor="rgba(59,130,246,0.7)" />
+                  </linearGradient>
+                  <linearGradient id="token-sell-rate-line" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="rgba(14,165,233,0.9)" />
+                    <stop offset="100%" stopColor="rgba(56,189,248,0.7)" />
+                  </linearGradient>
+                </defs>
+
+                {Array.from({ length: 4 }).map((_, index) => {
+                  const y = PRICING_CHART_PADDING + ((PRICING_CHART_HEIGHT - PRICING_CHART_PADDING * 2) / 4) * index;
+                  return (
+                    <line
+                      key={index}
+                      x1={PRICING_CHART_PADDING}
+                      x2={PRICING_CHART_WIDTH - PRICING_CHART_PADDING}
+                      y1={y}
+                      y2={y}
+                      stroke="rgba(148,163,255,0.2)"
+                      strokeDasharray="6 8"
+                    />
+                  );
+                })}
+
+                <path
+                  d={buildLinePath(currentPoints)}
+                  fill="none"
+                  stroke="url(#token-current-rate-line)"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength={1}
+                  className="history-chart-line"
+                />
+                <path
+                  d={buildLinePath(sellPoints)}
+                  fill="none"
+                  stroke="url(#token-sell-rate-line)"
+                  strokeWidth={2.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength={1}
+                  className="history-chart-line"
+                  style={{ animationDelay: '0.15s' }}
+                />
+              </svg>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[color:var(--text-muted)]">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.8)]" />
+                    Current rent
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.8)]" />
+                    Sell rate
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {rateSeries.map((row, index) => (
+                    <span key={row.monthIso} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
+                      {formatMonthLabel(row.monthIso)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </ChartCard>
 
         <ChartCard title="Occupied Rate Variance" subtitle="MSR variance metric">
@@ -1012,21 +1293,55 @@ function PricingSection({ latestSnapshot }: { latestSnapshot: MsrSnapshot | null
       <ChartCard title="Stale Rent Exposure" subtitle="No rent change in 12 months">
         <KpiRow items={[{ label: 'Units', value: formatMaybeNumber(staleRentCount) }]} columns={2} />
 
-        {staleRentEntries.length > 0 ? (
-          <div className="mt-4 space-y-2">
-            {staleRentEntries.map(([type, value]) => {
-              const count = isFiniteNumber(value) ? value : 0;
-              const share = staleRentTotal > 0 ? (count / staleRentTotal) * 100 : null;
-              return (
-                <div key={type} className="ios-list-card flex items-center justify-between px-4 py-2 text-sm">
-                  <span className="text-[color:var(--text-primary)]">{type}</span>
+        {staleRentSegments.length > 0 ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+            <div className="flex items-center justify-center">
+              <div className="relative flex h-36 w-36 items-center justify-center">
+                <svg viewBox="0 0 120 120" className="h-full w-full" role="img" aria-label="Stale rent mix">
+                  <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,255,0.2)" strokeWidth="12" />
+                  {staleRentSegments.map((segment) => (
+                    <circle
+                      key={segment.label}
+                      cx="60"
+                      cy="60"
+                      r="46"
+                      fill="none"
+                      stroke={segment.color}
+                      strokeWidth="12"
+                      strokeLinecap="round"
+                      pathLength={100}
+                      strokeDashoffset={segment.offset}
+                      className="history-donut-ring"
+                      style={
+                        {
+                          '--value': segment.percent,
+                          '--delay': segment.delay,
+                        } as CSSProperties
+                      }
+                    />
+                  ))}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <div className="text-xl font-semibold text-[color:var(--text-primary)]">
+                    {formatMaybeNumber(staleRentTotal)}
+                  </div>
+                  <div className="text-[10px] text-[color:var(--text-secondary)]">Stale units</div>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {staleRentSegments.map((segment) => (
+                <div key={segment.label} className="ios-list-card flex items-center justify-between px-4 py-2 text-sm">
+                  <div className="flex items-center gap-3 text-[color:var(--text-primary)]">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
+                    <span>{segment.label}</span>
+                  </div>
                   <span className="text-[color:var(--text-secondary)]">
-                    {formatMaybeNumber(count)}
-                    {share ? ` (${formatMaybePercent(share, 0)})` : ''}
+                    {formatMaybeNumber(segment.value)} ({formatMaybePercent(segment.percent, 0)})
                   </span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         ) : null}
       </ChartCard>

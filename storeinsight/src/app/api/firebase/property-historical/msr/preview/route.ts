@@ -1,0 +1,91 @@
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
+import { parseMsrWorkbook } from '@/lib/historical/msrSnapshotParser';
+import { getPropertyMsrSnapshotStatus } from '@/lib/historical/firebaseStore';
+
+export const runtime = 'nodejs';
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const formData = await request.formData().catch(() => null);
+  if (!formData) {
+    return NextResponse.json({ ok: false, message: 'Invalid form data.' }, { status: 400 });
+  }
+
+  const propertyId = formData.get('propertyId')?.toString().trim() ?? '';
+  const file = formData.get('file');
+
+  if (!propertyId) {
+    return NextResponse.json({ ok: false, message: 'propertyId is required.' }, { status: 400 });
+  }
+
+  if (!file || !(file instanceof Blob)) {
+    return NextResponse.json({ ok: false, message: 'Upload a .xlsx file.' }, { status: 400 });
+  }
+
+  const filename = 'name' in file ? String(file.name) : '';
+  if (!filename.toLowerCase().endsWith('.xlsx')) {
+    return NextResponse.json({ ok: false, message: 'Upload must be a .xlsx file.' }, { status: 400 });
+  }
+
+  let parsed;
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    parsed = parseMsrWorkbook(buffer);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unable to parse the MSR workbook.';
+    return NextResponse.json({ ok: false, message }, { status: 400 });
+  }
+
+  const snapshot = {
+    ...parsed.snapshot,
+    propertyId,
+  };
+
+  if (!snapshot.reportMonthIso) {
+    return NextResponse.json(
+      { ok: false, message: 'Unable to determine reportMonthIso from the workbook.' },
+      { status: 400 },
+    );
+  }
+
+  const status = await getPropertyMsrSnapshotStatus(propertyId, snapshot.reportMonthIso);
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[msr-preview] parsed snapshot', {
+      propertyId,
+      reportMonthIso: snapshot.reportMonthIso,
+      reportDate: snapshot.reportDate,
+      warnings: parsed.warnings.length,
+      occupancy: {
+        rsfOccPct: snapshot.occupancy?.rsfOccPct,
+        occupiedCount: snapshot.occupancy?.occupiedCount,
+        occupiedRsf: snapshot.occupancy?.occupiedRsf,
+        totalRsf: snapshot.occupancy?.totalRsf,
+      },
+      revenue: {
+        netRevenueMtd: snapshot.revenue?.netRevenueMtd,
+        economicOccupancy: snapshot.revenue?.economicOccupancy,
+      },
+      rentals: {
+        moveInsMtd: snapshot.rentals?.moveInsMtd,
+        moveOutsMtd: snapshot.rentals?.moveOutsMtd,
+        netMoveInsMtd: snapshot.rentals?.netMoveInsMtd,
+      },
+      leads: {
+        totalMtd: snapshot.leads?.totalMtd,
+      },
+      ar: {
+        totalPastDue: snapshot.ar?.totalPastDue,
+        delinquentTenantCount: snapshot.ar?.delinquentTenantCount,
+      },
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    snapshot,
+    warnings: parsed.warnings,
+    sections: parsed.sections,
+    exists: status.exists,
+  });
+}
