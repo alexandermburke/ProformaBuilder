@@ -27,7 +27,11 @@ const getClientIp = (request: NextRequest): string => {
     const [first] = forwarded.split(",");
     if (first) return first.trim();
   }
-  return request.ip ?? "unknown";
+  const realIp =
+    request.headers.get("x-real-ip") ??
+    request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-vercel-forwarded-for");
+  return realIp?.trim() || "unknown";
 };
 
 const applyTokenHeaders = (response: NextResponse): NextResponse => {
