@@ -56,6 +56,7 @@ type MsrPreviewSnapshot = {
     totalMtd?: number;
     convertedMtd?: number;
     conversionPct?: number;
+    conversionRatePctMtd?: number;
   };
   ar?: {
     totalPastDue?: number;
@@ -112,11 +113,63 @@ type MsrPreviewSnapshot = {
   };
 };
 
+type OccupancyDiagnostics = {
+  sheetName?: string;
+  headerRowIndex?: number | null;
+  columnMapping?: Record<string, string | null>;
+  rowCounts?: {
+    total: number;
+    occupied: number;
+    vacant: number;
+    offline: number;
+    unknown: number;
+  };
+  headerCandidates?: string[];
+  error?: string | null;
+};
+
+type MsrDataSources = {
+  occupancySummarySource?: 'msr' | 'occupancy';
+  occupancySummaryRows?: {
+    total: number;
+    occupied: number;
+    vacant: number;
+    offline: number;
+    unknown: number;
+  };
+  leadsSource?: 'msr';
+  leadsRowCount?: number;
+};
+
+type KpiTableDiagnostics = {
+  tableFound: boolean;
+  headerRowIndex: number | null;
+  headerValues?: string[];
+  labelColumnIndex?: number | null;
+  columnMap?: {
+    daily?: number | null;
+    mtd?: number | null;
+    ytd?: number | null;
+  };
+  selectedMtdIndex?: number | null;
+  matchedRowLabels?: string[];
+  extracted?: Record<string, { daily?: number | null; mtd?: number | null; ytd?: number | null }>;
+  candidateTables?: Array<{ headerRowIndex: number; headerValues: string[] }>;
+};
+
+type MsrTableDiagnostics = {
+  rentalActivity?: KpiTableDiagnostics;
+  leads?: KpiTableDiagnostics;
+};
+
 type MsrPreviewResponse = {
   snapshot: MsrPreviewSnapshot;
   warnings: string[];
   sections: Record<string, boolean>;
   exists: boolean;
+  occupancyDiagnostics?: OccupancyDiagnostics | null;
+  dataSources?: MsrDataSources | null;
+  msrTableDiagnostics?: MsrTableDiagnostics | null;
 };
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -131,7 +184,10 @@ const formatPreviewValue = (value: unknown, kind: 'currency' | 'percent' | 'numb
   if (value == null || value === '') return 'N/A';
   if (typeof value === 'number' && !Number.isFinite(value)) return 'N/A';
   if (kind === 'currency' && typeof value === 'number') return currencyFormatter.format(value);
-  if (kind === 'percent' && typeof value === 'number') return `${value.toFixed(1)}%`;
+  if (kind === 'percent' && typeof value === 'number') {
+    const normalized = Math.abs(value) <= 1 ? value * 100 : value;
+    return `${normalized.toFixed(1)}%`;
+  }
   if (kind === 'number' && typeof value === 'number') return numberFormatter.format(Math.round(value));
   return String(value);
 };
@@ -212,6 +268,69 @@ export default function HistoricalDataUploadPage(): JSX.Element {
     ? 'bg-[radial-gradient(circle_at_85%_85%,rgba(56,189,248,0.22),transparent_65%)]'
     : 'bg-[radial-gradient(circle_at_82%_88%,rgba(125,211,252,0.16),transparent_62%)]';
   const msrSnapshot = msrPreview?.snapshot;
+  const occupancyDiagnostics = msrPreview?.occupancyDiagnostics ?? null;
+  const msrDataSources = msrPreview?.dataSources ?? null;
+  const msrTableDiagnostics = msrPreview?.msrTableDiagnostics ?? null;
+  const occupancyHeaderRow =
+    occupancyDiagnostics?.headerRowIndex != null ? occupancyDiagnostics.headerRowIndex + 1 : null;
+  const occupancySummarySourceLabel =
+    msrDataSources?.occupancySummarySource === 'msr'
+      ? 'MSR Space Occupancy block'
+      : msrDataSources?.occupancySummarySource === 'occupancy'
+        ? 'Occupancy tab fallback'
+        : 'N/A';
+  const leadsSourceLabel =
+    msrDataSources?.leadsSource === 'msr'
+      ? 'MSR Leads block'
+      : 'N/A';
+  const formatHeaderList = (headers?: string[]) =>
+    headers?.filter((header) => header && header.trim()).join(' | ') || 'N/A';
+  const formatIndex = (index?: number | null) => (index == null ? 'N/A' : String(index + 1));
+  const formatColumnSummary = (
+    diagnostics: KpiTableDiagnostics | null,
+    key: 'daily' | 'mtd' | 'ytd',
+  ): string => {
+    if (!diagnostics) return 'N/A';
+    const index = diagnostics.columnMap?.[key] ?? null;
+    const header = index != null ? diagnostics.headerValues?.[index] : null;
+    const headerLabel = formatPreviewValue(header);
+    return `${headerLabel} (col ${formatIndex(index)})`;
+  };
+  const formatDetectedHeaders = (diagnostics: KpiTableDiagnostics | null): string => {
+    if (!diagnostics) return 'N/A';
+    const headerValues = diagnostics.headerValues ?? [];
+    const kpiHeader =
+      diagnostics.labelColumnIndex != null ? headerValues[diagnostics.labelColumnIndex] : null;
+    const dateHeader =
+      diagnostics.columnMap?.daily != null ? headerValues[diagnostics.columnMap.daily] : null;
+    const mtdHeader =
+      diagnostics.columnMap?.mtd != null ? headerValues[diagnostics.columnMap.mtd] : null;
+    const ytdHeader =
+      diagnostics.columnMap?.ytd != null ? headerValues[diagnostics.columnMap.ytd] : null;
+    const parts = [
+      formatPreviewValue(kpiHeader),
+      formatPreviewValue(dateHeader),
+      formatPreviewValue(mtdHeader),
+      formatPreviewValue(ytdHeader),
+    ];
+    return `[${parts.join(', ')}]`;
+  };
+  const formatMatchedLabels = (diagnostics: KpiTableDiagnostics | null): string => {
+    const labels = diagnostics?.matchedRowLabels?.filter((label) => label && label.trim());
+    return labels && labels.length ? labels.join(' | ') : 'N/A';
+  };
+  const formatCandidateHeaderRow = (candidate: { headerRowIndex: number; headerValues: string[] }) =>
+    `Row ${candidate.headerRowIndex + 1}: ${formatHeaderList(candidate.headerValues)}`;
+  const formatExtractedValue = (label: string, value: number | null | undefined): string => {
+    const isRate = label.toLowerCase().includes('rate');
+    return formatPreviewValue(value, isRate ? 'percent' : 'number');
+  };
+  const rentalDiagnostics = msrTableDiagnostics?.rentalActivity ?? null;
+  const leadsDiagnostics = msrTableDiagnostics?.leads ?? null;
+  const rentalHeaderRow =
+    rentalDiagnostics?.headerRowIndex != null ? rentalDiagnostics.headerRowIndex + 1 : null;
+  const leadsHeaderRow =
+    leadsDiagnostics?.headerRowIndex != null ? leadsDiagnostics.headerRowIndex + 1 : null;
   const msrSectionEntries = msrPreview
     ? [
         { key: 'occupancy', label: 'Occupancy', ok: msrPreview.sections?.occupancy },
@@ -531,6 +650,175 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 </div>
               </div>
 
+              {msrDataSources ? (
+                <div className="ios-list-card space-y-2 p-4 text-xs">
+                  <div className="text-[color:var(--text-primary)]">Data sources</div>
+                  <div className="text-[color:var(--text-secondary)]">
+                    Occupancy summary: {occupancySummarySourceLabel}
+                  </div>
+                  {msrDataSources.occupancySummarySource === 'occupancy' && msrDataSources.occupancySummaryRows ? (
+                    <div className="text-[color:var(--text-secondary)]">
+                      Rows: {formatPreviewValue(msrDataSources.occupancySummaryRows.total, 'number')} total /{' '}
+                      {formatPreviewValue(msrDataSources.occupancySummaryRows.occupied, 'number')} occupied /{' '}
+                      {formatPreviewValue(msrDataSources.occupancySummaryRows.vacant, 'number')} vacant /{' '}
+                      {formatPreviewValue(msrDataSources.occupancySummaryRows.offline, 'number')} offline
+                    </div>
+                  ) : null}
+                  <div className="text-[color:var(--text-secondary)]">Leads: {leadsSourceLabel}</div>
+                  {msrDataSources.leadsSource === 'msr' ? (
+                    <div className="text-[color:var(--text-secondary)]">
+                      Leads rows parsed: {formatPreviewValue(msrDataSources.leadsRowCount, 'number')}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {occupancyDiagnostics ? (
+                <div className="ios-list-card space-y-2 p-4 text-xs">
+                  <div className="text-[color:var(--text-primary)]">Occupancy parser</div>
+                  <div className="grid gap-2 sm:grid-cols-2 text-[color:var(--text-secondary)]">
+                    <div>Sheet: {formatPreviewValue(occupancyDiagnostics.sheetName)}</div>
+                    <div>Header row: {formatPreviewValue(occupancyHeaderRow, 'number')}</div>
+                    <div>
+                      Space number:{' '}
+                      {formatPreviewValue(occupancyDiagnostics.columnMapping?.spaceNumber)}
+                    </div>
+                    <div>Space type: {formatPreviewValue(occupancyDiagnostics.columnMapping?.spaceType)}</div>
+                    <div>Sq ft: {formatPreviewValue(occupancyDiagnostics.columnMapping?.sqft)}</div>
+                    <div>Status: {formatPreviewValue(occupancyDiagnostics.columnMapping?.status)}</div>
+                    <div>Sell rate: {formatPreviewValue(occupancyDiagnostics.columnMapping?.sellRate)}</div>
+                    <div>Current rent: {formatPreviewValue(occupancyDiagnostics.columnMapping?.currentRent)}</div>
+                  </div>
+                  {occupancyDiagnostics.rowCounts ? (
+                    <div className="text-[color:var(--text-secondary)]">
+                      Rows: {formatPreviewValue(occupancyDiagnostics.rowCounts.total, 'number')} total /{' '}
+                      {formatPreviewValue(occupancyDiagnostics.rowCounts.occupied, 'number')} occupied /{' '}
+                      {formatPreviewValue(occupancyDiagnostics.rowCounts.vacant, 'number')} vacant /{' '}
+                      {formatPreviewValue(occupancyDiagnostics.rowCounts.offline, 'number')} offline /{' '}
+                      {formatPreviewValue(occupancyDiagnostics.rowCounts.unknown, 'number')} unknown
+                    </div>
+                  ) : null}
+                  {occupancyDiagnostics.error ? (
+                    <div className="text-red-500">{occupancyDiagnostics.error}</div>
+                  ) : null}
+                  {occupancyDiagnostics.headerCandidates?.length ? (
+                    <div className="space-y-1 text-[10px] text-[color:var(--text-secondary)]">
+                      {occupancyDiagnostics.headerCandidates.map((row) => (
+                        <div key={row}>{row}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {rentalDiagnostics || leadsDiagnostics ? (
+                <div className="ios-list-card space-y-3 p-4 text-xs">
+                  <div className="text-[color:var(--text-primary)]">MSR table diagnostics</div>
+                  {rentalDiagnostics ? (
+                    <div className="space-y-2">
+                      <div className="text-[color:var(--text-primary)]">Rental Activity</div>
+                      <div className="grid gap-2 sm:grid-cols-2 text-[color:var(--text-secondary)]">
+                        <div>Found table: {rentalDiagnostics.tableFound ? 'Yes' : 'No'}</div>
+                        <div>Header row: {formatPreviewValue(rentalHeaderRow, 'number')}</div>
+                        <div>Label column: {formatIndex(rentalDiagnostics.labelColumnIndex)}</div>
+                        <div>MTD column index: {formatIndex(rentalDiagnostics.columnMap?.mtd)}</div>
+                        <div>Daily column: {formatColumnSummary(rentalDiagnostics, 'daily')}</div>
+                        <div>MTD column: {formatColumnSummary(rentalDiagnostics, 'mtd')}</div>
+                        <div>YTD column: {formatColumnSummary(rentalDiagnostics, 'ytd')}</div>
+                      </div>
+                      <div className="text-[color:var(--text-secondary)]">
+                        Detected headers: {formatDetectedHeaders(rentalDiagnostics)}
+                      </div>
+                      <div className="text-[color:var(--text-secondary)]">
+                        Matched row labels: {formatMatchedLabels(rentalDiagnostics)}
+                      </div>
+                      <div className="text-[color:var(--text-secondary)]">
+                        Headers: {formatHeaderList(rentalDiagnostics.headerValues)}
+                      </div>
+                      {!rentalDiagnostics.tableFound ? (
+                        <div className="space-y-1 text-[color:var(--text-secondary)]">
+                          <div>No matching KPI table found on MSR sheet.</div>
+                          {rentalDiagnostics.candidateTables?.length ? (
+                            <div className="space-y-1 text-[10px] text-[color:var(--text-secondary)]">
+                              {rentalDiagnostics.candidateTables.map((candidate, index) => (
+                                <div key={`${candidate.headerRowIndex}-${index}`}>
+                                  {formatCandidateHeaderRow(candidate)}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {rentalDiagnostics.extracted ? (
+                        <div className="space-y-1 text-[color:var(--text-secondary)]">
+                          {Object.entries(rentalDiagnostics.extracted).map(([label, values]) => (
+                            <div key={label} className="flex flex-wrap gap-2">
+                              <span className="text-[color:var(--text-primary)]">{label}</span>
+                              <span>Daily: {formatExtractedValue(label, values.daily)}</span>
+                              <span>MTD: {formatExtractedValue(label, values.mtd)}</span>
+                              <span>YTD: {formatExtractedValue(label, values.ytd)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {leadsDiagnostics ? (
+                    <div
+                      className={`space-y-2 ${
+                        rentalDiagnostics ? 'border-t border-[color:var(--border-soft)] pt-3' : ''
+                      }`}
+                    >
+                      <div className="text-[color:var(--text-primary)]">Leads</div>
+                      <div className="grid gap-2 sm:grid-cols-2 text-[color:var(--text-secondary)]">
+                        <div>Found table: {leadsDiagnostics.tableFound ? 'Yes' : 'No'}</div>
+                        <div>Header row: {formatPreviewValue(leadsHeaderRow, 'number')}</div>
+                        <div>Label column: {formatIndex(leadsDiagnostics.labelColumnIndex)}</div>
+                        <div>MTD column index: {formatIndex(leadsDiagnostics.columnMap?.mtd)}</div>
+                        <div>Daily column: {formatColumnSummary(leadsDiagnostics, 'daily')}</div>
+                        <div>MTD column: {formatColumnSummary(leadsDiagnostics, 'mtd')}</div>
+                        <div>YTD column: {formatColumnSummary(leadsDiagnostics, 'ytd')}</div>
+                      </div>
+                      <div className="text-[color:var(--text-secondary)]">
+                        Detected headers: {formatDetectedHeaders(leadsDiagnostics)}
+                      </div>
+                      <div className="text-[color:var(--text-secondary)]">
+                        Matched row labels: {formatMatchedLabels(leadsDiagnostics)}
+                      </div>
+                      <div className="text-[color:var(--text-secondary)]">
+                        Headers: {formatHeaderList(leadsDiagnostics.headerValues)}
+                      </div>
+                      {!leadsDiagnostics.tableFound ? (
+                        <div className="space-y-1 text-[color:var(--text-secondary)]">
+                          <div>No matching KPI table found on MSR sheet.</div>
+                          {leadsDiagnostics.candidateTables?.length ? (
+                            <div className="space-y-1 text-[10px] text-[color:var(--text-secondary)]">
+                              {leadsDiagnostics.candidateTables.map((candidate, index) => (
+                                <div key={`${candidate.headerRowIndex}-${index}`}>
+                                  {formatCandidateHeaderRow(candidate)}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {leadsDiagnostics.extracted ? (
+                        <div className="space-y-1 text-[color:var(--text-secondary)]">
+                          {Object.entries(leadsDiagnostics.extracted).map(([label, values]) => (
+                            <div key={label} className="flex flex-wrap gap-2">
+                              <span className="text-[color:var(--text-primary)]">{label}</span>
+                              <span>Daily: {formatExtractedValue(label, values.daily)}</span>
+                              <span>MTD: {formatExtractedValue(label, values.mtd)}</span>
+                              <span>YTD: {formatExtractedValue(label, values.ytd)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div className="space-y-1 text-[color:var(--text-secondary)]">
                   <div className="text-[color:var(--text-primary)]">Occupancy</div>
@@ -558,7 +846,13 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 <div className="space-y-1 text-[color:var(--text-secondary)]">
                   <div className="text-[color:var(--text-primary)]">Leads</div>
                   <div>Total MTD: {formatPreviewValue(msrSnapshot?.leads?.totalMtd, 'number')}</div>
-                  <div>Conversion %: {formatPreviewValue(msrSnapshot?.leads?.conversionPct, 'percent')}</div>
+                  <div>
+                    Conversion %:{' '}
+                    {formatPreviewValue(
+                      msrSnapshot?.leads?.conversionRatePctMtd ?? msrSnapshot?.leads?.conversionPct,
+                      'percent',
+                    )}
+                  </div>
                   <div>Web/Walk-in/Phone/Other: {formatPreviewValue(msrSnapshot?.leads?.webMtd, 'number')} / {formatPreviewValue(msrSnapshot?.leads?.walkInMtd, 'number')} / {formatPreviewValue(msrSnapshot?.leads?.phoneMtd, 'number')} / {formatPreviewValue(msrSnapshot?.leads?.otherMtd, 'number')}</div>
                 </div>
 

@@ -469,7 +469,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
               <div className="flex flex-wrap items-center gap-2">
                 <span className="ios-badge text-[10px]">Investor dashboard</span>
                 <span className="ios-pill text-[10px]" data-tone="neutral">
-                  MSR snapshot
+                  Beta testing
                 </span>
               </div>
               <div className="space-y-2">

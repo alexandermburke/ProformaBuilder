@@ -79,6 +79,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         delinquentTenantCount: snapshot.ar?.delinquentTenantCount,
       },
     });
+    if (parsed.occupancyDiagnostics) {
+      console.info('[msr-preview] occupancy diagnostics', {
+        sheetName: parsed.occupancyDiagnostics.sheetName,
+        headerRowIndex: parsed.occupancyDiagnostics.headerRowIndex,
+        columnMapping: parsed.occupancyDiagnostics.columnMapping,
+        rowCounts: parsed.occupancyDiagnostics.rowCounts,
+        error: parsed.occupancyDiagnostics.error,
+      });
+    }
+    if (parsed.dataSources) {
+      console.info('[msr-preview] data sources', parsed.dataSources);
+    }
   }
 
   return NextResponse.json({
@@ -87,5 +99,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     warnings: parsed.warnings,
     sections: parsed.sections,
     exists: status.exists,
+    occupancyDiagnostics: parsed.occupancyDiagnostics ?? null,
+    dataSources: parsed.dataSources ?? null,
+    msrTableDiagnostics: parsed.msrTableDiagnostics ?? null,
   });
 }
