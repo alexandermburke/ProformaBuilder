@@ -363,7 +363,14 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
               value={validateInput}
               onChange={(event) => setValidateInput(event.target.value)}
             />
-            <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleValidate} disabled={isValidating}>
+            <button
+              type="button"
+              className="ios-button px-4 py-2 text-sm"
+              onClick={() => {
+                void handleValidate();
+              }}
+              disabled={isValidating}
+            >
               {isValidating ? 'Validating...' : 'Validate'}
             </button>
             {createResult?.url ? (

@@ -1114,8 +1114,14 @@ function PricingSection({
   const avgRentChangePct = pricing?.avgRentChangePct;
   const staleRentCount = pricing?.noRentChange12MoCount;
   const staleRentByType = pricing?.noRentChange12MoByType ?? null;
-  const staleRentEntries = staleRentByType ? Object.entries(staleRentByType) : [];
-  const staleRentTotal = staleRentEntries.reduce((sum, [, value]) => sum + (isFiniteNumber(value) ? value : 0), 0);
+  const staleRentEntries = useMemo(
+    () => (staleRentByType ? Object.entries(staleRentByType) : []),
+    [staleRentByType],
+  );
+  const staleRentTotal = useMemo(
+    () => staleRentEntries.reduce((sum, [, value]) => sum + (isFiniteNumber(value) ? value : 0), 0),
+    [staleRentEntries],
+  );
   const staleRentSegments = useMemo(() => {
     if (!staleRentEntries.length || staleRentTotal <= 0) return [];
     const sorted = staleRentEntries
