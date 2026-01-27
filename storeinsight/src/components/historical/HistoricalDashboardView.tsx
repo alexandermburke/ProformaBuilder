@@ -625,7 +625,7 @@ export function HistoricalDashboardView({
                             className="history-donut-ring"
                             style={
                               {
-                                '--value': segment.value,
+                                '--dash': `${segment.value} ${Math.max(0, 100 - segment.value)}`,
                                 '--delay': segment.delay,
                               } as CSSProperties
                             }

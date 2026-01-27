@@ -1865,7 +1865,7 @@ html.dark .bg-\[\#0B1120\]\/60 {
     stroke-dasharray: 0 100;
   }
   to {
-    stroke-dasharray: var(--value) calc(100 - var(--value));
+    stroke-dasharray: var(--dash, 0 100);
   }
 }
 
@@ -1888,7 +1888,7 @@ html.dark .bg-\[\#0B1120\]\/60 {
 }
 
 .history-donut-ring {
-  stroke-dasharray: var(--value) calc(100 - var(--value));
+  stroke-dasharray: var(--dash, 0 100);
   animation: history-donut-fill 1.4s var(--ease-smooth) forwards;
   animation-delay: var(--delay, 0s);
 }

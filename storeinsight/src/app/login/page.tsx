@@ -38,7 +38,7 @@ export default function LoginPage(): JSX.Element {
 function LoginPageContent(): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectPath = searchParams.get('redirect') ?? '/';
+  const redirectPath = searchParams?.get('redirect') ?? '/';
   const [status, setStatus] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(false);
