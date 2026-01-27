@@ -123,7 +123,7 @@ type TokenDashboardViewProps = {
   snapshots: MsrSnapshot[];
 };
 
-type RangeKey = '3M' | '6M' | '12M';
+type RangeKey = '3M' | '6M';
 
 type SectionKey = 'overview' | 'collections' | 'pricing' | 'drilldowns';
 
@@ -146,7 +146,6 @@ type SignalTone = 'success' | 'warning' | 'neutral';
 const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
   { key: '3M', months: 3 },
   { key: '6M', months: 6 },
-  { key: '12M', months: 12 },
 ];
 
 const SECTION_TABS: Array<{ id: SectionKey; label: string }> = [
@@ -396,7 +395,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
 
   const rangeSnapshots = useMemo(() => {
     if (!sortedSnapshots.length) return [];
-    const rangeMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 12;
+    const rangeMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 6;
     const latest = sortedSnapshots[sortedSnapshots.length - 1];
     if (latest.monthKey !== null) {
       const minKey = latest.monthKey - (rangeMonths - 1);
@@ -683,9 +682,9 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
-      <div className="relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 py-10">
-        <header className="ios-card ios-animate-up space-y-6 p-6 md:p-8" data-tone="blue">
-          <div className="flex flex-wrap items-start justify-between gap-6">
+      <div className="relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
+        <header className="ios-card ios-animate-up space-y-4 p-4 sm:space-y-6 sm:p-6 md:p-8" data-tone="blue">
+          <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="ios-badge text-[10px]">Investor dashboard</span>
@@ -694,10 +693,10 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                 </span>
               </div>
               <div className="space-y-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-3xl">
+                <h1 className="text-xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-2xl lg:text-3xl">
                   Property performance
                 </h1>
-                <p className="max-w-2xl text-sm text-[color:var(--text-secondary)]">
+                <p className="max-w-2xl text-[13px] text-[color:var(--text-secondary)] sm:text-sm">
                   {propertyName}
                   {latestDateLabel
                     ? ` - As of ${latestDateLabel}`
@@ -741,7 +740,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
           </div>
 
           <div className="ios-list-card flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-xs">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="hidden flex-wrap items-center gap-3 sm:flex">
               <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 Section
               </span>
@@ -1457,6 +1456,33 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
           </p>
         </footer>
       </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-40 sm:hidden">
+        <div
+          className="mx-auto w-full max-w-[520px] px-4"
+          style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}
+        >
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/95 p-2 shadow-[0_-10px_24px_rgba(15,23,42,0.18)] backdrop-blur">
+            {SECTION_TABS.map((sectionOption) => (
+              <button
+                key={`mobile-${sectionOption.id}`}
+                type="button"
+                aria-pressed={section === sectionOption.id}
+                aria-label={sectionOption.label}
+                onClick={() => setSection(sectionOption.id)}
+                className={[
+                  'flex-1 rounded-xl px-2 py-2 text-[11px] font-semibold transition-colors',
+                  section === sectionOption.id
+                    ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
+                    : 'text-[color:var(--text-secondary)]',
+                ].join(' ')}
+              >
+                {SECTION_MOBILE_LABELS[sectionOption.id]}
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
     </div>
   );
 }

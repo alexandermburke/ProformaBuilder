@@ -1,4 +1,5 @@
 ﻿import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
@@ -16,11 +17,27 @@ import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { getMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
+import { createShareLink } from "@/lib/shareLinks";
 import { firestore, storage } from "@/server/firebaseAdmin";
 
 export const runtime = "nodejs";
 
 type TokenMap = Record<string, string | number | unknown[]>;
+
+const DASHBOARD_BETA_PROPERTY_ID = "L001";
+const DASHBOARD_BETA_INVESTOR_ID = "test-investor";
+const DASHBOARD_PUBLIC_ORIGIN = (() => {
+  const candidates = [
+    process.env.DASHBOARD_PUBLIC_ORIGIN,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const safe = candidates.find((value) => !/localhost/i.test(value));
+  return safe || "https://storeinternalplatform.vercel.app";
+})();
 
 const chartWidth = 1200;
 const chartHeight = 650;
@@ -246,27 +263,106 @@ function escapeHtml(value: string): string {
 function buildFlashEmailHtmlFromPng(
   tokens: TokenMap,
   customBody?: string,
-  options?: { pdfUrl?: string | null; includeImage?: boolean },
+  options?: { pdfUrl?: string | null; dashboardUrl?: string | null; includeImage?: boolean; useAppleStyle?: boolean },
 ): string {
-  const bodySection =
+  const useAppleStyle = options?.useAppleStyle === true;
+  const propertyLabel =
+    (typeof tokens.PROPERTYDISPLAYNAME === "string" && tokens.PROPERTYDISPLAYNAME.trim()) ||
+    (typeof tokens.FACILITYSHORTNAME === "string" && tokens.FACILITYSHORTNAME.trim()) ||
+    "";
+  const bodySectionApple =
     customBody && customBody.trim()
-      ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(customBody.trim()).replace(/\n/g, "<br />")}</div>`
+      ? `<div style="margin: 14px 0 18px 0; padding: 12px 14px; background: #f5f7ff; border: 1px solid #dbeafe; border-radius: 14px; font-size: 13px; line-height: 1.5; color: #1f2937;">${escapeHtml(customBody.trim()).replace(/\n/g, "<br />")}</div>`
       : "";
   const pdfUrl = options?.pdfUrl?.replace(/"/g, "%22");
+  const dashboardUrl = options?.dashboardUrl?.replace(/"/g, "%22");
   const pdfButton = pdfUrl
-    ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">View full PDF</a></div>`
-    : `<p style="margin: 10px 0 14px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
-  const includeImage = options?.includeImage !== false;
-  const imageBlock = includeImage
-    ? `<div style="margin-top: 8px;"><img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" /></div>`
+    ? `<a href="${pdfUrl}" class="cta-button cta-primary" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 22px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 8px 18px rgba(10,132,255,0.28); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 180px; margin: 0 auto;">View full PDF</a>`
     : "";
+  const dashboardButton = dashboardUrl
+    ? `<a href="${dashboardUrl}" class="cta-button cta-secondary" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 22px; border-radius: 999px; background: #ffffff; color: #0a84ff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a84ff; box-shadow: 0 8px 18px rgba(15,23,42,0.08); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 220px; margin: 0 auto;">Historical Dashboard (Beta)</a>`
+    : "";
+  const pdfFallback = pdfUrl
+    ? ""
+    : `<p style="margin: 8px 0 4px 0; font-size: 12px; color: #6b7280;">PDF download link unavailable.</p>`;
+  const ctaButtons = [pdfButton, dashboardButton].filter((value) => value);
+  const ctaRow = ctaButtons.length
+    ? `
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 14px;">
+        <tr>
+          ${ctaButtons
+            .map((button, index) => {
+              const width = ctaButtons.length === 1 ? "100%" : "50%";
+              const padLeft = "8px";
+              const padRight = "8px";
+              return `<td class="cta-col" width="${width}" align="center" style="padding: 0 ${padRight} 8px ${padLeft}; text-align: center;">${button}</td>`;
+            })
+            .join("")}
+        </tr>
+      </table>`
+    : "";
+  const includeImage = options?.includeImage !== false;
+  const imageBlockApple = includeImage
+    ? `<div style="margin-top: 12px; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb;"><img src="cid:flash-slide" alt="Daily flash slide" style="display: block; width: 100%; height: auto; border: 0;" /></div>`
+    : "";
+  if (!useAppleStyle) {
+    const bodySectionLegacy =
+      customBody && customBody.trim()
+        ? `<div style="margin: 12px 0 16px 0; padding: 12px; background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.16); border-radius: 10px; font-size: 12px; line-height: 1.45; color: #1f2937;">${escapeHtml(customBody.trim()).replace(/\n/g, "<br />")}</div>`
+        : "";
+    const imageBlockLegacy = includeImage
+      ? `<div style="margin-top: 8px;"><img src="cid:flash-slide" style="max-width: 100%; height: auto; border: 1px solid #ccc;" /></div>`
+      : "";
+    const pdfButtonLegacy = pdfUrl
+      ? `<div style="margin: 14px 0 10px 0;"><a href="${pdfUrl}" style="display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 6px 14px rgba(0,0,0,0.16); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif;">View full PDF</a></div>`
+      : `<p style="margin: 10px 0 14px 0; font-size: 11px; color: #6b7280;">PDF download link unavailable.</p>`;
+    return `
+      <html>
+        <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
+          ${bodySectionLegacy}
+          ${imageBlockLegacy}
+          <p style="margin-top: 12px; margin-bottom: 10px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a></p>
+          ${pdfButtonLegacy}
+        </body>
+      </html>
+    `;
+  }
   return `
     <html>
-      <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 12px; color: #222; margin: 0; padding: 16px;">
-        ${bodySection}
-        ${imageBlock}
-        <p style="margin-top: 12px; margin-bottom: 10px; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #2563eb; text-decoration: none;">alex@storestorage.com</a></p>
-        ${pdfButton}
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          @media (max-width: 560px) {
+            .cta-col { display: block !important; width: 100% !important; padding-left: 10px !important; padding-right: 10px !important; }
+            .cta-button { width: 100% !important; }
+          }
+          .cta-primary:hover { background: #0077ed !important; border-color: #0070e0 !important; }
+          .cta-secondary:hover { background: #f1f5ff !important; }
+          .cta-button:active { opacity: 0.92 !important; }
+        </style>
+      </head>
+      <body style="margin: 0; padding: 0; background: #f2f2f7; -webkit-text-size-adjust: 100%; font-family: 'SF Pro Text','SF Pro Display',-apple-system,BlinkMacSystemFont,'Helvetica Neue','Segoe UI',Arial,sans-serif; color: #0f172a;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background: #f2f2f7; padding: 24px 12px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width: 680px; background: #ffffff; border-radius: 24px; border: 1px solid #e5e7eb; box-shadow: 0 18px 40px rgba(15,23,42,0.08); overflow: hidden;">
+                <tr>
+                  <td style="padding: 24px 24px 10px 24px;">
+                    <div style="font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Daily Flash Report</div>
+                    ${propertyLabel ? `<div style="margin-top: 6px; font-size: 18px; font-weight: 700; color: #0f172a;">${escapeHtml(propertyLabel || "STORE Performance")}</div>` : ""}
+                    ${bodySectionApple}
+                    ${imageBlockApple}
+                    <div style="height: 1px; background: #e5e7eb; margin: 20px 0 12px 0;"></div>
+                    <div style="height: 8px;"></div>
+                    ${pdfFallback}
+                    ${ctaRow}
+                    <p style="margin: 10px 0 0 0; font-size: 11px; color: #6b7280;">This is an auto-generated email. For issues please email <a href="mailto:alex@storestorage.com" style="color: #0a84ff; text-decoration: none;">alex@storestorage.com</a></p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
       </body>
     </html>
   `;
@@ -540,6 +636,26 @@ async function sendFlashReportEmail(
     console.info("[flash-report/manual] no ownerEmails configured; skipping email delivery", property.id);
     return false;
   }
+
+  let dashboardUrl: string | null = null;
+  const sharePropertyId = (property.propertyId || property.id || "").trim();
+  const useAppleStyle = sharePropertyId === DASHBOARD_BETA_PROPERTY_ID;
+  if (sharePropertyId === DASHBOARD_BETA_PROPERTY_ID) {
+    try {
+      // TODO: enforce unique viewer limit (5) when share link system supports it.
+      const shareLink = await createShareLink(sharePropertyId, DASHBOARD_BETA_INVESTOR_ID);
+      dashboardUrl = `${DASHBOARD_PUBLIC_ORIGIN}/dash/t/${shareLink.token}`;
+      const tokenHashPrefix = createHash("sha256").update(shareLink.token).digest("hex").slice(0, 8);
+      console.info("[flash-report/manual] created dashboard link", {
+        propertyId: sharePropertyId,
+        shareId: shareLink.id,
+        tokenHashPrefix,
+        expiresAt: shareLink.expiresAt,
+      });
+    } catch (err) {
+      console.warn("[flash-report/manual] unable to create dashboard link", err);
+    }
+  }
   try {
     console.info("[flash-report/manual] preparing email delivery", {
       propertyId: property.id,
@@ -563,6 +679,8 @@ async function sendFlashReportEmail(
     const subject = `Daily Flash - ${propertyLabel} (${reportDate})`;
     const html = buildFlashEmailHtmlFromPng(tokens, customBody, {
       pdfUrl,
+      dashboardUrl,
+      useAppleStyle,
       includeImage: Boolean(slidePngBuffer),
     });
     const attachments: Mail.Attachment[] = [];
