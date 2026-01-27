@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     default: 'STORE Internal Platform',
     template: '%s | Report Builder',
   },
-  description: 'Upload Extra Space data, normalize, and export Proforma (.xlsx) and Owner Report (.pdf).',
+  description: 'STORE Internal Platform for operational reporting, analytics, and workflow automation across the portfolio.',
   icons: {
     icon: [
       { url: '/favicon_trans.png', rel: 'icon', sizes: '32x32', type: 'image/png' },
