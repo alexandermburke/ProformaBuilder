@@ -371,7 +371,7 @@ const formatDateValue = (value: unknown): string => {
 export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const [range, setRange] = useState<RangeKey>('3M');
+  const [range, setRange] = useState<RangeKey>('6M');
   const [section, setSection] = useState<SectionKey>('overview');
   const [occupancyHoverIndex, setOccupancyHoverIndex] = useState<number | null>(null);
   const [netRevenueHoverIndex, setNetRevenueHoverIndex] = useState<number | null>(null);
@@ -1791,10 +1791,6 @@ function PricingSection({
   return (
     <section className="space-y-6">
       <SectionHeader title="Pricing & Revenue Quality" subtitle="Rates and pricing cadence from MSR snapshots." />
-      <div className="ios-list-card border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 text-xs text-[color:var(--text-secondary)] shadow-inner">
-     
-      </div>
-
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard title="Set Rate vs Sell Rate (Occupied)" subtitle="Target vs actual rates">
           <KpiRow
