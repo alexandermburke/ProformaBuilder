@@ -3,7 +3,16 @@ import type { NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/authConstants";
 import { verifySessionTokenEdge } from "@/lib/edgeAuth";
 
-const PUBLIC_PATHS = ["/login", "/signup", "/api/auth/login", "/api/auth/logout", "/health", "/dash/t"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/health",
+  "/dash/t",
+  "/privacy",
+  "/terms",
+];
 const TOKEN_ROUTE_PREFIX = "/dash/t";
 const TOKEN_RATE_LIMIT_WINDOW_MS = 60_000;
 const TOKEN_RATE_LIMIT_MAX = 30;
