@@ -290,7 +290,7 @@ export function HistoricalDashboardView({
       ? customDataError
         ? 'Data invalid'
         : hasFirebaseData
-          ? 'Firebase data'
+          ? 'Production Database'
           : 'Placeholder data'
       : 'Investor view';
   const statusTone =

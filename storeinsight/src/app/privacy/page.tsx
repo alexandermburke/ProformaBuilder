@@ -48,7 +48,7 @@ export default function PrivacyPolicyPage(): JSX.Element {
             <div>
               <h2 className="text-base font-semibold text-[color:var(--text-primary)]">1. Scope</h2>
               <p className="mt-2">
-                This policy covers the STORE Insight dashboard, including temporary investor links generated for
+                This policy covers the STORE Internal Platform dashboard, including temporary investor links generated for
                 specific properties. Links expire after 24 hours and may be revoked at any time.
               </p>
             </div>
