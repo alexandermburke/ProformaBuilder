@@ -25,7 +25,8 @@ export function formatCompactCurrency(value: number): string {
 
 export function formatPercent(value: number, decimals = 1): string {
   if (!Number.isFinite(value)) return '0%';
-  return `${value.toFixed(decimals)}%`;
+  const normalized = Math.abs(value) <= 1 ? value * 100 : value;
+  return `${normalized.toFixed(decimals)}%`;
 }
 
 export function formatNumber(value: number): string {
