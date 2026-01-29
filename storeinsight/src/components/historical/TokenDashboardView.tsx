@@ -925,7 +925,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                     <svg
                       key={occupancyChartKey}
                       viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                      className="h-56 w-full"
+                      className="h-72 w-full"
                       role="img"
                       aria-label="Occupancy trend chart"
                       onMouseLeave={() => setOccupancyHoverIndex(null)}
