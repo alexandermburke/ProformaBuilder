@@ -40,6 +40,11 @@ type FirebaseStatus = {
   latestMonth: string | null;
 };
 
+type ActiveTokensResult = {
+  tokens: ShareLinkRecord[];
+  count: number;
+};
+
 const extractToken = (input: string): string | null => {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -75,6 +80,12 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
   const [firebaseStatus, setFirebaseStatus] = useState<FirebaseStatus | null>(null);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const [activeTokensPropertyId, setActiveTokensPropertyId] = useState('');
+  const [activeTokensResult, setActiveTokensResult] = useState<ActiveTokensResult | null>(null);
+  const [activeTokensError, setActiveTokensError] = useState<string | null>(null);
+  const [activeTokensStatus, setActiveTokensStatus] = useState<string | null>(null);
+  const [isLoadingActiveTokens, setIsLoadingActiveTokens] = useState(false);
 
   const overlayTop = isDark
     ? 'bg-[radial-gradient(circle_at_18%_10%,rgba(59,130,246,0.28),transparent_60%)]'
@@ -243,6 +254,35 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
     }
   };
 
+  const handleLoadActiveTokens = async () => {
+    setActiveTokensError(null);
+    setActiveTokensStatus(null);
+    setActiveTokensResult(null);
+    setIsLoadingActiveTokens(true);
+    try {
+      const params = new URLSearchParams();
+      if (activeTokensPropertyId.trim()) {
+        params.set('propertyId', activeTokensPropertyId.trim());
+      }
+      const response = await fetch(`/api/share-links/active?${params.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        setActiveTokensError(data?.message ?? 'Failed to load active tokens.');
+        return;
+      }
+      const tokens = (data?.tokens ?? []) as ShareLinkRecord[];
+      setActiveTokensResult({
+        tokens,
+        count: Number(data?.count ?? tokens.length),
+      });
+      setActiveTokensStatus(`Loaded ${tokens.length} active tokens.`);
+    } catch {
+      setActiveTokensError('Failed to load active tokens.');
+    } finally {
+      setIsLoadingActiveTokens(false);
+    }
+  };
+
   const openInvestorView = (input: string) => {
     const token = extractToken(input);
     const base = typeof window === 'undefined' ? '' : window.location.origin;
@@ -279,225 +319,285 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
           </div>
         </header>
 
-        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="green">
-          <div className="space-y-1">
-            <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
-            <p className="text-xs text-[color:var(--text-secondary)]">TTL is fixed at 24 hours.</p>
+        <section className="ios-card ios-animate-up space-y-8 p-6">
+          <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
+              <p className="text-xs text-[color:var(--text-secondary)]">TTL is fixed at 24 hours.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                placeholder="propertyId"
+                value={propertyId}
+                onChange={(event) => setPropertyId(event.target.value)}
+              />
+              <input
+                className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                placeholder="investorId"
+                value={investorId}
+                onChange={(event) => setInvestorId(event.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleCreate} disabled={isCreating}>
+                {isCreating ? 'Generating...' : 'Generate token'}
+              </button>
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="secondary"
+                onClick={handleGenerateAndValidate}
+                disabled={isCreating || isTesting}
+              >
+                {isTesting ? 'Testing...' : 'Generate + Validate'}
+              </button>
+              {createResult?.url ? (
+                <>
+                  <button
+                    type="button"
+                    className="ios-button px-4 py-2 text-sm"
+                    data-variant="secondary"
+                    onClick={() => handleCopy(createResult.url, (msg) => setCreateStatus(msg))}
+                  >
+                    Copy URL
+                  </button>
+                  <button
+                    type="button"
+                    className="ios-button px-4 py-2 text-sm"
+                    data-variant="ghost"
+                    onClick={() => openInvestorView(createResult.url)}
+                  >
+                    Open Investor View
+                  </button>
+                </>
+              ) : null}
+            </div>
+
+            {createResult ? (
+              <div className="ios-list-card space-y-2 p-4 text-xs">
+                <div className="text-[color:var(--text-secondary)]">id: {createResult.id}</div>
+                <div className="text-[color:var(--text-secondary)]">expires: {createResult.expiresAt}</div>
+                <div className="break-all text-[color:var(--text-primary)]">{createResult.url}</div>
+              </div>
+            ) : null}
+
+            <div className="space-y-1 text-[11px]">
+              {createError ? <p className="text-red-500">Error: {createError}</p> : null}
+              {createStatus ? <p className="text-[color:var(--text-secondary)]">{createStatus}</p> : null}
+              {testStatus ? <p className="text-[color:var(--text-secondary)]">{testStatus}</p> : null}
+            </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input
-              className="owner-field-input rounded-2xl px-4 py-2 text-sm"
-              placeholder="propertyId"
-              value={propertyId}
-              onChange={(event) => setPropertyId(event.target.value)}
-            />
-            <input
-              className="owner-field-input rounded-2xl px-4 py-2 text-sm"
-              placeholder="investorId"
-              value={investorId}
-              onChange={(event) => setInvestorId(event.target.value)}
-            />
-          </div>
+          <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Validate token</div>
+              <p className="text-xs text-[color:var(--text-secondary)]">Paste a token or full URL.</p>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleCreate} disabled={isCreating}>
-              {isCreating ? 'Generating...' : 'Generate token'}
-            </button>
-            <button
-              type="button"
-              className="ios-button px-4 py-2 text-sm"
-              data-variant="secondary"
-              onClick={handleGenerateAndValidate}
-              disabled={isCreating || isTesting}
-            >
-              {isTesting ? 'Testing...' : 'Generate + Validate'}
-            </button>
-            {createResult?.url ? (
-              <>
+            <div className="flex flex-wrap gap-3">
+              <input
+                className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+                placeholder="token or https://.../dash/t/..."
+                value={validateInput}
+                onChange={(event) => setValidateInput(event.target.value)}
+              />
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                onClick={() => {
+                  void handleValidate();
+                }}
+                disabled={isValidating}
+              >
+                {isValidating ? 'Validating...' : 'Validate'}
+              </button>
+              {createResult?.url ? (
                 <button
                   type="button"
                   className="ios-button px-4 py-2 text-sm"
                   data-variant="secondary"
-                  onClick={() => handleCopy(createResult.url, (msg) => setCreateStatus(msg))}
+                  onClick={() => handleValidate(createResult.url)}
+                  disabled={isValidating}
                 >
-                  Copy URL
+                  Validate last token
                 </button>
+              ) : null}
+              {validateResult?.status === 'VALID' ? (
                 <button
                   type="button"
                   className="ios-button px-4 py-2 text-sm"
                   data-variant="ghost"
-                  onClick={() => openInvestorView(createResult.url)}
+                  onClick={() => openInvestorView(validateInput)}
                 >
                   Open Investor View
                 </button>
-              </>
-            ) : null}
-          </div>
-
-          {createResult ? (
-            <div className="ios-list-card space-y-2 p-4 text-xs">
-              <div className="text-[color:var(--text-secondary)]">id: {createResult.id}</div>
-              <div className="text-[color:var(--text-secondary)]">expires: {createResult.expiresAt}</div>
-              <div className="break-all text-[color:var(--text-primary)]">{createResult.url}</div>
-            </div>
-          ) : null}
-
-          <div className="space-y-1 text-[11px]">
-            {createError ? <p className="text-red-500">Error: {createError}</p> : null}
-            {createStatus ? <p className="text-[color:var(--text-secondary)]">{createStatus}</p> : null}
-            {testStatus ? <p className="text-[color:var(--text-secondary)]">{testStatus}</p> : null}
-          </div>
-        </section>
-
-        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="purple">
-          <div className="space-y-1">
-            <div className="text-base font-semibold text-[color:var(--text-primary)]">Validate token</div>
-            <p className="text-xs text-[color:var(--text-secondary)]">Paste a token or full URL.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <input
-              className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
-              placeholder="token or https://.../dash/t/..."
-              value={validateInput}
-              onChange={(event) => setValidateInput(event.target.value)}
-            />
-            <button
-              type="button"
-              className="ios-button px-4 py-2 text-sm"
-              onClick={() => {
-                void handleValidate();
-              }}
-              disabled={isValidating}
-            >
-              {isValidating ? 'Validating...' : 'Validate'}
-            </button>
-            {createResult?.url ? (
-              <button
-                type="button"
-                className="ios-button px-4 py-2 text-sm"
-                data-variant="secondary"
-                onClick={() => handleValidate(createResult.url)}
-                disabled={isValidating}
-              >
-                Validate last token
-              </button>
-            ) : null}
-            {validateResult?.status === 'VALID' ? (
-              <button
-                type="button"
-                className="ios-button px-4 py-2 text-sm"
-                data-variant="ghost"
-                onClick={() => openInvestorView(validateInput)}
-              >
-                Open Investor View
-              </button>
-            ) : null}
-          </div>
-
-          {validateResult ? (
-            <div className="ios-list-card space-y-2 p-4 text-xs">
-              <div className="text-[color:var(--text-primary)]">Status: {validateResult.status}</div>
-              {validateResult.record ? (
-                <>
-                  <div className="text-[color:var(--text-secondary)]">id: {validateResult.record.id}</div>
-                  <div className="text-[color:var(--text-secondary)]">property: {validateResult.record.propertyId}</div>
-                  <div className="text-[color:var(--text-secondary)]">investor: {validateResult.record.investorId}</div>
-                  <div className="text-[color:var(--text-secondary)]">expires: {validateResult.record.expiresAt}</div>
-                  <div className="text-[color:var(--text-secondary)]">revoked: {validateResult.record.revokedAt ?? 'n/a'}</div>
-                  <div className="text-[color:var(--text-secondary)]">last used: {validateResult.record.lastUsedAt ?? 'n/a'}</div>
-                  <div className="text-[color:var(--text-secondary)]">use count: {validateResult.record.useCount}</div>
-                </>
               ) : null}
             </div>
-          ) : null}
 
-          <div className="space-y-1 text-[11px]">
-            {validateError ? <p className="text-red-500">Error: {validateError}</p> : null}
+            {validateResult ? (
+              <div className="ios-list-card space-y-2 p-4 text-xs">
+                <div className="text-[color:var(--text-primary)]">Status: {validateResult.status}</div>
+                {validateResult.record ? (
+                  <>
+                    <div className="text-[color:var(--text-secondary)]">id: {validateResult.record.id}</div>
+                    <div className="text-[color:var(--text-secondary)]">property: {validateResult.record.propertyId}</div>
+                    <div className="text-[color:var(--text-secondary)]">investor: {validateResult.record.investorId}</div>
+                    <div className="text-[color:var(--text-secondary)]">expires: {validateResult.record.expiresAt}</div>
+                    <div className="text-[color:var(--text-secondary)]">revoked: {validateResult.record.revokedAt ?? 'n/a'}</div>
+                    <div className="text-[color:var(--text-secondary)]">last used: {validateResult.record.lastUsedAt ?? 'n/a'}</div>
+                    <div className="text-[color:var(--text-secondary)]">use count: {validateResult.record.useCount}</div>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="space-y-1 text-[11px]">
+              {validateError ? <p className="text-red-500">Error: {validateError}</p> : null}
+            </div>
           </div>
-        </section>
 
-        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="amber">
-          <div className="space-y-1">
-            <div className="text-base font-semibold text-[color:var(--text-primary)]">Revoke token</div>
-            <p className="text-xs text-[color:var(--text-secondary)]">Revoke by share link record id.</p>
-          </div>
+          <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Revoke token</div>
+              <p className="text-xs text-[color:var(--text-secondary)]">Revoke by share link record id.</p>
+            </div>
 
-          <div className="flex flex-wrap gap-3">
-            <input
-              className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
-              placeholder="share link id"
-              value={revokeId}
-              onChange={(event) => setRevokeId(event.target.value)}
-            />
-            <button
-              type="button"
-              className="ios-button px-4 py-2 text-sm"
-              onClick={() => {
-                void handleRevoke();
-              }}
-              disabled={isRevoking}
-            >
-              {isRevoking ? 'Revoking...' : 'Revoke'}
-            </button>
-            {(createResult?.id || validateResult?.record?.id) ? (
+            <div className="flex flex-wrap gap-3">
+              <input
+                className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+                placeholder="share link id"
+                value={revokeId}
+                onChange={(event) => setRevokeId(event.target.value)}
+              />
               <button
                 type="button"
                 className="ios-button px-4 py-2 text-sm"
-                data-variant="secondary"
-                onClick={() => handleRevoke(createResult?.id ?? validateResult?.record?.id ?? '')}
+                onClick={() => {
+                  void handleRevoke();
+                }}
                 disabled={isRevoking}
               >
-                Revoke last token
+                {isRevoking ? 'Revoking...' : 'Revoke'}
               </button>
-            ) : null}
-          </div>
-
-          <div className="space-y-1 text-[11px]">
-            {revokeError ? <p className="text-red-500">Error: {revokeError}</p> : null}
-            {revokeStatus ? <p className="text-[color:var(--text-secondary)]">{revokeStatus}</p> : null}
-          </div>
-        </section>
-
-        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="blue">
-          <div className="space-y-1">
-            <div className="text-base font-semibold text-[color:var(--text-primary)]">Firebase data status</div>
-            <p className="text-xs text-[color:var(--text-secondary)]">Check if historical data is available.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <input
-              className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
-              placeholder="propertyId"
-              value={statusPropertyId}
-              onChange={(event) => setStatusPropertyId(event.target.value)}
-            />
-            <button
-              type="button"
-              className="ios-button px-4 py-2 text-sm"
-              onClick={handleStatusCheck}
-              disabled={isCheckingStatus}
-            >
-              {isCheckingStatus ? 'Checking...' : 'Check status'}
-            </button>
-          </div>
-
-          {firebaseStatus ? (
-            <div className="ios-list-card space-y-2 p-4 text-xs">
-              <div className="text-[color:var(--text-primary)]">
-                {firebaseStatus.exists ? 'Data found' : 'No data'}
-              </div>
-              <div className="text-[color:var(--text-secondary)]">updated: {firebaseStatus.updatedAt ?? 'n/a'}</div>
-              <div className="text-[color:var(--text-secondary)]">
-                ranges: {firebaseStatus.rangesAvailable?.length ? firebaseStatus.rangesAvailable.join(', ') : 'n/a'}
-              </div>
-              <div className="text-[color:var(--text-secondary)]">latest month: {firebaseStatus.latestMonth ?? 'n/a'}</div>
+              {(createResult?.id || validateResult?.record?.id) ? (
+                <button
+                  type="button"
+                  className="ios-button px-4 py-2 text-sm"
+                  data-variant="secondary"
+                  onClick={() => handleRevoke(createResult?.id ?? validateResult?.record?.id ?? '')}
+                  disabled={isRevoking}
+                >
+                  Revoke last token
+                </button>
+              ) : null}
             </div>
-          ) : null}
 
-          <div className="space-y-1 text-[11px]">
-            {firebaseError ? <p className="text-red-500">Error: {firebaseError}</p> : null}
+            <div className="space-y-1 text-[11px]">
+              {revokeError ? <p className="text-red-500">Error: {revokeError}</p> : null}
+              {revokeStatus ? <p className="text-[color:var(--text-secondary)]">{revokeStatus}</p> : null}
+            </div>
+          </div>
+
+          <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Active tokens</div>
+              <p className="text-xs text-[color:var(--text-secondary)]">
+                Active = not revoked and not expired.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <input
+                className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+                placeholder="propertyId (optional)"
+                value={activeTokensPropertyId}
+                onChange={(event) => setActiveTokensPropertyId(event.target.value)}
+              />
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                onClick={handleLoadActiveTokens}
+                disabled={isLoadingActiveTokens}
+              >
+                {isLoadingActiveTokens ? 'Loading...' : 'Load active tokens'}
+              </button>
+            </div>
+
+            {activeTokensResult ? (
+              <div className="ios-list-card overflow-hidden p-0 text-xs">
+                <div className="grid grid-cols-6 gap-3 border-b border-[color:var(--border-soft)] px-4 py-2 text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                  <span className="col-span-2">Token id</span>
+                  <span>Property</span>
+                  <span>Investor</span>
+                  <span>Expires</span>
+                  <span>Usage</span>
+                </div>
+                <div className="divide-y divide-[color:var(--border-soft)]">
+                  {activeTokensResult.tokens.length ? (
+                    activeTokensResult.tokens.map((token) => (
+                      <div key={token.id} className="grid grid-cols-6 gap-3 px-4 py-3 text-[color:var(--text-secondary)]">
+                        <div className="col-span-2 break-all text-[color:var(--text-primary)]">{token.id}</div>
+                        <div>{token.propertyId}</div>
+                        <div>{token.investorId}</div>
+                        <div>{token.expiresAt ?? 'n/a'}</div>
+                        <div>{token.useCount}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-[color:var(--text-muted)]">No active tokens found.</div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-1 text-[11px]">
+              {activeTokensError ? <p className="text-red-500">Error: {activeTokensError}</p> : null}
+              {activeTokensStatus ? <p className="text-[color:var(--text-secondary)]">{activeTokensStatus}</p> : null}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Firebase data status</div>
+              <p className="text-xs text-[color:var(--text-secondary)]">Check if historical data is available.</p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <input
+                className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+                placeholder="propertyId"
+                value={statusPropertyId}
+                onChange={(event) => setStatusPropertyId(event.target.value)}
+              />
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                onClick={handleStatusCheck}
+                disabled={isCheckingStatus}
+              >
+                {isCheckingStatus ? 'Checking...' : 'Check status'}
+              </button>
+            </div>
+
+            {firebaseStatus ? (
+              <div className="ios-list-card space-y-2 p-4 text-xs">
+                <div className="text-[color:var(--text-primary)]">
+                  {firebaseStatus.exists ? 'Data found' : 'No data'}
+                </div>
+                <div className="text-[color:var(--text-secondary)]">updated: {firebaseStatus.updatedAt ?? 'n/a'}</div>
+                <div className="text-[color:var(--text-secondary)]">
+                  ranges: {firebaseStatus.rangesAvailable?.length ? firebaseStatus.rangesAvailable.join(', ') : 'n/a'}
+                </div>
+                <div className="text-[color:var(--text-secondary)]">latest month: {firebaseStatus.latestMonth ?? 'n/a'}</div>
+              </div>
+            ) : null}
+
+            <div className="space-y-1 text-[11px]">
+              {firebaseError ? <p className="text-red-500">Error: {firebaseError}</p> : null}
+            </div>
           </div>
         </section>
       </div>

@@ -34,6 +34,7 @@ export type MsrSnapshot = {
   revenue?: {
     economicOccupancy?: number;
     netRevenueMtd?: number;
+    grossPotentialRevenue?: number;
     occupiedRateVariancePct?: number;
   };
   rentals?: {
@@ -119,6 +120,7 @@ export type MsrSnapshot = {
 };
 
 type TokenDashboardViewProps = {
+  propertyId?: string;
   propertyName: string;
   snapshots: MsrSnapshot[];
 };
@@ -368,10 +370,19 @@ const formatDateValue = (value: unknown): string => {
   return 'N/A';
 };
 
-export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardViewProps): JSX.Element {
+const normalizePropertyKey = (value: string): string =>
+  value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+
+const isPittmanProperty = (propertyId?: string): boolean => {
+  const key = normalizePropertyKey(propertyId ?? "");
+  return key === "PITTMAN" || key === "PROP_PITTMAN";
+};
+
+export function TokenDashboardView({ propertyId, propertyName, snapshots }: TokenDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const [range, setRange] = useState<RangeKey>('6M');
+  const hasLimitedRange = isPittmanProperty(propertyId);
+  const [range, setRange] = useState<RangeKey>(hasLimitedRange ? '3M' : '6M');
   const [section, setSection] = useState<SectionKey>('overview');
   const [occupancyHoverIndex, setOccupancyHoverIndex] = useState<number | null>(null);
   const [netRevenueHoverIndex, setNetRevenueHoverIndex] = useState<number | null>(null);
@@ -434,6 +445,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
         ? Number(latestSnapshot?.rentals?.moveInsMtd ?? 0) - Number(latestSnapshot?.rentals?.moveOutsMtd ?? 0)
         : null;
   const netRevenueValue = latestSnapshot?.revenue?.netRevenueMtd;
+  const grossPotentialRentValue = latestSnapshot?.revenue?.grossPotentialRevenue;
 
   const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
   const occupancyValues = occupancySeries.map((point) => point.value);
@@ -473,6 +485,12 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
     setOccupancyHoverIndex(null);
     setNetRevenueHoverIndex(null);
   }, [range]);
+
+  useEffect(() => {
+    if (hasLimitedRange && range === '6M') {
+      setRange('3M');
+    }
+  }, [hasLimitedRange, range]);
 
   useEffect(() => {
     try {
@@ -718,14 +736,11 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                 <h1 className="text-xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-2xl lg:text-3xl">
                   Property performance
                 </h1>
-                <p className="max-w-2xl text-[13px] text-[color:var(--text-secondary)] sm:text-sm">
-                  {propertyName}
-                  {latestDateLabel
-                    ? ` - As of ${latestDateLabel}`
-                    : latestMonthLabel
-                      ? ` - As of ${latestMonthLabel}`
-                      : ''}
-                </p>
+                {hasLimitedRange ? (
+                  <p className="text-[11px] text-[color:var(--text-muted)]">
+                    Limited historical data: insufficient information to populate the full dashboard.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-2" />
@@ -754,11 +769,11 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
               <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs</div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
-              <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Net Revenue (MTD)</div>
+              <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Gross Potential Rent</div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
-                {formatMaybeCurrency(netRevenueValue)}
+                {formatMaybeCurrency(grossPotentialRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Net revenue MTD</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Revenue statistics</div>
             </div>
           </div>
 
@@ -798,12 +813,19 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                       key={rangeOption.key}
                       type="button"
                       aria-pressed={range === rangeOption.key}
-                      onClick={() => setRange(rangeOption.key)}
+                      onClick={() => {
+                        if (hasLimitedRange && rangeOption.key === '6M') return;
+                        setRange(rangeOption.key);
+                      }}
+                      disabled={hasLimitedRange && rangeOption.key === '6M'}
                       className={[
                         'rounded-full px-3 py-1 transition-colors',
-                        range === rangeOption.key
+                        range === rangeOption.key && !(hasLimitedRange && rangeOption.key === '6M')
                           ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
                           : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
+                        hasLimitedRange && rangeOption.key === '6M'
+                          ? 'cursor-not-allowed opacity-50 hover:text-[color:var(--text-secondary)]'
+                          : '',
                       ].join(' ')}
                     >
                       {rangeOption.key}
@@ -2290,7 +2312,26 @@ function OperationalSection({
                 subtitle="Latest snapshot"
                 emptyMessage={!channelSum ? 'N/A' : undefined}
               >
-                <div className="rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
+                <div className="flex flex-wrap items-center gap-4 text-xs text-[color:var(--text-secondary)]">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.7)]" />
+                    Web
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.65)]" />
+                    Phone
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-[rgba(129,140,248,0.6)]" />
+                    Walk-in
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-[rgba(251,191,36,0.6)]" />
+                    Other
+                  </span>
+                </div>
+
+                <div className="mt-4 rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
                   <div className="relative h-44">
                     <div className="absolute inset-0 flex flex-col justify-between">
                       {Array.from({ length: 4 }).map((_, index) => (
@@ -2336,7 +2377,11 @@ function OperationalSection({
                 subtitle="Move-ins vs leads"
                 emptyMessage={conversionEmptyMessage}
               >
-                <LineChartWithMonths series={conversionSeries} color="rgba(37,99,235,0.9)" />
+                <LineChartWithMonths
+                  series={conversionSeries}
+                  color="rgba(37,99,235,0.9)"
+                  label="Conversion rate"
+                />
               </ChartCard>
             </div>
           </div>
@@ -2363,7 +2408,11 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={concessionsEmpty}
               >
-                <LineChartWithMonths series={concessionsSeries} color="rgba(37,99,235,0.85)" />
+                <LineChartWithMonths
+                  series={concessionsSeries}
+                  color="rgba(37,99,235,0.85)"
+                  label="Promos + discounts"
+                />
               </ChartCard>
               <ChartCard
                 key={`concessions-credits-${rangeKey}`}
@@ -2371,7 +2420,11 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={creditsEmpty}
               >
-                <LineChartWithMonths series={creditsSeries} color="rgba(14,165,233,0.85)" />
+                <LineChartWithMonths
+                  series={creditsSeries}
+                  color="rgba(14,165,233,0.85)"
+                  label="Credits + adjustments"
+                />
               </ChartCard>
               <ChartCard
                 key={`concessions-refunds-${rangeKey}`}
@@ -2379,7 +2432,11 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={refundsEmpty}
               >
-                <LineChartWithMonths series={refundsSeries} color="rgba(248,113,113,0.8)" />
+                <LineChartWithMonths
+                  series={refundsSeries}
+                  color="rgba(248,113,113,0.8)"
+                  label="Refunds + write-offs"
+                />
               </ChartCard>
             </div>
           </div>
@@ -2411,7 +2468,11 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={autopayEmpty}
               >
-                <LineChartWithMonths series={autopaySeries} color="rgba(37,99,235,0.85)" />
+                <LineChartWithMonths
+                  series={autopaySeries}
+                  color="rgba(37,99,235,0.85)"
+                  label="Autopay adoption"
+                />
               </ChartCard>
               <ChartCard
                 key={`autopay-coverage-${rangeKey}`}
@@ -2419,7 +2480,11 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={coverageEmpty}
               >
-                <LineChartWithMonths series={coverageSeries} color="rgba(14,165,233,0.85)" />
+                <LineChartWithMonths
+                  series={coverageSeries}
+                  color="rgba(14,165,233,0.85)"
+                  label="Coverage enrollment"
+                />
               </ChartCard>
             </div>
           </div>
@@ -2432,9 +2497,11 @@ function OperationalSection({
 function LineChartWithMonths({
   series,
   color,
+  label,
 }: {
   series: SeriesPoint[];
   color: string;
+  label: string;
 }): JSX.Element {
   const values = series.map((point) => point.value);
   const points = getChartPoints(values, SMALL_CHART_WIDTH, SMALL_CHART_HEIGHT, SMALL_CHART_PADDING);
@@ -2442,7 +2509,11 @@ function LineChartWithMonths({
 
   return (
     <div className="rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
-      <svg viewBox={`0 0 ${SMALL_CHART_WIDTH} ${SMALL_CHART_HEIGHT}`} className="h-44 w-full">
+      <div className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+        <span>{label}</span>
+      </div>
+      <svg viewBox={`0 0 ${SMALL_CHART_WIDTH} ${SMALL_CHART_HEIGHT}`} className="mt-3 h-44 w-full">
         {Array.from({ length: 4 }).map((_, index) => {
           const y = SMALL_CHART_PADDING + ((SMALL_CHART_HEIGHT - SMALL_CHART_PADDING * 2) / 4) * index;
           return (

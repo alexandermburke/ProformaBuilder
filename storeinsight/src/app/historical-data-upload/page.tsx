@@ -39,6 +39,7 @@ type MsrPreviewSnapshot = {
     netRevenueMtd?: number;
     netRevenueSameDayLastMonth?: number;
     netRevenueSameDayLastYear?: number;
+    grossPotentialRevenue?: number;
     economicOccupancy?: number;
     economicOccPerSqft?: number;
     occupiedRateVariancePct?: number;
@@ -832,6 +833,9 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 <div className="space-y-1 text-[color:var(--text-secondary)]">
                   <div className="text-[color:var(--text-primary)]">Revenue</div>
                   <div>Net revenue MTD: {formatPreviewValue(msrSnapshot?.revenue?.netRevenueMtd, 'currency')}</div>
+                  <div>
+                    Gross potential rent: {formatPreviewValue(msrSnapshot?.revenue?.grossPotentialRevenue, 'currency')}
+                  </div>
                   <div>Economic occupancy: {formatPreviewValue(msrSnapshot?.revenue?.economicOccupancy, 'currency')}</div>
                   <div>Occ variance %: {formatPreviewValue(msrSnapshot?.revenue?.occupiedRateVariancePct, 'percent')}</div>
                 </div>

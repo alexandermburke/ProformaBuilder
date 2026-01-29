@@ -64,6 +64,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       revenue: {
         netRevenueMtd: snapshot.revenue?.netRevenueMtd,
+        grossPotentialRevenue: snapshot.revenue?.grossPotentialRevenue,
         economicOccupancy: snapshot.revenue?.economicOccupancy,
       },
       rentals: {

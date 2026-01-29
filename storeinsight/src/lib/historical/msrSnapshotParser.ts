@@ -855,6 +855,33 @@ const extractMsrSheet = (
     warnings.push('MSR sheet: Revenue Statistics anchor not found.');
   } else {
     const revenue = snapshot.revenue ?? {};
+    const grossPotentialRow = findRowByLabel(
+      grid,
+      revenueAnchor.row + 1,
+      revenueAnchor.row + 12,
+      'gross potential revenue',
+    ) ?? findRowByLabel(
+      grid,
+      revenueAnchor.row + 1,
+      revenueAnchor.row + 12,
+      'gross potential rent',
+    );
+    if (grossPotentialRow) {
+      const row = grid[grossPotentialRow.row] ?? [];
+      const values = collectRowNumbers(row, grossPotentialRow.col + 1);
+      // Revenue statistics rows typically include Sell Rate ($, %, $/sqft) then Set Rate ($, %, $/sqft).
+      const grossPotential =
+        values.length >= 4
+          ? values[3]
+          : values[0];
+      if (grossPotential != null) {
+        revenue.grossPotentialRevenue = grossPotential;
+      } else {
+        warnings.push('MSR sheet: Gross Potential Revenue value missing.');
+      }
+    } else {
+      warnings.push('MSR sheet: Gross Potential Revenue row not found.');
+    }
     const econRow = findRowByLabel(grid, revenueAnchor.row + 1, revenueAnchor.row + 12, 'economic occupancy');
     if (econRow) {
       const row = grid[econRow.row] ?? [];

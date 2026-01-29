@@ -393,6 +393,33 @@ function formatPercentLabel(value: number): string {
   return `${formatted}%`;
 }
 
+const computePaddedBounds = (
+  values: Array<number | null>,
+  options?: { paddingRatio?: number; floor?: number; ceil?: number; minRange?: number; ignoreZeros?: boolean },
+): { min: number; max: number } => {
+  const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (!finite.length) {
+    return { min: options?.floor ?? 0, max: options?.ceil ?? 1 };
+  }
+  const sample =
+    options?.ignoreZeros && finite.some((value) => value !== 0)
+      ? finite.filter((value) => value !== 0)
+      : finite;
+  const minValue = Math.min(...sample);
+  const maxValue = Math.max(...sample);
+  const baseRange = Math.max(maxValue - minValue, options?.minRange ?? 0);
+  const range = baseRange > 0 ? baseRange : Math.max(Math.abs(maxValue) * 0.05, 1);
+  const padding = range * (options?.paddingRatio ?? 0.18);
+  let min = minValue - padding;
+  let max = maxValue + padding;
+  if (options?.floor != null) min = Math.max(options.floor, min);
+  if (options?.ceil != null) max = Math.min(options.ceil, max);
+  if (max <= min) {
+    max = min + Math.max(range, 1);
+  }
+  return { min, max };
+};
+
 const normalizePropertyKey = (value: string): string => value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
 const isPittmanProperty = (propertyId: string): boolean => {
   const key = normalizePropertyKey(propertyId);
@@ -446,8 +473,7 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
   const dataAsc = dataRecent.slice().reverse();
   const labels = monthsAsc.map(formatMonthLabel);
   const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0));
-  const maxValue = Math.max(0, ...data);
-  const yMax = Math.ceil(maxValue * 1.1);
+  const rentBounds = computePaddedBounds(data, { paddingRatio: 0.2, floor: 0, ignoreZeros: true });
   console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
   if (monthsRecent[0] !== "2025-12") {
     throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
@@ -502,8 +528,8 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
       layout: { padding: { top: 70, right: 140, bottom: 24, left: 60 } },
       scales: {
         y: {
-          beginAtZero: true,
-          suggestedMax: yMax,
+          min: rentBounds.min,
+          max: rentBounds.max,
           title: { display: true, text: "Dollars ($)" },
           ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 8 },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.1)" },
@@ -537,6 +563,7 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
   const dataAsc = dataRecent.slice().reverse();
   const labels = monthsAsc.map(formatMonthLabel);
   const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : null));
+  const occupancyBounds = computePaddedBounds(data, { paddingRatio: 0.2, floor: 0, ceil: 100, minRange: 2 });
   console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
   if (monthsRecent[0] !== "2025-12") {
     throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
@@ -589,9 +616,8 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
       layout: { padding: { top: 40, right: 120, bottom: 24, left: 60 } },
       scales: {
         y: {
-          beginAtZero: true,
-          suggestedMax: 110,
-          max: 110,
+          min: occupancyBounds.min,
+          max: occupancyBounds.max,
           title: { display: true, text: "Percent" },
           ticks: { font: { size: 16, weight: 600 }, color: "#111827", padding: 8 },
           grid: { lineWidth: 1, color: "rgba(0,0,0,0.1)" },

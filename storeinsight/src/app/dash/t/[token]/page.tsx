@@ -186,5 +186,5 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
 
   const propertyName = resolvePropertyName(docData ?? {}, snapshots, propertyId);
 
-  return <TokenDashboardView propertyName={propertyName} snapshots={snapshots} />;
+  return <TokenDashboardView propertyId={propertyId} propertyName={propertyName} snapshots={snapshots} />;
 }
