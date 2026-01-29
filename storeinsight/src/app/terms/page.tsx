@@ -73,7 +73,7 @@ export default function TermsOfServicePage(): JSX.Element {
             <div className="border-t border-[color:var(--border-soft)] pt-4">
               <h2 className="text-base font-semibold text-[color:var(--text-primary)]">4. Intellectual property</h2>
               <ul className="mt-2 list-disc space-y-2 pl-5">
-                <li>The dashboard, code, design, and branding are proprietary and owned by STORE Management.</li>
+                <li>The dashboard, code, data, design, and branding are proprietary and owned by STORE Management.</li>
                 <li>No license is granted to copy, modify, distribute, or create derivative works.</li>
                 <li>Do not reproduce, share, sell, or redistribute dashboard data without written permission.</li>
                 <li>We may revoke access immediately for suspected misuse, copying, or redistribution.</li>
@@ -106,7 +106,12 @@ export default function TermsOfServicePage(): JSX.Element {
 
             <div className="border-t border-[color:var(--border-soft)] pt-4">
               <h2 className="text-base font-semibold text-[color:var(--text-primary)]">8. Contact</h2>
-              <p className="mt-2">For questions about these terms, contact lauren@STOREstorage.com</p>
+                <p className="mt-2">
+                Questions about this policy? contact {' '}
+                <a href="mailto:lauren@storestorage.com" className="text-[color:var(--accent-strong)] hover:underline">
+                  lauren@STOREstorage.com
+                </a>
+              </p>
             </div>
           </div>
         </div>

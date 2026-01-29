@@ -719,11 +719,59 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   const occupiedPct = totalRsf && totalOccupiedRsf ? (totalOccupiedRsf / totalRsf) * 100 : null;
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
+    <div className="token-dashboard-print relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
+      <style jsx global>{`
+        @media print {
+          html,
+          body {
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .token-dashboard-print {
+            overflow: visible !important;
+          }
+          .token-dashboard-print .ios-card,
+          .token-dashboard-print .ios-list-card {
+            box-shadow: none !important;
+            border-color: #e5e7eb !important;
+          }
+          .token-dashboard-print .ios-animate-up {
+            animation: none !important;
+          }
+          .token-dashboard-print header,
+          .token-dashboard-print section,
+          .token-dashboard-print .ios-card {
+            page-break-inside: avoid;
+          }
+          .token-dashboard-print > .pointer-events-none,
+          .token-dashboard-print nav,
+          .token-dashboard-print button,
+          .token-dashboard-print [data-variant],
+          .token-dashboard-print .ios-pill {
+            display: none !important;
+          }
+          .token-dashboard-print__content {
+            max-width: 100% !important;
+            padding: 0 !important;
+          }
+          .token-dashboard-print .px-6 {
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+          }
+          .token-dashboard-print .pt-10 {
+            padding-top: 0 !important;
+          }
+          .token-dashboard-print .pb-28,
+          .token-dashboard-print .sm\\:pb-10 {
+            padding-bottom: 0 !important;
+          }
+        }
+      `}</style>
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
-      <div className="relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
+      <div className="token-dashboard-print__content relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
         <header className="ios-card ios-animate-up space-y-4 p-4 sm:space-y-6 sm:p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className={hideHeaderDetailsOnMobile ? 'hidden space-y-3 sm:block' : 'space-y-3'}>

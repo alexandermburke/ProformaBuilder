@@ -75,7 +75,7 @@ export default function PrivacyPolicyPage(): JSX.Element {
               <h2 className="text-base font-semibold text-[color:var(--text-primary)]">4. Sharing and retention</h2>
               <ul className="mt-2 list-disc space-y-2 pl-5">
                 <li>Dashboard access is provided only to recipients with valid, unexpired links.</li>
-                <li>We store data in our database and Firebase to provide the service.</li>
+                <li>We store data in our database to provide the service.</li>
                 <li>Access links expire in 24 hours; audit logs may be retained longer for security.</li>
               </ul>
             </div>
@@ -105,7 +105,12 @@ export default function PrivacyPolicyPage(): JSX.Element {
 
             <div className="border-t border-[color:var(--border-soft)] pt-4">
               <h2 className="text-base font-semibold text-[color:var(--text-primary)]">8. Contact</h2>
-              <p className="mt-2">Questions about this policy? contact lauren@STOREstorage.com</p>
+              <p className="mt-2">
+                Questions about this policy? contact {' '}
+                <a href="mailto:lauren@storestorage.com" className="text-[color:var(--accent-strong)] hover:underline">
+                  lauren@STOREstorage.com
+                </a>
+              </p>
             </div>
           </div>
         </div>
