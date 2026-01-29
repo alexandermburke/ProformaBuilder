@@ -1937,6 +1937,58 @@ function PricingSection({
                   className="history-chart-line"
                   style={{ animationDelay: '0.15s' }}
                 />
+                {currentPoints.map((point, index) => {
+                  const value = currentRates[index];
+                  if (!isFiniteNumber(value)) return null;
+                  const labelY = Math.max(PRICING_CHART_PADDING + 10, point.y - 10);
+                  return (
+                    <g key={`current-rate-${rateSeries[index]?.monthIso ?? index}`}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={4}
+                        fill="rgba(37,99,235,0.85)"
+                        stroke="#ffffff"
+                        strokeWidth={1.4}
+                      />
+                      <text
+                        x={point.x}
+                        y={labelY}
+                        fontSize={12}
+                        textAnchor="middle"
+                        fill="rgba(71,85,105,0.9)"
+                      >
+                        {formatMaybeCurrency(value)}
+                      </text>
+                    </g>
+                  );
+                })}
+                {sellPoints.map((point, index) => {
+                  const value = sellRates[index];
+                  if (!isFiniteNumber(value)) return null;
+                  const labelY = Math.min(PRICING_CHART_HEIGHT - PRICING_CHART_PADDING + 12, point.y + 14);
+                  return (
+                    <g key={`sell-rate-${rateSeries[index]?.monthIso ?? index}`}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={3.5}
+                        fill="rgba(14,165,233,0.85)"
+                        stroke="#ffffff"
+                        strokeWidth={1.2}
+                      />
+                      <text
+                        x={point.x}
+                        y={labelY}
+                        fontSize={12}
+                        textAnchor="middle"
+                        fill="rgba(71,85,105,0.9)"
+                      >
+                        {formatMaybeCurrency(value)}
+                      </text>
+                    </g>
+                  );
+                })}
               </svg>
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[color:var(--text-muted)]">
@@ -2010,22 +2062,36 @@ function PricingSection({
                     ((varianceMax - point.value) / varianceRange) * (140 - SMALL_CHART_PADDING * 2);
                   const barY = point.value >= 0 ? yValue : yZero;
                   const barHeight = Math.max(1, Math.abs(yZero - yValue));
+                  const labelY =
+                    point.value >= 0
+                      ? Math.max(12, barY - 6)
+                      : Math.min(140 - 4, barY + barHeight + 12);
                   return (
-                    <rect
-                      key={`${point.monthIso ?? index}`}
-                      x={barX}
-                      y={barY}
-                      width={barWidth}
-                      height={barHeight}
-                      rx={4}
-                      className="history-chart-bar"
-                      style={{
-                        fill: point.value >= 0 ? 'rgba(37,99,235,0.85)' : 'rgba(248,113,113,0.75)',
-                        transformOrigin: 'center bottom',
-                        transformBox: 'fill-box',
-                        animationDelay: `${index * 0.05}s`,
-                      }}
-                    />
+                    <g key={`${point.monthIso ?? index}`}>
+                      <rect
+                        x={barX}
+                        y={barY}
+                        width={barWidth}
+                        height={barHeight}
+                        rx={4}
+                        className="history-chart-bar"
+                        style={{
+                          fill: point.value >= 0 ? 'rgba(37,99,235,0.85)' : 'rgba(248,113,113,0.75)',
+                          transformOrigin: 'center bottom',
+                          transformBox: 'fill-box',
+                          animationDelay: `${index * 0.05}s`,
+                        }}
+                      />
+                      <text
+                        x={barX + barWidth / 2}
+                        y={labelY}
+                        fontSize={12}
+                        textAnchor="middle"
+                        fill="rgba(71,85,105,0.9)"
+                      >
+                        {formatMaybePercent(point.value, 1)}
+                      </text>
+                    </g>
                   );
                 })}
               </svg>
@@ -2079,21 +2145,31 @@ function PricingSection({
                   const height = (point.count / rentCountMax) * (150 - SMALL_CHART_PADDING * 2);
                   const barY = 150 - SMALL_CHART_PADDING - height;
                   return (
-                    <rect
-                      key={`${point.monthIso ?? index}-count`}
-                      x={barX}
-                      y={barY}
-                      width={barWidth}
-                      height={Math.max(1, height)}
-                      rx={4}
-                      className="history-chart-bar"
-                      style={{
-                        fill: 'rgba(37,99,235,0.35)',
-                        transformOrigin: 'center bottom',
-                        transformBox: 'fill-box',
-                        animationDelay: `${index * 0.05}s`,
-                      }}
-                    />
+                    <g key={`${point.monthIso ?? index}-count`}>
+                      <rect
+                        x={barX}
+                        y={barY}
+                        width={barWidth}
+                        height={Math.max(1, height)}
+                        rx={4}
+                        className="history-chart-bar"
+                        style={{
+                          fill: 'rgba(37,99,235,0.35)',
+                          transformOrigin: 'center bottom',
+                          transformBox: 'fill-box',
+                          animationDelay: `${index * 0.05}s`,
+                        }}
+                      />
+                      <text
+                        x={barX + barWidth / 2}
+                        y={Math.max(12, barY - 6)}
+                        fontSize={12}
+                        textAnchor="middle"
+                        fill="rgba(71,85,105,0.9)"
+                      >
+                        {formatMaybeNumber(point.count)}
+                      </text>
+                    </g>
                   );
                 })}
                 {rentHasPct ? (
@@ -2109,6 +2185,42 @@ function PricingSection({
                     style={{ animationDelay: '0.1s' }}
                   />
                 ) : null}
+                {rentHasPct
+                  ? rentChangeSeries.map((point, index) => {
+                      if (!isFiniteNumber(point.pct)) return null;
+                      const step =
+                        rentChangeSeries.length > 1
+                          ? (SMALL_CHART_WIDTH - SMALL_CHART_PADDING * 2) / (rentChangeSeries.length - 1)
+                          : 0;
+                      const x = SMALL_CHART_PADDING + index * step;
+                      const y =
+                        SMALL_CHART_PADDING +
+                        ((rentPctMax - point.pct) / Math.max(1, rentPctMax - rentPctMin)) *
+                          (150 - SMALL_CHART_PADDING * 2);
+                      const labelY = Math.max(SMALL_CHART_PADDING + 8, y - 10);
+                      return (
+                        <g key={`${point.monthIso ?? index}-pct`}>
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r={3.5}
+                            fill="rgba(37,99,235,0.9)"
+                            stroke="#ffffff"
+                            strokeWidth={1.2}
+                          />
+                          <text
+                            x={x}
+                            y={labelY}
+                            fontSize={12}
+                            textAnchor="middle"
+                            fill="rgba(71,85,105,0.9)"
+                          >
+                            {formatMaybePercent(point.pct, 1)}
+                          </text>
+                        </g>
+                      );
+                    })
+                  : null}
               </svg>
               {rentChangeStatus ? (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[color:var(--text-muted)]">
@@ -2245,6 +2357,9 @@ function OperationalSection({
     .filter((entry): entry is SeriesPoint => Boolean(entry?.monthIso) && isFiniteNumber(entry?.value));
   const conversionValues = conversionSeries.map((point) => point.value);
   const conversionEmptyMessage = getSeriesEmptyMessage(conversionValues, seriesEntries.length);
+  const formatPercentPoint = (value: number) => formatPercent(value, 1);
+  const formatCurrencyPoint = (value: number) => formatCompactCurrency(value);
+  const formatNumberPoint = (value: number) => formatNumber(value);
 
   const concessionsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
   const creditsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.creditsAdjustmentsMtd);
@@ -2261,6 +2376,7 @@ function OperationalSection({
   const coverageSeries = buildSeries(seriesEntries, (snapshot) =>
     isFiniteNumber(snapshot.coverage?.enrolledPct) ? snapshot.coverage?.enrolledPct : snapshot.coverage?.enrolledCount,
   );
+  const coverageIsPct = seriesEntries.some((entry) => isFiniteNumber(entry.snapshot.coverage?.enrolledPct));
   const autopayEmpty = getSeriesEmptyMessage(autopaySeries.map((point) => point.value), seriesEntries.length);
   const coverageEmpty = getSeriesEmptyMessage(coverageSeries.map((point) => point.value), seriesEntries.length);
 
@@ -2381,6 +2497,7 @@ function OperationalSection({
                   series={conversionSeries}
                   color="rgba(37,99,235,0.9)"
                   label="Conversion rate"
+                  formatValue={formatPercentPoint}
                 />
               </ChartCard>
             </div>
@@ -2412,6 +2529,7 @@ function OperationalSection({
                   series={concessionsSeries}
                   color="rgba(37,99,235,0.85)"
                   label="Promos + discounts"
+                  formatValue={formatCurrencyPoint}
                 />
               </ChartCard>
               <ChartCard
@@ -2424,6 +2542,7 @@ function OperationalSection({
                   series={creditsSeries}
                   color="rgba(14,165,233,0.85)"
                   label="Credits + adjustments"
+                  formatValue={formatCurrencyPoint}
                 />
               </ChartCard>
               <ChartCard
@@ -2436,6 +2555,7 @@ function OperationalSection({
                   series={refundsSeries}
                   color="rgba(248,113,113,0.8)"
                   label="Refunds + write-offs"
+                  formatValue={formatCurrencyPoint}
                 />
               </ChartCard>
             </div>
@@ -2472,6 +2592,7 @@ function OperationalSection({
                   series={autopaySeries}
                   color="rgba(37,99,235,0.85)"
                   label="Autopay adoption"
+                  formatValue={formatPercentPoint}
                 />
               </ChartCard>
               <ChartCard
@@ -2484,6 +2605,7 @@ function OperationalSection({
                   series={coverageSeries}
                   color="rgba(14,165,233,0.85)"
                   label="Coverage enrollment"
+                  formatValue={coverageIsPct ? formatPercentPoint : formatNumberPoint}
                 />
               </ChartCard>
             </div>
@@ -2498,10 +2620,12 @@ function LineChartWithMonths({
   series,
   color,
   label,
+  formatValue,
 }: {
   series: SeriesPoint[];
   color: string;
   label: string;
+  formatValue: (value: number) => string;
 }): JSX.Element {
   const values = series.map((point) => point.value);
   const points = getChartPoints(values, SMALL_CHART_WIDTH, SMALL_CHART_HEIGHT, SMALL_CHART_PADDING);
@@ -2538,6 +2662,27 @@ function LineChartWithMonths({
           pathLength={1}
           className="history-chart-line"
         />
+        {points.map((point, index) => {
+          const value = values[index];
+          const labelText = formatValue(value);
+          const labelY = Math.max(point.y - 10, SMALL_CHART_PADDING + 6);
+          return (
+            <g key={`${series[index]?.monthIso ?? index}-point`}>
+              <circle cx={point.x} cy={point.y} r={3.5} fill={color} stroke="#ffffff" strokeWidth={1.2} />
+              {labelText ? (
+                <text
+                  x={point.x}
+                  y={labelY}
+                  fontSize={14}
+                  textAnchor="middle"
+                  fill="rgba(71,85,105,0.9)"
+                >
+                  {labelText}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
       </svg>
       <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[color:var(--text-muted)]">
         {series.map((row, index) => (
