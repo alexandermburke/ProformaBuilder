@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import { ChartCard } from './ChartCard';
 import { KpiRow } from './KpiRow';
@@ -369,6 +369,56 @@ const formatDateValue = (value: unknown): string => {
   if (typeof value === 'string') return value;
   return 'N/A';
 };
+
+function useInViewOnce<T extends HTMLElement>(
+  options?: IntersectionObserverInit,
+): { ref: React.RefObject<T | null>; isVisible: boolean } {
+  const ref = useRef<T | null>(null);
+  const [isVisible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (isVisible) return;
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, options);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isVisible, options]);
+
+  return { ref, isVisible };
+}
+
+function LazyBlock({
+  children,
+  minHeight = 240,
+  rootMargin = '200px 0px',
+}: {
+  children: React.ReactNode;
+  minHeight?: number;
+  rootMargin?: string;
+}): JSX.Element {
+  const { ref, isVisible } = useInViewOnce<HTMLDivElement>({ rootMargin });
+  return (
+    <div ref={ref}>
+      {isVisible ? (
+        children
+      ) : (
+        <div
+          className="rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)]/60 shadow-inner"
+          style={{ minHeight }}
+        />
+      )}
+    </div>
+  );
+}
 
 const normalizePropertyKey = (value: string): string =>
   value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
@@ -897,7 +947,8 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
 
         {section === 'overview' ? (
           <div key={`overview-${range}`} className="space-y-6">
-            <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <LazyBlock minHeight={420}>
+              <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
               <ChartCard
                 key={`token-occupancy-${range}`}
                 title="Occupancy trend (RSF)"
@@ -1249,9 +1300,11 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   ))}
                 </div>
               </ChartCard>
-            </section>
+              </section>
+            </LazyBlock>
 
-            <section className="grid gap-6 lg:grid-cols-2">
+            <LazyBlock minHeight={360}>
+              <section className="grid gap-6 lg:grid-cols-2">
               <ChartCard
                 title="Monthly Net Revenue (MTD)"
                 subtitle="Net revenue per snapshot"
@@ -1528,20 +1581,21 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   </div>
                 </div>
               </div>
-            </section>
+              </section>
+            </LazyBlock>
           </div>
         ) : null}
 
         {section === 'collections' ? (
-          <CollectionsSection key={`collections-${range}`} latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          <MemoCollectionsSection key={`collections-${range}`} latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
         ) : null}
 
         {section === 'pricing' ? (
-          <PricingSection key={`pricing-${range}`} latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          <MemoPricingSection key={`pricing-${range}`} latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
         ) : null}
 
         {section === 'drilldowns' ? (
-          <OperationalSection latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} rangeKey={range} />
+          <MemoOperationalSection latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} rangeKey={range} />
         ) : null}
 
         <footer className="ios-card ios-animate-up mt-4 space-y-2 p-6 text-sm" data-tone="blue">
@@ -1632,17 +1686,18 @@ function CollectionsSection({
   const topDelinquencies = getTopDelinquencies(latestSnapshot ?? {});
 
   return (
-    <section className="space-y-6">
-      <SectionHeader title="Collections & AR" subtitle="Delinquency exposure and AR aging from MSR snapshots." />
+    <LazyBlock minHeight={520}>
+      <section className="space-y-6">
+        <SectionHeader title="Collections & AR" subtitle="Delinquency exposure and AR aging from MSR snapshots." />
 
-      <KpiRow
-        items={[
-          { label: 'Total past due', value: formatMaybeCurrency(latestAr?.totalPastDue) },
-          { label: '61+ past due', value: formatMaybeCurrency(latestAr?.pastDue61Plus) },
-          { label: 'Delinquent tenants', value: formatMaybeNumber(latestAr?.delinquentTenantCount) },
-        ]}
-        columns={3}
-      />
+        <KpiRow
+          items={[
+            { label: 'Total past due', value: formatMaybeCurrency(latestAr?.totalPastDue) },
+            { label: '61+ past due', value: formatMaybeCurrency(latestAr?.pastDue61Plus) },
+            { label: 'Delinquent tenants', value: formatMaybeNumber(latestAr?.delinquentTenantCount) },
+          ]}
+          columns={3}
+        />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard
@@ -1740,28 +1795,29 @@ function CollectionsSection({
         </ChartCard>
       </div>
 
-      <ChartCard
-        title="Top Delinquencies"
-        subtitle="Latest snapshot"
-        emptyMessage={
-          topDelinquencies.length === 0
-            ? 'N/A (not available in MSR snapshot storage yet)'
-            : undefined
-        }
-      >
-        <SimpleTable
-          rows={topDelinquencies}
-          columns={[
-            { header: 'Tenant', accessor: (row) => row.tenant ?? 'N/A' },
-            { header: 'Unit', accessor: (row) => row.unit ?? 'N/A' },
-            { header: 'Days late', accessor: (row) => formatMaybeNumber(row.daysLate) },
-            { header: 'Balance', accessor: (row) => formatMaybeCurrency(row.balance), align: 'right' },
-            { header: 'Start date', accessor: (row) => formatDateValue(row.startDate) },
-          ]}
-          rowKey={(row, index) => `${row.tenant ?? 'tenant'}-${row.unit ?? 'unit'}-${index}`}
-        />
-      </ChartCard>
-    </section>
+        <ChartCard
+          title="Top Delinquencies"
+          subtitle="Latest snapshot"
+          emptyMessage={
+            topDelinquencies.length === 0
+              ? 'N/A (not available in MSR snapshot storage yet)'
+              : undefined
+          }
+        >
+          <SimpleTable
+            rows={topDelinquencies}
+            columns={[
+              { header: 'Tenant', accessor: (row) => row.tenant ?? 'N/A' },
+              { header: 'Unit', accessor: (row) => row.unit ?? 'N/A' },
+              { header: 'Days late', accessor: (row) => formatMaybeNumber(row.daysLate) },
+              { header: 'Balance', accessor: (row) => formatMaybeCurrency(row.balance), align: 'right' },
+              { header: 'Start date', accessor: (row) => formatDateValue(row.startDate) },
+            ]}
+            rowKey={(row, index) => `${row.tenant ?? 'tenant'}-${row.unit ?? 'unit'}-${index}`}
+          />
+        </ChartCard>
+      </section>
+    </LazyBlock>
   );
 }
 
@@ -1922,9 +1978,10 @@ function PricingSection({
   const rateEmptyMessage = getSeriesEmptyMessage(currentRates, seriesEntries.length);
 
   return (
-    <section className="space-y-6">
-      <SectionHeader title="Pricing & Revenue Quality" subtitle="Rates and pricing cadence from MSR snapshots." />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <LazyBlock minHeight={520}>
+      <section className="space-y-6">
+        <SectionHeader title="Pricing & Revenue Quality" subtitle="Rates and pricing cadence from MSR snapshots." />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard title="Set Rate vs Sell Rate (Occupied)" subtitle="Target vs actual rates">
           <KpiRow
             items={[
@@ -2288,9 +2345,9 @@ function PricingSection({
             </div>
           </div>
         </ChartCard>
-      </div>
+        </div>
 
-      <ChartCard title="Stale Rent Exposure" subtitle="No ECRI in 12 months">
+        <ChartCard title="Stale Rent Exposure" subtitle="No ECRI in 12 months">
         <KpiRow
           items={[
             {
@@ -2362,8 +2419,9 @@ function PricingSection({
             </div>
           </div>
         ) : null}
-      </ChartCard>
-    </section>
+        </ChartCard>
+      </section>
+    </LazyBlock>
   );
 }
 
@@ -2432,10 +2490,11 @@ function OperationalSection({
   const coverageEmpty = getSeriesEmptyMessage(coverageSeries.map((point) => point.value), seriesEntries.length);
 
   return (
-    <section className="space-y-6">
-      <SectionHeader title="Operational Drilldowns" subtitle="Demand, concessions, and autopay performance." />
+    <LazyBlock minHeight={520}>
+      <section className="space-y-6">
+        <SectionHeader title="Operational Drilldowns" subtitle="Demand, concessions, and autopay performance." />
 
-      <div className="ios-card ios-animate-up space-y-6 p-6">
+        <div className="ios-card ios-animate-up space-y-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
             {DRILLDOWN_TABS.map((tab) => (
@@ -2544,7 +2603,7 @@ function OperationalSection({
                 subtitle="Move-ins vs leads"
                 emptyMessage={conversionEmptyMessage}
               >
-                <LineChartWithMonths
+                <MemoLineChartWithMonths
                   series={conversionSeries}
                   color="rgba(37,99,235,0.9)"
                   label="Conversion rate"
@@ -2576,7 +2635,7 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={concessionsEmpty}
               >
-                <LineChartWithMonths
+                <MemoLineChartWithMonths
                   series={concessionsSeries}
                   color="rgba(37,99,235,0.85)"
                   label="Promos + discounts"
@@ -2589,7 +2648,7 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={creditsEmpty}
               >
-                <LineChartWithMonths
+                <MemoLineChartWithMonths
                   series={creditsSeries}
                   color="rgba(14,165,233,0.85)"
                   label="Credits + adjustments"
@@ -2602,7 +2661,7 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={refundsEmpty}
               >
-                <LineChartWithMonths
+                <MemoLineChartWithMonths
                   series={refundsSeries}
                   color="rgba(248,113,113,0.8)"
                   label="Refunds + write-offs"
@@ -2639,7 +2698,7 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={autopayEmpty}
               >
-                <LineChartWithMonths
+                <MemoLineChartWithMonths
                   series={autopaySeries}
                   color="rgba(37,99,235,0.85)"
                   label="Autopay adoption"
@@ -2652,7 +2711,7 @@ function OperationalSection({
                 subtitle="Monthly trend"
                 emptyMessage={coverageEmpty}
               >
-                <LineChartWithMonths
+                <MemoLineChartWithMonths
                   series={coverageSeries}
                   color="rgba(14,165,233,0.85)"
                   label="Coverage enrollment"
@@ -2662,8 +2721,9 @@ function OperationalSection({
             </div>
           </div>
         ) : null}
-      </div>
-    </section>
+        </div>
+      </section>
+    </LazyBlock>
   );
 }
 
@@ -2745,3 +2805,8 @@ function LineChartWithMonths({
     </div>
   );
 }
+
+const MemoLineChartWithMonths = memo(LineChartWithMonths);
+const MemoCollectionsSection = memo(CollectionsSection);
+const MemoPricingSection = memo(PricingSection);
+const MemoOperationalSection = memo(OperationalSection);
