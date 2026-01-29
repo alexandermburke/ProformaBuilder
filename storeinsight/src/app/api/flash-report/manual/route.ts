@@ -277,10 +277,10 @@ function buildFlashEmailHtmlFromPng(
   const pdfUrl = options?.pdfUrl?.replace(/"/g, "%22");
   const dashboardUrl = options?.dashboardUrl?.replace(/"/g, "%22");
   const pdfButton = pdfUrl
-    ? `<a href="${pdfUrl}" class="cta-button cta-primary" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 22px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 8px 18px rgba(10,132,255,0.28); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 180px; margin: 0 auto;">View full PDF</a>`
+    ? `<a href="${pdfUrl}" class="cta-button cta-primary" style="display: block; width: 100%; box-sizing: border-box; padding: 12px 22px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 8px 18px rgba(10,132,255,0.28); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 180px; text-align: center;">View full PDF</a>`
     : "";
   const dashboardButton = dashboardUrl
-    ? `<a href="${dashboardUrl}" class="cta-button cta-secondary" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 22px; border-radius: 999px; background: #ffffff; color: #0a84ff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a84ff; box-shadow: 0 8px 18px rgba(15,23,42,0.08); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 220px; margin: 0 auto;">Historical Dashboard (Test)</a>`
+    ? `<a href="${dashboardUrl}" class="cta-button cta-secondary" style="display: block; width: 100%; box-sizing: border-box; padding: 12px 22px; border-radius: 999px; background: #ffffff; color: #0a84ff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a84ff; box-shadow: 0 8px 18px rgba(15,23,42,0.08); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 220px; text-align: center;">Historical Dashboard (Test)</a>`
     : "";
   const pdfFallback = pdfUrl
     ? ""
@@ -288,14 +288,12 @@ function buildFlashEmailHtmlFromPng(
   const ctaButtons = [pdfButton, dashboardButton].filter((value) => value);
   const ctaRow = ctaButtons.length
     ? `
-      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top: 14px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" class="cta-table" style="margin-top: 14px; width: 100%; table-layout: fixed; border-collapse: separate;">
         <tr>
           ${ctaButtons
-            .map((button, index) => {
+            .map((button) => {
               const width = ctaButtons.length === 1 ? "100%" : "50%";
-              const padLeft = "8px";
-              const padRight = "8px";
-              return `<td class="cta-col" width="${width}" align="center" style="padding: 0 ${padRight} 8px ${padLeft}; text-align: center;">${button}</td>`;
+              return `<td class="cta-col" width="${width}" align="center" style="padding: 0 8px 10px 8px; text-align: center; vertical-align: top;">${button}</td>`;
             })
             .join("")}
         </tr>
@@ -332,9 +330,12 @@ function buildFlashEmailHtmlFromPng(
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <style>
+          .cta-table { width: 100% !important; }
+          .cta-col { padding: 0 8px 10px 8px; }
+          .cta-button { display: block !important; width: 100% !important; box-sizing: border-box !important; max-width: 100% !important; }
           @media (max-width: 560px) {
-            .cta-col { display: block !important; width: 100% !important; padding-left: 10px !important; padding-right: 10px !important; }
-            .cta-button { width: 100% !important; }
+            .cta-col { display: block !important; width: 100% !important; padding-left: 12px !important; padding-right: 12px !important; }
+            .cta-button { width: 100% !important; min-width: 0 !important; }
           }
           .cta-primary:hover { background: #0077ed !important; border-color: #0070e0 !important; }
           .cta-secondary:hover { background: #f1f5ff !important; }

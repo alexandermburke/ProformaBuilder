@@ -169,6 +169,7 @@ const DRILLDOWN_TABS: Array<{ id: DrilldownTab; label: string; mobileLabel: stri
 ];
 
 const UNIT_MIX_COLORS = ['#3B82F6', '#22D3EE', '#F97316', '#A78BFA', '#F472B6', '#FACC15'];
+const SECTION_STORAGE_KEY = 'token-dashboard:section';
 
 const CHART_WIDTH = 620;
 const CHART_HEIGHT = 240;
@@ -374,6 +375,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
   const [section, setSection] = useState<SectionKey>('overview');
   const [occupancyHoverIndex, setOccupancyHoverIndex] = useState<number | null>(null);
   const [netRevenueHoverIndex, setNetRevenueHoverIndex] = useState<number | null>(null);
+  const hideHeaderDetailsOnMobile = section !== 'overview';
 
   const normalizedSnapshots = useMemo<SnapshotEntry[]>(
     () =>
@@ -471,6 +473,26 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
     setOccupancyHoverIndex(null);
     setNetRevenueHoverIndex(null);
   }, [range]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SECTION_STORAGE_KEY);
+      if (stored && SECTION_TABS.some((option) => option.id === stored)) {
+        setSection(stored as SectionKey);
+      }
+    } catch {
+      // ignore local storage errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      // Do not remove: keep the selected section on refresh for /dash/t/.
+      window.localStorage.setItem(SECTION_STORAGE_KEY, section);
+    } catch {
+      // ignore local storage errors
+    }
+  }, [section]);
 
   const occAxis = useMemo(() => {
     const valid = occupancyChartValues.filter(isFiniteNumber);
@@ -685,7 +707,7 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
       <div className="relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
         <header className="ios-card ios-animate-up space-y-4 p-4 sm:space-y-6 sm:p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
-            <div className="space-y-3">
+            <div className={hideHeaderDetailsOnMobile ? 'hidden space-y-3 sm:block' : 'space-y-3'}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="ios-badge text-[10px]">Investor dashboard</span>
                 <span className="ios-pill text-[10px]" data-tone="neutral">
@@ -706,9 +728,10 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                 </p>
               </div>
             </div>
+            <div className="flex items-center gap-2" />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className={hideHeaderDetailsOnMobile ? 'hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4' : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4'}>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Occupancy (RSF)</div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
@@ -764,28 +787,39 @@ export function TokenDashboardView({ propertyName, snapshots }: TokenDashboardVi
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-                Range
-              </span>
-              <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
-                {RANGE_OPTIONS.map((rangeOption) => (
-                  <button
-                    key={rangeOption.key}
-                    type="button"
-                    aria-pressed={range === rangeOption.key}
-                    onClick={() => setRange(rangeOption.key)}
-                    className={[
-                      'rounded-full px-3 py-1 transition-colors',
-                      range === rangeOption.key
-                        ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
-                        : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
-                    ].join(' ')}
-                  >
-                    {rangeOption.key}
-                  </button>
-                ))}
+            <div className="flex w-full items-center gap-3 sm:w-auto">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                  Range
+                </span>
+                <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
+                  {RANGE_OPTIONS.map((rangeOption) => (
+                    <button
+                      key={rangeOption.key}
+                      type="button"
+                      aria-pressed={range === rangeOption.key}
+                      onClick={() => setRange(rangeOption.key)}
+                      className={[
+                        'rounded-full px-3 py-1 transition-colors',
+                        range === rangeOption.key
+                          ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
+                          : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
+                      ].join(' ')}
+                    >
+                      {rangeOption.key}
+                    </button>
+                  ))}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="ios-button ml-auto px-3 py-1 text-[11px] sm:hidden"
+                data-variant="secondary"
+                aria-label="Print dashboard"
+              >
+                Print
+              </button>
             </div>
           </div>
         </header>
