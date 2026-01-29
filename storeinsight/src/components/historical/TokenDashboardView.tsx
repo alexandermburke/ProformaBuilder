@@ -387,6 +387,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   const [occupancyHoverIndex, setOccupancyHoverIndex] = useState<number | null>(null);
   const [netRevenueHoverIndex, setNetRevenueHoverIndex] = useState<number | null>(null);
   const hideHeaderDetailsOnMobile = section !== 'overview';
+  const currentYear = new Date().getFullYear();
 
   const normalizedSnapshots = useMemo<SnapshotEntry[]>(
     () =>
@@ -1496,9 +1497,8 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
         ) : null}
 
         <footer className="ios-card ios-animate-up mt-4 space-y-2 p-6 text-sm" data-tone="blue">
-          <p className="text-[color:var(--text-secondary)]">
-            This dashboard is automatically generated and will expire after 24 hours for security purposes.
-          </p>
+          
+          <p className="text-[color:var(--text-secondary)]">Copyright © {currentYear} STORE Management LLC</p>
           <p className="text-[color:var(--text-secondary)]">
             By viewing this dashboard, you agree to our{' '}
             <Link href="/privacy" className="text-[color:var(--accent-strong)] hover:underline">
@@ -1509,6 +1509,9 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               Terms of Service
             </Link>
             .
+          </p>
+          <p className="text-[color:var(--text-secondary)]">
+            This dashboard is automatically generated and will expire after 24 hours for security purposes.
           </p>
         </footer>
       </div>
