@@ -10,6 +10,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { PreferencesProvider } from '@/components/PreferencesProvider';
+import { Analytics } from "@vercel/analytics/next"
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -60,6 +61,7 @@ export default function RootLayout({
           <PreferencesProvider>
             {children}
             <div id="portal-root" />
+            <Analytics/>
           </PreferencesProvider>
         </ThemeProvider>
       </body>
