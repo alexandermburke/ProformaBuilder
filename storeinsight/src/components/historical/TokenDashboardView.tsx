@@ -1591,11 +1591,21 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
         ) : null}
 
         {section === 'pricing' ? (
-          <MemoPricingSection key={`pricing-${range}`} latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          <MemoPricingSection
+            key={`pricing-${range}`}
+            latestSnapshot={latestSnapshot}
+            seriesEntries={seriesEntries}
+            isDark={isDark}
+          />
         ) : null}
 
         {section === 'drilldowns' ? (
-          <MemoOperationalSection latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} rangeKey={range} />
+          <MemoOperationalSection
+            latestSnapshot={latestSnapshot}
+            seriesEntries={seriesEntries}
+            rangeKey={range}
+            isDark={isDark}
+          />
         ) : null}
 
         <footer className="ios-card ios-animate-up mt-4 space-y-2 p-6 text-sm" data-tone="blue">
@@ -1824,9 +1834,11 @@ function CollectionsSection({
 function PricingSection({
   latestSnapshot,
   seriesEntries,
+  isDark,
 }: {
   latestSnapshot: MsrSnapshot | null;
   seriesEntries: SnapshotEntry[];
+  isDark: boolean;
 }): JSX.Element {
   const trendSnapshotCount = seriesEntries.length;
   const needsTrendHint = trendSnapshotCount < 2;
@@ -2064,7 +2076,7 @@ function PricingSection({
                         y={labelY}
                         fontSize={12}
                         textAnchor="middle"
-                        fill="rgba(71,85,105,0.9)"
+                        fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                       >
                         {formatMaybeCurrency(value)}
                       </text>
@@ -2090,7 +2102,7 @@ function PricingSection({
                         y={labelY}
                         fontSize={12}
                         textAnchor="middle"
-                        fill="rgba(71,85,105,0.9)"
+                        fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                       >
                         {formatMaybeCurrency(value)}
                       </text>
@@ -2195,7 +2207,7 @@ function PricingSection({
                         y={labelY}
                         fontSize={12}
                         textAnchor="middle"
-                        fill="rgba(71,85,105,0.9)"
+                        fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                       >
                         {formatMaybePercent(point.value, 1)}
                       </text>
@@ -2273,7 +2285,7 @@ function PricingSection({
                         y={Math.max(12, barY - 6)}
                         fontSize={12}
                         textAnchor="middle"
-                        fill="rgba(71,85,105,0.9)"
+                        fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                       >
                         {formatMaybeNumber(point.count)}
                       </text>
@@ -2321,7 +2333,7 @@ function PricingSection({
                             y={labelY}
                             fontSize={12}
                             textAnchor="middle"
-                            fill="rgba(71,85,105,0.9)"
+                            fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                           >
                             {formatMaybePercent(point.pct, 1)}
                           </text>
@@ -2429,10 +2441,12 @@ function OperationalSection({
   latestSnapshot,
   seriesEntries,
   rangeKey,
+  isDark,
 }: {
   latestSnapshot: MsrSnapshot | null;
   seriesEntries: SnapshotEntry[];
   rangeKey: RangeKey;
+  isDark: boolean;
 }): JSX.Element {
   const [activeTab, setActiveTab] = useState<DrilldownTab>('demand');
 
@@ -2608,6 +2622,7 @@ function OperationalSection({
                   color="rgba(37,99,235,0.9)"
                   label="Conversion rate"
                   formatValue={formatPercentPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
             </div>
@@ -2640,6 +2655,7 @@ function OperationalSection({
                   color="rgba(37,99,235,0.85)"
                   label="Promos + discounts"
                   formatValue={formatCurrencyPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
               <ChartCard
@@ -2653,6 +2669,7 @@ function OperationalSection({
                   color="rgba(14,165,233,0.85)"
                   label="Credits + adjustments"
                   formatValue={formatCurrencyPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
               <ChartCard
@@ -2666,6 +2683,7 @@ function OperationalSection({
                   color="rgba(248,113,113,0.8)"
                   label="Refunds + write-offs"
                   formatValue={formatCurrencyPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
             </div>
@@ -2703,6 +2721,7 @@ function OperationalSection({
                   color="rgba(37,99,235,0.85)"
                   label="Autopay adoption"
                   formatValue={formatPercentPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
               <ChartCard
@@ -2716,6 +2735,7 @@ function OperationalSection({
                   color="rgba(14,165,233,0.85)"
                   label="Coverage enrollment"
                   formatValue={coverageIsPct ? formatPercentPoint : formatNumberPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
             </div>
@@ -2732,11 +2752,13 @@ function LineChartWithMonths({
   color,
   label,
   formatValue,
+  labelColor,
 }: {
   series: SeriesPoint[];
   color: string;
   label: string;
   formatValue: (value: number) => string;
+  labelColor?: string;
 }): JSX.Element {
   const values = series.map((point) => point.value);
   const points = getChartPoints(values, SMALL_CHART_WIDTH, SMALL_CHART_HEIGHT, SMALL_CHART_PADDING);
@@ -2786,7 +2808,7 @@ function LineChartWithMonths({
                   y={labelY}
                   fontSize={14}
                   textAnchor="middle"
-                  fill="rgba(71,85,105,0.9)"
+                  fill={labelColor ?? 'rgba(71,85,105,0.9)'}
                 >
                   {labelText}
                 </text>
