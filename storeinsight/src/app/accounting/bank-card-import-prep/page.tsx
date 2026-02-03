@@ -26,7 +26,7 @@ const uploadCards: UploadCard[] = [
     detail: "Statement or transaction export per account with running balance and dates.",
     fileTypes: "CSV",
     required: true,
-    accept: ["csv", "xlsx"],
+    accept: ["csv"],
     examples: ['CSV Bank Export.csv'],
   },
   {
@@ -34,7 +34,7 @@ const uploadCards: UploadCard[] = [
     title: "Corporate card activity",
     detail: "P-card or travel card exports with merchant, memo, and employee fields.",
     fileTypes: "CSV",
-    required: true,
+    required: false,
     accept: ["csv", "xlsx"],
     examples: ['Excel CC Export.csv'],
   },
@@ -43,7 +43,7 @@ const uploadCards: UploadCard[] = [
     title: "Other bank activity",
     detail: "Additional bank activity that needs to be merged with the primary feed.",
     fileTypes: "XLSX",
-    required: true,
+    required: false,
     accept: ["xlsx", "csv"],
     examples: ['Other Bank Activity.xlsx'],
   },
@@ -77,10 +77,10 @@ const uploadCards: UploadCard[] = [
   },
 ];
 
-const REQUIRED_KEYS: UploadKey[] = ["bank", "card", "otherBank"];
+const REQUIRED_KEYS: UploadKey[] = ["bank"];
 
 const ACCEPT_MAP: Record<UploadKey, string[]> = {
-  bank: ["csv", "xlsx"],
+  bank: ["csv"],
   card: ["csv", "xlsx"],
   otherBank: ["xlsx", "csv"],
   reference: ["csv", "xlsx"],
@@ -198,6 +198,7 @@ export default function BankCardImportPrepPage() {
   const [needsReview, setNeedsReview] = useState(false);
   const [missingCashAccount, setMissingCashAccount] = useState(false);
   const [cashAccount, setCashAccount] = useState("");
+  const [defaultProperty, setDefaultProperty] = useState("");
   const [unmappedRows, setUnmappedRows] = useState<ReviewRow[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -573,6 +574,9 @@ export default function BankCardImportPrepPage() {
     });
     if (cashAccount.trim()) {
       formData.append("cashAccount", cashAccount.trim());
+    }
+    if (defaultProperty.trim()) {
+      formData.append("defaultProperty", defaultProperty.trim());
     }
 
     try {
@@ -1114,6 +1118,30 @@ export default function BankCardImportPrepPage() {
                   </div>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="default-property"
+                  className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
+                >
+                  Default property (optional)
+                </label>
+                <select
+                  id="default-property"
+                  name="default-property"
+                  className="w-full rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/80 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent-strong)] focus:outline-none"
+                  value={defaultProperty}
+                  onChange={(event) => setDefaultProperty(event.target.value)}
+                  disabled={processing}
+                >
+                  <option value="">Select a property</option>
+                  <option value="4250 East Camelback Road">4250 East Camelback Road</option>
+                  <option value="555 Pittman Road">555 Pittman Road</option>
+                </select>
+                <p className="text-xs text-[color:var(--text-secondary)]">
+                  Used when Property_Name is missing in the export. Re-process to apply changes.
+                </p>
+              </div>
 
               <div className="space-y-2">
                 <label

@@ -29,8 +29,8 @@ const SOURCE_REFERENCE_PREFIX: Record<SourceKey, string> = {
 
 type UploadPayload = {
   bank: Buffer;
-  card: Buffer;
-  otherBank: Buffer;
+  card?: Buffer | null;
+  otherBank?: Buffer | null;
   reference?: Buffer | null;
   exceptions?: Buffer | null;
   codedTemplateFile?: Buffer | null;
@@ -40,12 +40,12 @@ type UploadPayload = {
 };
 
 const REQUIRED_FILES = {
-  bank: ["csv", "xlsx"],
-  card: ["csv", "xlsx"],
-  otherBank: ["xlsx", "csv"],
+  bank: ["csv"],
 } as const;
 
 const OPTIONAL_FILES = {
+  card: ["csv", "xlsx"],
+  otherBank: ["xlsx", "csv"],
   reference: ["csv", "xlsx"],
   exceptions: ["csv"],
   codedTemplateFile: ["xlsx"],
@@ -134,6 +134,11 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
 
   const isPropertyMissing = (value: string | null | undefined) => !value || !value.trim();
   const isAccountInvalid = (value: string | null | undefined) => !value || !DIGITS_ONLY.test(value.trim());
+  const emptyResult = (source: string): ParseResult => ({
+    rows: [],
+    logs: [],
+    warnings: [`[${source}] optional file not provided; skipping parse`],
+  });
 
   try {
     append(["[job] starting Bank & Card Import Prep"], [], "Validate inputs", 5);
@@ -188,10 +193,10 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       [],
     );
 
-    const cardResult = await parseCard(payload.card);
+    const cardResult = payload.card ? await parseCard(payload.card) : emptyResult("card");
     append(cardResult.logs, cardResult.warnings, "Parse card export", 40);
 
-    const otherResult = await parseOtherBank(payload.otherBank);
+    const otherResult = payload.otherBank ? await parseOtherBank(payload.otherBank) : emptyResult("other-bank");
     append(otherResult.logs, otherResult.warnings, "Parse other bank activity", 55);
 
     if (payload.reference) {
@@ -552,8 +557,8 @@ export async function POST(req: NextRequest) {
 
   const payload: UploadPayload = {
     bank: (await readBlob(files.bank))!,
-    card: (await readBlob(files.card))!,
-    otherBank: (await readBlob(files.otherBank))!,
+    card: await readBlob(files.card),
+    otherBank: await readBlob(files.otherBank),
     reference: await readBlob(files.reference),
     exceptions: await readBlob(files.exceptions),
     codedTemplateFile: await readBlob(files.codedTemplateFile),
