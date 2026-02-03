@@ -7,6 +7,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { JSX } from 'react';
 import { ClipboardList, FileText, Landmark } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
@@ -77,6 +78,7 @@ const ICONS = {
 } as const;
 
 export default function AutomatedAccountingPage(): JSX.Element {
+  const router = useRouter();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -116,12 +118,17 @@ export default function AutomatedAccountingPage(): JSX.Element {
                 exceptions, and exporting to Yardi.
               </p>
             </div>
-            <Link href="/" className="ios-button shrink-0 px-4 py-2 text-sm" data-variant="ghost">
+            <button
+              type="button"
+              className="ios-button shrink-0 px-4 py-2 text-sm"
+              data-variant="ghost"
+              onClick={() => router.push('/')}
+            >
               <span aria-hidden className="-ml-1 mr-1 text-base">
                 &larr;
               </span>
               Back to directory
-            </Link>
+            </button>
           </div>
         </header>
 
