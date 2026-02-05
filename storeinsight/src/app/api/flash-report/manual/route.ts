@@ -475,11 +475,13 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
   const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : 0));
   const rentBounds = computePaddedBounds(data, { paddingRatio: 0.2, floor: 0, ignoreZeros: true });
   console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
-  if (monthsRecent[0] !== "2025-12") {
-    throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
+  const expectedLatestMonth = monthsRecent[0];
+  const expectedLatestLabel = expectedLatestMonth ? formatMonthLabel(expectedLatestMonth) : "";
+  if (!expectedLatestMonth) {
+    throw new Error("Expected newest month to be available, got empty series");
   }
-  if (labels[labels.length - 1] !== "Dec 25") {
-    throw new Error(`Expected last label Dec 25, got ${labels[labels.length - 1]}`);
+  if (labels[labels.length - 1] !== expectedLatestLabel) {
+    throw new Error(`Expected last label ${expectedLatestLabel}, got ${labels[labels.length - 1]}`);
   }
   if (labels.length !== data.length) {
     throw new Error("MoM series length mismatch");
@@ -565,11 +567,13 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
   const data = dataAsc.map((value) => (typeof value === "number" && Number.isFinite(value) ? value : null));
   const occupancyBounds = computePaddedBounds(data, { paddingRatio: 0.2, floor: 0, ceil: 100, minRange: 2 });
   console.log("[MoM debug]", { propertyId, monthsRecent, monthsAsc, labels });
-  if (monthsRecent[0] !== "2025-12") {
-    throw new Error(`Expected newest month 2025-12, got ${monthsRecent[0]}`);
+  const expectedLatestMonth = monthsRecent[0];
+  const expectedLatestLabel = expectedLatestMonth ? formatMonthLabel(expectedLatestMonth) : "";
+  if (!expectedLatestMonth) {
+    throw new Error("Expected newest month to be available, got empty series");
   }
-  if (labels[labels.length - 1] !== "Dec 25") {
-    throw new Error(`Expected last label Dec 25, got ${labels[labels.length - 1]}`);
+  if (labels[labels.length - 1] !== expectedLatestLabel) {
+    throw new Error(`Expected last label ${expectedLatestLabel}, got ${labels[labels.length - 1]}`);
   }
   if (labels.length !== data.length) {
     throw new Error("MoM series length mismatch");
