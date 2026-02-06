@@ -1,4 +1,4 @@
-export const RANGE_KEYS = ['3M', '6M', '12M'] as const;
+export const RANGE_KEYS = ['3M', '6M', '1Y', '2Y'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];
 
 export type MonthlyArAging = {
@@ -103,7 +103,8 @@ export type HistoricalPlaceholderData = {
 const RANGE_MONTHS: Record<RangeKey, number> = {
   '3M': 3,
   '6M': 6,
-  '12M': 12,
+  '1Y': 12,
+  '2Y': 24,
 };
 
 const END_YEAR = 2025;
@@ -307,8 +308,9 @@ const buildPlaceholder = (range: RangeKey): HistoricalPlaceholderData => {
 const PLACEHOLDER_BY_RANGE: Record<RangeKey, HistoricalPlaceholderData> = {
   '3M': buildPlaceholder('3M'),
   '6M': buildPlaceholder('6M'),
-  '12M': buildPlaceholder('12M'),
+  '1Y': buildPlaceholder('1Y'),
+  '2Y': buildPlaceholder('2Y'),
 };
 
 export const getHistoricalPlaceholder = (range: RangeKey): HistoricalPlaceholderData =>
-  PLACEHOLDER_BY_RANGE[range] ?? PLACEHOLDER_BY_RANGE['12M'];
+  PLACEHOLDER_BY_RANGE[range] ?? PLACEHOLDER_BY_RANGE['1Y'];

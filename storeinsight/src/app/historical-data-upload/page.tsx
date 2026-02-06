@@ -940,7 +940,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
             <div className="space-y-2">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">Historical data JSON</div>
               <p className="text-xs text-[color:var(--text-secondary)]">
-                Required: historicalByRange with 3M, 6M, 12M. Optional: momSeries or momSeriesByProperty.
+                Required: historicalByRange with 3M, 6M, 1Y, and 2Y. Optional: momSeries or momSeriesByProperty.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -987,7 +987,9 @@ export default function HistoricalDataUploadPage(): JSX.Element {
               <div className="text-[color:var(--text-secondary)]">
                 Months per range: 3M={validationSummary.summary.rangeMonthCounts['3M'] ?? 0}, 6M={
                   validationSummary.summary.rangeMonthCounts['6M'] ?? 0
-                }, 12M={validationSummary.summary.rangeMonthCounts['12M'] ?? 0}
+                }, 1Y={validationSummary.summary.rangeMonthCounts['1Y'] ?? 0}, 2Y={
+                  validationSummary.summary.rangeMonthCounts['2Y'] ?? 0
+                }
               </div>
               {validationSummary.summary.momSeriesLength !== undefined ? (
                 <div className="text-[color:var(--text-secondary)]">

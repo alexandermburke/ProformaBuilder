@@ -85,7 +85,8 @@ export const getHistoricalTemplatePayload = (): HistoricalDataBundle => ({
   historicalByRange: {
     '3M': getHistoricalPlaceholder('3M'),
     '6M': getHistoricalPlaceholder('6M'),
-    '12M': getHistoricalPlaceholder('12M'),
+    '1Y': getHistoricalPlaceholder('1Y'),
+    '2Y': getHistoricalPlaceholder('2Y'),
   },
   momSeriesByProperty: MOM_SERIES_BY_PROPERTY,
 });
@@ -104,7 +105,8 @@ export const parseHistoricalInput = (raw: string): { data?: HistoricalDataBundle
     ? {
         '3M': payload as HistoricalPlaceholderData,
         '6M': payload as HistoricalPlaceholderData,
-        '12M': payload as HistoricalPlaceholderData,
+        '1Y': payload as HistoricalPlaceholderData,
+        '2Y': payload as HistoricalPlaceholderData,
       }
     : null;
 
@@ -116,7 +118,7 @@ export const parseHistoricalInput = (raw: string): { data?: HistoricalDataBundle
 
   if (!historicalByRange) {
     return {
-      error: 'historicalByRange must include 3M, 6M, and 12M datasets with series, tables, and metrics.',
+      error: 'historicalByRange must include 3M, 6M, 1Y, and 2Y datasets with series, tables, and metrics.',
     };
   }
 
@@ -159,13 +161,14 @@ export const parsePropertyHistoricalInput = (
       ? {
           '3M': payload as HistoricalPlaceholderData,
           '6M': payload as HistoricalPlaceholderData,
-          '12M': payload as HistoricalPlaceholderData,
+          '1Y': payload as HistoricalPlaceholderData,
+          '2Y': payload as HistoricalPlaceholderData,
         }
       : null);
 
   if (!historicalByRange) {
     return {
-      error: 'historicalByRange must include 3M, 6M, and 12M datasets with series, tables, and metrics.',
+      error: 'historicalByRange must include 3M, 6M, 1Y, and 2Y datasets with series, tables, and metrics.',
     };
   }
 
@@ -258,7 +261,7 @@ export const validatePropertyHistoricalPayload = (
       if (minLength > 0 && !months.every((value) => typeof value === 'string' && value.trim())) {
         errors.push('momSeries.months must contain YYYY-MM strings.');
       }
-      rangeMonthCounts['12M'] = rangeMonthCounts['12M'] ?? 0;
+      rangeMonthCounts['1Y'] = rangeMonthCounts['1Y'] ?? 0;
     }
   } else {
     warnings.push('momSeries is missing; overview charts will not render.');

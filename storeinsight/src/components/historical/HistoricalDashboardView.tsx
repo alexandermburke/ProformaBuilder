@@ -185,7 +185,7 @@ export function HistoricalDashboardView({
 }: HistoricalDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const [range, setRange] = useState<RangeKey>('12M');
+  const [range, setRange] = useState<RangeKey>('1Y');
   const [section, setSection] = useState<SectionKey>('overview');
   const [selectedProperty, setSelectedProperty] = useState<string>(
     scopedPropertyId ?? propertyOptions[0]?.id ?? '',
@@ -870,4 +870,3 @@ export function HistoricalDashboardView({
     </div>
   );
 }
-
