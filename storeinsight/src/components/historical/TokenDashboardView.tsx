@@ -858,21 +858,21 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(projRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy (latest MSR)</div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">MTD Net Move-ins</div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatSignedNumber(netMoveInsValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs (latest MSR)</div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Gross Potential Rent</div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(grossPotentialRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Revenue statistics</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Revenue statistics (latest MSR)</div>
             </div>
           </div>
 
@@ -952,7 +952,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <ChartCard
                 key={`token-occupancy-${range}`}
                 title="Occupancy trend (RSF)"
-                subtitle="Latest MSR snapshots"
+                subtitle={`Selected range snapshots (${range})`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-4 text-xs text-[color:var(--text-secondary)]">
@@ -1242,7 +1242,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <ChartCard
                 key={`token-unitmix-${range}`}
                 title="Unit mix"
-                subtitle="Occupied RSF by type"
+                subtitle="Occupied RSF by type (latest MSR)"
                 emptyMessage={!totalOccupiedRsf || unitMixSegments.length === 0 ? 'N/A' : undefined}
               >
                 <div className="flex items-center justify-center">
@@ -1307,12 +1307,17 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <section className="grid gap-6 lg:grid-cols-2">
               <ChartCard
                 title="Monthly Net Revenue (MTD)"
-                subtitle="Net revenue per snapshot"
+                subtitle={`Net revenue per snapshot (${range} range)`}
                 actions={
                   <div className="text-right text-sm text-[color:var(--text-secondary)]">
-                    <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Total</div>
+                    <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                      Range total
+                    </div>
                     <div className="text-base font-semibold text-[color:var(--text-primary)]">
                       {netRevenueTotal == null ? 'N/A' : formatMaybeCompactCurrency(netRevenueTotal)}
+                    </div>
+                    <div className="text-[10px] text-[color:var(--text-muted)]">
+                      Sum of MSR snapshots in range
                     </div>
                   </div>
                 }
