@@ -9,12 +9,18 @@ type Credential = {
 const parseUsersFromEnv = (): Credential[] => {
   const raw = process.env[AUTH_USERS_ENV];
   if (!raw) return [];
-  return raw
-    .split(/[;,]/)
+  const entries = raw
+    .split(/[\n\r,;]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return entries
     .map((entry) => {
-      const [email, password] = entry.split(":");
+      const separatorIndex = entry.indexOf(":");
+      if (separatorIndex <= 0) return null;
+      const email = entry.slice(0, separatorIndex).trim().toLowerCase();
+      const password = entry.slice(separatorIndex + 1).trim();
       if (!email || !password) return null;
-      return { email: email.trim().toLowerCase(), password: password.trim() };
+      return { email, password };
     })
     .filter((item): item is Credential => Boolean(item && item.email && item.password));
 };
