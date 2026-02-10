@@ -2,12 +2,12 @@ import type { JSX, ReactNode } from 'react';
 import { InfoTooltip } from './InfoTooltip';
 
 type ChartCardProps = {
-  title: string;
-  subtitle?: string;
+  title: ReactNode;
+  subtitle?: ReactNode;
   info?: string;
   actions?: ReactNode;
   children?: ReactNode;
-  emptyMessage?: string;
+  emptyMessage?: ReactNode;
   className?: string;
 };
 
