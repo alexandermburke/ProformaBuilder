@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE_NAME, verifySessionTokenNode } from "@/lib/internalAuth";
+import { getUserRole, isAdminEmail } from "@/lib/userRoles";
 
 export async function GET(): Promise<Response> {
   const cookieStore = await cookies();
@@ -12,5 +13,5 @@ export async function GET(): Promise<Response> {
   if (!email) {
     return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json({ ok: true, email });
+  return NextResponse.json({ ok: true, email, role: getUserRole(email), isAdmin: isAdminEmail(email) });
 }

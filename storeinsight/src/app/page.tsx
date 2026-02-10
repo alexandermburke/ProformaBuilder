@@ -257,6 +257,7 @@ export default function DirectoryPage(): JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [modalFeature, setModalFeature] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
 
@@ -269,6 +270,7 @@ export default function DirectoryPage(): JSX.Element {
         if (!active) return;
         if (!res.ok) {
           setSessionEmail(null);
+          setIsAdmin(false);
           const redirectTarget =
             typeof window !== 'undefined'
               ? encodeURIComponent(`${window.location.pathname}${window.location.search}`)
@@ -276,9 +278,10 @@ export default function DirectoryPage(): JSX.Element {
           router.replace(`/login${redirectTarget ? `?redirect=${redirectTarget}` : ''}`);
           return;
         }
-        const data = (await res.json().catch(() => null)) as { email?: string } | null;
+        const data = (await res.json().catch(() => null)) as { email?: string; isAdmin?: boolean } | null;
         if (active) {
           setSessionEmail(data?.email ?? null);
+          setIsAdmin(Boolean(data?.isAdmin));
         }
       } finally {
         if (active) setSessionChecked(true);
@@ -292,6 +295,11 @@ export default function DirectoryPage(): JSX.Element {
   }, [router]);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setDevModeLoading(false);
+      setDevModeError(null);
+      return;
+    }
     let active = true;
     const fetchDevMode = async () => {
       setDevModeLoading(true);
@@ -311,7 +319,7 @@ export default function DirectoryPage(): JSX.Element {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdmin]);
 
   const handleLogout = async () => {
     setActionStatus('Signing out...');
@@ -321,6 +329,7 @@ export default function DirectoryPage(): JSX.Element {
       console.error('Logout error', err);
     } finally {
       setSessionEmail(null);
+      setIsAdmin(false);
       router.replace('/login');
     }
   };
@@ -709,6 +718,11 @@ export default function DirectoryPage(): JSX.Element {
                   ? 'Logged out'
                   : 'Checking session...'}
             </span>
+            {isAdmin ? (
+              <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
+                Admin
+              </span>
+            ) : null}
           </div>
         </footer>
       </div>
@@ -736,7 +750,9 @@ export default function DirectoryPage(): JSX.Element {
           <div className="ios-card ios-animate-up w-full max-w-md space-y-6 p-6">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">Settings</h3>
+              </div>
                 <p className="text-sm text-[color:var(--text-secondary)]">
                   Adjust workspace preferences for this directory view.
                 </p>
@@ -773,26 +789,28 @@ export default function DirectoryPage(): JSX.Element {
                   <span className={togglePillClass} />
                 </button>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="text-sm font-semibold text-[color:var(--text-primary)]">Development Mode</div>
-                  <p className="text-xs text-[color:var(--text-secondary)]">
-                    When enabled, Daily Flash automation emails only alex@storestorage.com instead of owner recipients.
-                  </p>
-                  {devModeError ? (
-                    <p className="text-xs text-red-500">Error: {devModeError}</p>
-                  ) : null}
+              {isAdmin ? (
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-[color:var(--text-primary)]">Development Mode</div>
+                    <p className="text-xs text-[color:var(--text-secondary)]">
+                      When enabled, Daily Flash automation emails only alex@storestorage.com instead of owner recipients.
+                    </p>
+                    {devModeError ? (
+                      <p className="text-xs text-red-500">Error: {devModeError}</p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleFlashDevMode}
+                    aria-pressed={flashDevMode}
+                    disabled={devModeLoading || devModeSaving}
+                    className={toggleButtonClass(flashDevMode)}
+                  >
+                    <span className={togglePillClass} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={toggleFlashDevMode}
-                  aria-pressed={flashDevMode}
-                  disabled={devModeLoading || devModeSaving}
-                  className={toggleButtonClass(flashDevMode)}
-                >
-                  <span className={togglePillClass} />
-                </button>
-              </div>
+              ) : null}
               <div className="rounded-[16px] border border-[rgba(148,163,255,0.28)] bg-white/60 p-4 text-xs text-[color:var(--text-secondary)]">
                 <p>Preferences sync locally in this browser. More personalization options are coming soon.</p>
               </div>
