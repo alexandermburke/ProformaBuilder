@@ -66,6 +66,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         netRevenueMtd: snapshot.revenue?.netRevenueMtd,
         grossPotentialRevenue: snapshot.revenue?.grossPotentialRevenue,
         economicOccupancy: snapshot.revenue?.economicOccupancy,
+        occupiedRateVarianceAmount: snapshot.revenue?.occupiedRateVarianceAmount,
+        occupiedRateVariancePct: snapshot.revenue?.occupiedRateVariancePct,
       },
       rentals: {
         moveInsMtd: snapshot.rentals?.moveInsMtd,
@@ -78,6 +80,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       ar: {
         totalPastDue: snapshot.ar?.totalPastDue,
         delinquentTenantCount: snapshot.ar?.delinquentTenantCount,
+        overlockedUnitCount: snapshot.ar?.overlockedUnitCount,
+        overlockTotalBalance: snapshot.ar?.overlockTotalBalance,
+        overlockAvgDaysLate: snapshot.ar?.overlockAvgDaysLate,
+      },
+      pricing: {
+        avgCurrentRentOccupied: snapshot.pricing?.avgCurrentRentOccupied,
+        avgSellRateOccupied: snapshot.pricing?.avgSellRateOccupied,
+        occupiedActualAvg: snapshot.pricing?.occupiedActualAvg,
+        occupiedTargetAvg: snapshot.pricing?.occupiedTargetAvg,
+        occupiedRateVarianceAmount: snapshot.pricing?.occupiedRateVarianceAmount,
+        occupiedRateVariancePct: snapshot.pricing?.occupiedRateVariancePct,
       },
     });
     if (parsed.occupancyDiagnostics) {

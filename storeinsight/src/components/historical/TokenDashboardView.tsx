@@ -10,7 +10,6 @@ import Link from 'next/link';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import { ChartCard } from './ChartCard';
-import { InfoTooltip } from './InfoTooltip';
 import { KpiRow } from './KpiRow';
 import { SectionHeader } from './SectionHeader';
 import { SimpleTable } from './SimpleTable';
@@ -146,33 +145,7 @@ type SeriesPoint = {
 
 type SignalTone = 'success' | 'warning' | 'neutral';
 
-type AbbrevKey = 'AR' | 'RSF' | 'MSR' | 'MTD' | 'YoY' | 'ECRI' | 'Avg' | 'Ops' | 'Proj.' | '3M' | '6M';
-
-const ABBREV_DEFINITIONS: Record<AbbrevKey, string> = {
-  AR: 'Accounts receivable (from the MSR delinquency/aging section).',
-  RSF: 'Rentable square feet (from the MSR occupancy section).',
-  MSR: 'Management Summary Report export from the property management system.',
-  MTD: 'Month-to-date totals for the current reporting month (from MSR snapshots).',
-  YoY: 'Year-over-year change vs the same month last year (calculated from MSR history).',
-  ECRI: 'Existing Customer Rate Increase (from MSR pricing cadence).',
-  Avg: 'Average value (computed from the latest MSR snapshot).',
-  Ops: 'Operational drilldowns (from MSR operational metrics).',
-  'Proj.': 'Projected values based on MSR economic occupancy.',
-  '3M': 'Last 3 months of MSR snapshots.',
-  '6M': 'Last 6 months of MSR snapshots.',
-};
-
-const buildAbbrevInfo = (...keys: AbbrevKey[]): string =>
-  keys.map((key) => `${key}: ${ABBREV_DEFINITIONS[key]}`).join(' | ');
-
-function InlineInfoLabel({ label, info }: { label: string; info?: string }): JSX.Element {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span>{label}</span>
-      {info ? <InfoTooltip label={info} /> : null}
-    </span>
-  );
-}
+const ECRI_INFO = 'ECRI = Existing Customer Rate Increase (from MSR pricing cadence).';
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
   { key: '3M', months: 3 },
@@ -193,10 +166,6 @@ const SECTION_MOBILE_LABELS: Record<SectionKey, string> = {
   drilldowns: 'Ops',
 };
 
-const SECTION_TAB_INFO: Partial<Record<SectionKey, string>> = {
-  collections: buildAbbrevInfo('AR'),
-  drilldowns: buildAbbrevInfo('Ops'),
-};
 
 const DRILLDOWN_TABS: Array<{ id: DrilldownTab; label: string; mobileLabel: string }> = [
   { id: 'demand', label: 'Demand Funnel', mobileLabel: 'Demand' },
@@ -882,45 +851,37 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
           <div className={hideHeaderDetailsOnMobile ? 'hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4' : 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4'}>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                <InlineInfoLabel label="Occupancy (RSF)" info={buildAbbrevInfo('RSF')} />
+                Occupancy (RSF)
               </div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybePercent(occupancyValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">
-                <InlineInfoLabel label="Latest MSR" info={buildAbbrevInfo('MSR')} />
-              </div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Latest MSR</div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                <InlineInfoLabel label="Proj. Rent" info={buildAbbrevInfo('Proj.')} />
+                Proj. Rent
               </div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(projRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">
-                <InlineInfoLabel label="Economic occupancy (latest MSR)" info={buildAbbrevInfo('MSR')} />
-              </div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy (latest MSR)</div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                <InlineInfoLabel label="MTD Net Move-ins" info={buildAbbrevInfo('MTD')} />
+                MTD Net Move-ins
               </div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatSignedNumber(netMoveInsValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">
-                <InlineInfoLabel label="Move-ins minus move-outs (latest MSR)" info={buildAbbrevInfo('MSR')} />
-              </div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs (latest MSR)</div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Gross Potential Rent</div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(grossPotentialRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">
-                <InlineInfoLabel label="Revenue statistics (latest MSR)" info={buildAbbrevInfo('MSR')} />
-              </div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Revenue statistics (latest MSR)</div>
             </div>
           </div>
 
@@ -930,38 +891,29 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                 Section
               </span>
               <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
-                {SECTION_TABS.map((sectionOption) => {
-                  const sectionInfo = SECTION_TAB_INFO[sectionOption.id];
-                  return (
-                    <button
-                      key={sectionOption.id}
-                      type="button"
-                      aria-pressed={section === sectionOption.id}
-                      onClick={() => setSection(sectionOption.id)}
-                      className={[
-                        'rounded-full px-3 py-1 transition-colors',
-                        section === sectionOption.id
-                          ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
-                          : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
-                      ].join(' ')}
-                    >
-                      <span className="text-[10px] sm:hidden inline-flex items-center gap-1">
-                        <span>{SECTION_MOBILE_LABELS[sectionOption.id]}</span>
-                        {sectionInfo ? <InfoTooltip label={sectionInfo} /> : null}
-                      </span>
-                      <span className="hidden sm:inline-flex items-center gap-1">
-                        <span>{sectionOption.label}</span>
-                        {sectionInfo ? <InfoTooltip label={sectionInfo} /> : null}
-                      </span>
-                    </button>
-                  );
-                })}
+                {SECTION_TABS.map((sectionOption) => (
+                  <button
+                    key={sectionOption.id}
+                    type="button"
+                    aria-pressed={section === sectionOption.id}
+                    onClick={() => setSection(sectionOption.id)}
+                    className={[
+                      'rounded-full px-3 py-1 transition-colors',
+                      section === sectionOption.id
+                        ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
+                        : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
+                    ].join(' ')}
+                  >
+                    <span className="text-[10px] sm:hidden">{SECTION_MOBILE_LABELS[sectionOption.id]}</span>
+                    <span className="hidden sm:inline">{sectionOption.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
             <div className="flex w-full items-center gap-3 sm:w-auto">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-                  <InlineInfoLabel label="Range" info={buildAbbrevInfo('3M', '6M')} />
+                  Range
                 </span>
                 <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
                   {RANGE_OPTIONS.map((rangeOption) => (
@@ -1009,19 +961,13 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                 <ChartCard
                   key={`token-occupancy-${range}`}
                   title="Occupancy trend (RSF)"
-                  subtitle={
-                    <InlineInfoLabel
-                      label={`Selected range snapshots (${range})`}
-                      info={buildAbbrevInfo('3M', '6M')}
-                    />
-                  }
-                  info={buildAbbrevInfo('RSF')}
+                  subtitle={`Selected range snapshots (${range})`}
                 >
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-4 text-xs text-[color:var(--text-secondary)]">
                     <span className="inline-flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.8)]" />
-                      <InlineInfoLabel label="Occupancy (RSF)" info={buildAbbrevInfo('RSF')} />
+                      Occupancy (RSF)
                     </span>
                     {sellHasData ? (
                       <span className="inline-flex items-center gap-2">
@@ -1276,7 +1222,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   <div className="ios-list-card flex items-center gap-3 px-4 py-2">
                     <div>
                       <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        <InlineInfoLabel label="Latest occupancy (RSF)" info={buildAbbrevInfo('RSF')} />
+                        Latest occupancy (RSF)
                       </div>
                       <div className="text-lg font-semibold text-[color:var(--text-primary)]">
                         {formatMaybePercent(latestOccupancyPoint)}
@@ -1296,7 +1242,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   <div className="ios-list-card flex items-center gap-3 px-4 py-2">
                     <div>
                       <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        <InlineInfoLabel label="YoY change" info={buildAbbrevInfo('YoY')} />
+                        YoY change
                       </div>
                       <div className="text-lg font-semibold text-[color:var(--text-primary)]">N/A</div>
                     </div>
@@ -1307,12 +1253,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <ChartCard
                 key={`token-unitmix-${range}`}
                 title="Unit mix"
-                subtitle={
-                  <InlineInfoLabel
-                    label="Occupied RSF by type (latest MSR)"
-                    info={buildAbbrevInfo('RSF', 'MSR')}
-                  />
-                }
+                subtitle="Occupied RSF by type (latest MSR)"
                 emptyMessage={!totalOccupiedRsf || unitMixSegments.length === 0 ? 'N/A' : undefined}
               >
                 <div className="flex items-center justify-center">
@@ -1351,9 +1292,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                       <div className="text-2xl font-semibold text-[color:var(--text-primary)]">
                         {occupiedPct ? formatMaybePercent(occupiedPct, 1) : formatMaybeNumber(totalOccupiedRsf)}
                       </div>
-                      <div className="text-xs text-[color:var(--text-secondary)]">
-                        <InlineInfoLabel label="Occupied RSF" info={buildAbbrevInfo('RSF')} />
-                      </div>
+                      <div className="text-xs text-[color:var(--text-secondary)]">Occupied RSF</div>
                     </div>
                   </div>
                 </div>
@@ -1379,13 +1318,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <section className="grid gap-6 lg:grid-cols-2">
               <ChartCard
                 title="Monthly Net Revenue (MTD)"
-                subtitle={
-                  <InlineInfoLabel
-                    label={`Net revenue per snapshot (${range} range)`}
-                    info={buildAbbrevInfo('3M', '6M')}
-                  />
-                }
-                info={buildAbbrevInfo('MTD')}
+                subtitle={`Net revenue per snapshot (${range} range)`}
                 actions={
                   <div className="text-right text-sm text-[color:var(--text-secondary)]">
                     <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
@@ -1394,9 +1327,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                     <div className="text-base font-semibold text-[color:var(--text-primary)]">
                       {netRevenueTotal == null ? 'N/A' : formatMaybeCompactCurrency(netRevenueTotal)}
                     </div>
-                    <div className="text-[10px] text-[color:var(--text-muted)]">
-                      <InlineInfoLabel label="Sum of MSR snapshots in range" info={buildAbbrevInfo('MSR')} />
-                    </div>
+                    <div className="text-[10px] text-[color:var(--text-muted)]">Sum of MSR snapshots in range</div>
                   </div>
                 }
               >
@@ -1577,12 +1508,10 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <div className="text-lg font-semibold text-[color:var(--text-primary)]">Snapshot signals</div>
-                    <div className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
-                      <InlineInfoLabel label="MSR trend highlights" info={buildAbbrevInfo('MSR')} />
-                    </div>
+                    <div className="text-xs uppercase tracking-wide text-[color:var(--text-muted)]">MSR trend highlights</div>
                   </div>
                   <span className="ios-pill text-[10px]" data-tone="neutral">
-                    <InlineInfoLabel label={`Range ${range}`} info={buildAbbrevInfo('3M', '6M')} />
+                    Range {range}
                   </span>
                 </div>
 
@@ -1594,12 +1523,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                         ? `As of ${latestDateLabel}`
                         : latestMonthLabel
                           ? `As of ${latestMonthLabel}`
-                          : (
-                              <InlineInfoLabel
-                                label="Latest MSR snapshot"
-                                info={buildAbbrevInfo('MSR')}
-                              />
-                            )}
+                          : 'Latest MSR snapshot'}
                     </div>
                   </div>
 
@@ -1649,7 +1573,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                     </div>
                     <div className="text-right">
                       <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        <InlineInfoLabel label="Net revenue (MTD)" info={buildAbbrevInfo('MTD')} />
+                        Net revenue (MTD)
                       </div>
                       <div className="text-base font-semibold text-[color:var(--text-primary)] tabular-nums">
                         {formatMaybeCurrency(netRevenueValue)}
@@ -1657,7 +1581,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                     </div>
                     <div className="text-right">
                       <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        <InlineInfoLabel label="Net move-ins (MTD)" info={buildAbbrevInfo('MTD')} />
+                        Net move-ins (MTD)
                       </div>
                       <div className="text-base font-semibold text-[color:var(--text-primary)] tabular-nums">
                         {formatSignedNumber(netMoveInsValue)}
@@ -1786,11 +1710,7 @@ function CollectionsSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader
-          title="Collections & AR"
-          subtitle="Delinquency exposure and AR aging from MSR snapshots."
-          info={buildAbbrevInfo('AR', 'MSR')}
-        />
+        <SectionHeader title="Collections & AR" subtitle="Delinquency exposure and AR aging from MSR snapshots." />
 
         <KpiRow
           items={[
@@ -1805,7 +1725,6 @@ function CollectionsSection({
         <ChartCard
           title="AR Aging Trend"
           subtitle="Past due buckets"
-          info={buildAbbrevInfo('AR')}
           emptyMessage={agingEmptyMessage}
           className="md:col-span-2 xl:col-span-2"
         >
@@ -1864,18 +1783,14 @@ function CollectionsSection({
         </ChartCard>
 
         <ChartCard title="Overlock Risk" subtitle="Overlocked spaces">
-          <KpiRow
-            items={[
-              { label: 'Overlocked units', value: formatMaybeNumber(latestAr?.overlockedUnitCount) },
-              { label: 'Total balance', value: formatMaybeCurrency(latestAr?.overlockTotalBalance) },
-              {
-                label: 'Avg days late',
-                value: formatMaybeNumber(latestAr?.overlockAvgDaysLate),
-                info: buildAbbrevInfo('Avg'),
-              },
-            ]}
-            columns={3}
-          />
+            <KpiRow
+              items={[
+                { label: 'Overlocked units', value: formatMaybeNumber(latestAr?.overlockedUnitCount) },
+                { label: 'Total balance', value: formatMaybeCurrency(latestAr?.overlockTotalBalance) },
+                { label: 'Avg days late', value: formatMaybeNumber(latestAr?.overlockAvgDaysLate) },
+              ]}
+              columns={3}
+            />
 
           {overlockDistribution.length === 0 ? (
             <div className="ios-list-card border border-dashed border-[rgba(148,163,255,0.32)] bg-[color:var(--surface)] p-4 text-sm text-[color:var(--text-secondary)] shadow-inner">
@@ -1907,12 +1822,7 @@ function CollectionsSection({
           subtitle="Latest snapshot"
           emptyMessage={
             topDelinquencies.length === 0
-              ? (
-                  <InlineInfoLabel
-                    label="N/A (not available in MSR snapshot storage yet)"
-                    info={buildAbbrevInfo('MSR')}
-                  />
-                )
+              ? 'N/A (not available in MSR snapshot storage yet)'
               : undefined
           }
         >
@@ -2094,25 +2004,13 @@ function PricingSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader
-          title="Pricing & Revenue Quality"
-          subtitle="Rates and pricing cadence from MSR snapshots."
-          info={buildAbbrevInfo('MSR')}
-        />
+        <SectionHeader title="Pricing & Revenue Quality" subtitle="Rates and pricing cadence from MSR snapshots." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard title="Set Rate vs Sell Rate (Occupied)" subtitle="Target vs actual rates">
             <KpiRow
               items={[
-                {
-                  label: 'Sell rate (actual avg)',
-                  value: formatMaybeCurrency(currentRent),
-                  info: buildAbbrevInfo('Avg'),
-                },
-                {
-                  label: 'Set rate (target avg)',
-                  value: formatMaybeCurrency(sellRate),
-                  info: buildAbbrevInfo('Avg'),
-                },
+                { label: 'Sell rate (actual avg)', value: formatMaybeCurrency(currentRent) },
+                { label: 'Set rate (target avg)', value: formatMaybeCurrency(sellRate) },
                 { label: 'Sell vs set spread', value: formatMaybePercent(spreadPct, 1) },
               ]}
               columns={3}
@@ -2248,7 +2146,7 @@ function PricingSection({
           )}
         </ChartCard>
 
-        <ChartCard title="Occupied Rate Variance" subtitle="MSR variance metric" info={buildAbbrevInfo('MSR')}>
+        <ChartCard title="Occupied Rate Variance" subtitle="MSR variance metric">
           <div className="ios-list-card space-y-2 p-4 text-sm">
             <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Variance</div>
             <div className="text-lg font-semibold text-[color:var(--text-primary)]">
@@ -2345,22 +2243,18 @@ function PricingSection({
           </div>
         </ChartCard>
 
-        <ChartCard
-          title="ECRI Cadence"
-          subtitle="Existing Customer Rate Increase (MTD)"
-          info={buildAbbrevInfo('ECRI', 'MTD')}
-        >
+        <ChartCard title="ECRI Cadence" subtitle="Existing Customer Rate Increase (MTD)">
           <KpiRow
             items={[
               {
                 label: 'ECRI count (MTD)',
                 value: formatMaybeNumber(rentChangeCount),
-                info: buildAbbrevInfo('ECRI', 'MTD'),
+                info: ECRI_INFO,
               },
               {
                 label: 'Avg ECRI %',
                 value: formatMaybePercent(avgRentChangePct, 1),
-                info: buildAbbrevInfo('Avg', 'ECRI'),
+                info: ECRI_INFO,
               },
             ]}
             columns={2}
@@ -2485,7 +2379,7 @@ function PricingSection({
         </ChartCard>
         </div>
 
-        <ChartCard title="Stale Rent Exposure" subtitle="No ECRI in 12 months" info={buildAbbrevInfo('ECRI')}>
+        <ChartCard title="Stale Rent Exposure" subtitle="No ECRI in 12 months">
         <KpiRow
           items={[
             {
@@ -2656,17 +2550,15 @@ function OperationalSection({
               </button>
             ))}
           </div>
-          <span className="text-xs text-[color:var(--text-muted)]">
-            <InlineInfoLabel label={`Range: ${rangeKey}`} info={buildAbbrevInfo('3M', '6M')} />
-          </span>
+          <span className="text-xs text-[color:var(--text-muted)]">Range: {rangeKey}</span>
         </div>
 
         {activeTab === 'demand' ? (
           <div className="space-y-6">
             <KpiRow
               items={[
-                { label: 'Total leads (MTD)', value: formatMaybeNumber(leadsTotal), info: buildAbbrevInfo('MTD') },
-                { label: 'Move-ins (MTD)', value: formatMaybeNumber(moveInsMtd), info: buildAbbrevInfo('MTD') },
+                { label: 'Total leads (MTD)', value: formatMaybeNumber(leadsTotal) },
+                { label: 'Move-ins (MTD)', value: formatMaybeNumber(moveInsMtd) },
                 { label: 'Conversion %', value: formatMaybePercent(conversionPct, 1) },
                 { label: 'Median days', value: 'N/A' },
               ]}
@@ -2678,7 +2570,6 @@ function OperationalSection({
                 key={`demand-leads-${rangeKey}`}
                 title="Leads by channel (MTD)"
                 subtitle="Latest snapshot"
-                info={buildAbbrevInfo('MTD')}
                 emptyMessage={!channelSum ? 'N/A' : undefined}
               >
                 <div className="flex flex-wrap items-center gap-4 text-xs text-[color:var(--text-secondary)]">
@@ -2765,17 +2656,14 @@ function OperationalSection({
                 {
                   label: 'Promos (MTD)',
                   value: formatMaybeCurrency(latestSnapshot?.concessions?.promosDiscountsMtd),
-                  info: buildAbbrevInfo('MTD'),
                 },
                 {
                   label: 'Credits (MTD)',
                   value: formatMaybeCurrency(latestSnapshot?.concessions?.creditsAdjustmentsMtd),
-                  info: buildAbbrevInfo('MTD'),
                 },
                 {
                   label: 'Refunds + write-offs (MTD)',
                   value: formatMaybeCurrency(latestSnapshot?.concessions?.refundsWriteoffsMtd),
-                  info: buildAbbrevInfo('MTD'),
                 },
               ]}
               columns={3}
@@ -2842,7 +2730,6 @@ function OperationalSection({
                 {
                   label: 'Coverage premium (MTD)',
                   value: formatMaybeCurrency(latestSnapshot?.coverage?.premiumMtd),
-                  info: buildAbbrevInfo('MTD'),
                 },
               ]}
               columns={3}

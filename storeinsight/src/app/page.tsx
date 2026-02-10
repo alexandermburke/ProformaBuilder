@@ -722,6 +722,10 @@ export default function DirectoryPage(): JSX.Element {
               <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
                 Admin
               </span>
+            ) : sessionEmail ? (
+              <span className="ios-pill text-[10px]" data-tone="green">
+                User
+              </span>
             ) : null}
           </div>
         </footer>

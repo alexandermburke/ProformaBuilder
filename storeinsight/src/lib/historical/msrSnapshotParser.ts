@@ -33,6 +33,7 @@ export type MsrSnapshotPayload = {
     economicOccPerSqft?: number;
     grossPotentialRevenue?: number;
     grossOccupiedRevenue?: number;
+    occupiedRateVarianceAmount?: number;
     occupiedRateVariancePct?: number;
   };
   rentals?: {
@@ -99,9 +100,13 @@ export type MsrSnapshotPayload = {
   pricing?: {
     avgSellRateOccupied?: number;
     avgCurrentRentOccupied?: number;
+    occupiedActualAvg?: number;
+    occupiedTargetAvg?: number;
     avgSellRatePerSqftOccupied?: number;
     avgCurrentRentPerSqftOccupied?: number;
+    occupiedRateVarianceAmount?: number;
     occupiedRateVariancePct?: number;
+    occupiedRateVariance?: number;
     spreadPct?: number;
     rentChangeCount?: number;
     avgRentChangePct?: number;
@@ -653,6 +658,50 @@ const collectRowNumbers = (row: CellValue[], startCol: number): number[] => {
   return values;
 };
 
+type NumericCell = { value: number; raw: CellValue };
+
+const collectRowNumericCells = (row: CellValue[], startCol: number): NumericCell[] => {
+  const values: NumericCell[] = [];
+  for (let c = startCol; c < row.length; c += 1) {
+    const numeric = coerceNumber(row[c]);
+    if (numeric == null) continue;
+    values.push({ value: numeric, raw: row[c] });
+  }
+  return values;
+};
+
+const isPercentLikeCell = (cell: NumericCell): boolean => {
+  if (typeof cell.raw === 'string' && cell.raw.includes('%')) return true;
+  if (typeof cell.raw === 'number') {
+    return Math.abs(cell.raw) <= 1;
+  }
+  return Math.abs(cell.value) <= 1;
+};
+
+const selectVarianceValues = (
+  row: CellValue[],
+  startCol: number,
+): { amount?: number; pct?: number } => {
+  const cells = collectRowNumericCells(row, startCol);
+  if (!cells.length) return {};
+
+  let percentIndex = cells.findIndex(isPercentLikeCell);
+  let amountIndex = cells.findIndex((cell, idx) => idx !== percentIndex && !isPercentLikeCell(cell));
+
+  if (percentIndex < 0 && cells.length >= 2) {
+    percentIndex = 1;
+  }
+  if (amountIndex < 0 && cells.length >= 1) {
+    amountIndex = percentIndex === 0 ? (cells.length > 1 ? 1 : -1) : 0;
+  }
+
+  const percentRaw = percentIndex >= 0 ? cells[percentIndex].raw : null;
+  const pct = percentRaw != null ? coercePercent(percentRaw) ?? undefined : undefined;
+  const amount = amountIndex >= 0 ? cells[amountIndex].value : undefined;
+
+  return { amount, pct };
+};
+
 const formatHeaderValue = (value: CellValue): string => {
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === 'number') {
@@ -894,15 +943,19 @@ const extractMsrSheet = (
     const varianceRow = findRowByLabel(grid, revenueAnchor.row + 1, revenueAnchor.row + 12, 'occupied rate variance');
     if (varianceRow) {
       const row = grid[varianceRow.row] ?? [];
-      const values = collectRowNumbers(row, varianceRow.col + 1);
-      if (values[0] != null) {
-        const variancePct = coercePercent(values[0]);
-        if (variancePct != null) {
-          revenue.occupiedRateVariancePct = variancePct;
-          const pricing = snapshot.pricing ?? {};
-          pricing.occupiedRateVariancePct = variancePct;
-          snapshot.pricing = pricing;
-        }
+      const { amount: varianceAmount, pct: variancePct } = selectVarianceValues(row, varianceRow.col + 1);
+      if (varianceAmount != null) {
+        revenue.occupiedRateVarianceAmount = varianceAmount;
+        const pricing = snapshot.pricing ?? {};
+        pricing.occupiedRateVarianceAmount = varianceAmount;
+        pricing.occupiedRateVariance = varianceAmount;
+        snapshot.pricing = pricing;
+      }
+      if (variancePct != null) {
+        revenue.occupiedRateVariancePct = variancePct;
+        const pricing = snapshot.pricing ?? {};
+        pricing.occupiedRateVariancePct = variancePct;
+        snapshot.pricing = pricing;
       }
     } else {
       warnings.push('MSR sheet: Occupied Rate Variance row not found.');
@@ -1441,6 +1494,8 @@ const extractOccupancySheet = (
   const avgCurrentRent = currentRentCount ? currentRentSum / currentRentCount : undefined;
   if (avgSellRate != null) pricing.avgSellRateOccupied = avgSellRate;
   if (avgCurrentRent != null) pricing.avgCurrentRentOccupied = avgCurrentRent;
+  if (avgCurrentRent != null) pricing.occupiedActualAvg = avgCurrentRent;
+  if (avgSellRate != null) pricing.occupiedTargetAvg = avgSellRate;
   if (sellRateSqftSum > 0) pricing.avgSellRatePerSqftOccupied = sellRateSum / sellRateSqftSum;
   if (currentRentSqftSum > 0) pricing.avgCurrentRentPerSqftOccupied = currentRentSum / currentRentSqftSum;
   if (avgSellRate != null && avgCurrentRent != null && avgSellRate !== 0) {
@@ -1648,6 +1703,10 @@ const extractOverlockFromSheet = (
     d31_60: 0,
     d61_plus: 0,
   };
+  const unitMap = new Map<
+    string,
+    { balance?: number; daysLateTotal: number; daysLateCount: number }
+  >();
 
   for (let r = headerRow + 1; r < grid.length; r += 1) {
     const row = grid[r] ?? [];
@@ -1663,14 +1722,34 @@ const extractOverlockFromSheet = (
     const balance = coerceNumber(row[colBalance]);
     if (daysLate == null && balance == null) continue;
 
-    rowCount += 1;
-    if (balance != null) totalBalance += balance;
+    const keyVariants = buildSpaceKeyVariants(spaceRaw);
+    const key =
+      keyVariants[keyVariants.length - 1] ||
+      normalizeSpaceKey(spaceRaw) ||
+      `row-${r}-${String(row[colSpace] ?? '').trim()}`;
+    const existing = unitMap.get(key) ?? { balance: undefined, daysLateTotal: 0, daysLateCount: 0 };
+    if (balance != null) {
+      if (existing.balance == null || Math.abs(balance) > Math.abs(existing.balance)) {
+        existing.balance = balance;
+      }
+    }
     if (daysLate != null) {
-      totalDays += daysLate;
+      existing.daysLateTotal += daysLate;
+      existing.daysLateCount += 1;
+    }
+    unitMap.set(key, existing);
+  }
+
+  rowCount = unitMap.size;
+  for (const entry of unitMap.values()) {
+    if (entry.balance != null) totalBalance += entry.balance;
+    if (entry.daysLateCount > 0) {
+      const unitDaysLate = entry.daysLateTotal / entry.daysLateCount;
+      totalDays += unitDaysLate;
       daysCount += 1;
-      if (daysLate <= 10) buckets.d0_10 += 1;
-      else if (daysLate <= 30) buckets.d11_30 += 1;
-      else if (daysLate <= 60) buckets.d31_60 += 1;
+      if (unitDaysLate <= 10) buckets.d0_10 += 1;
+      else if (unitDaysLate <= 30) buckets.d11_30 += 1;
+      else if (unitDaysLate <= 60) buckets.d31_60 += 1;
       else buckets.d61_plus += 1;
     }
   }
@@ -1679,8 +1758,8 @@ const extractOverlockFromSheet = (
   const bucketPct =
     rowCount > 0
       ? {
-          d0_10: (buckets.d0_10 / rowCount) * 100,
-          d11_30: (buckets.d11_30 / rowCount) * 100,
+        d0_10: (buckets.d0_10 / rowCount) * 100,
+        d11_30: (buckets.d11_30 / rowCount) * 100,
           d31_60: (buckets.d31_60 / rowCount) * 100,
           d61_plus: (buckets.d61_plus / rowCount) * 100,
         }
