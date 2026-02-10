@@ -5,7 +5,7 @@ const encoder = new TextEncoder();
 const getSecret = (): string => {
   const secret = process.env[AUTH_SECRET_ENV];
   if (!secret || !secret.trim()) {
-    throw new Error(`Missing ${AUTH_SECRET_ENV} in .env.local for internal auth.`);
+    throw new Error(`Missing ${AUTH_SECRET_ENV} env for internal auth.`);
   }
   return secret;
 };
