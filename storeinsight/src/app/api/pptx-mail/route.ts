@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
       ASOFDATE: asOfDate,
     };
 
-    const emailed = await sendFlashEmail({
+    const emailResult = await sendFlashEmail({
       property,
       pptxBuffer,
       pptxFilename: path.basename(name),
@@ -192,7 +192,12 @@ export async function POST(req: NextRequest) {
       pngFilename: pngName || undefined,
     });
 
-    results.push({ file: name, pdfConverted: Boolean(pdfBuffer), emailed });
+    results.push({
+      file: name,
+      pdfConverted: Boolean(pdfBuffer),
+      emailed: emailResult.ok,
+      error: emailResult.ok ? undefined : `email_${emailResult.reason}`,
+    });
   }
 
   const failed = results.find((r) => !r.emailed);

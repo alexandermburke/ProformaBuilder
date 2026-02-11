@@ -173,6 +173,10 @@ const buildAppleEmailHtml = (opts: {
   `;
 };
 
+export type FlashEmailResult =
+  | { ok: true }
+  | { ok: false; reason: "smtp_missing" | "no_recipients" | "send_failed" };
+
 export async function sendFlashEmail(options: {
   property: PropertyConfig;
   pptxBuffer: Buffer;
@@ -190,9 +194,9 @@ export async function sendFlashEmail(options: {
   devModeOverride?: boolean;
   pdfUrl?: string | null;
   subjectOverride?: string;
-}): Promise<boolean> {
+}): Promise<FlashEmailResult> {
   const mailConfig = resolveMailerConfig();
-  if (!mailConfig) return false;
+  if (!mailConfig) return { ok: false, reason: "smtp_missing" };
 
   const devRecipient = "alex@storestorage.com";
   const recipientsRaw = (options.property.ownerEmails ?? []).filter((email) => email && email.trim().length > 0);
@@ -202,7 +206,7 @@ export async function sendFlashEmail(options: {
       : recipientsRaw;
   if (recipients.length === 0) {
     console.info("[flash-email] no ownerEmails configured; skipping email delivery", options.property.id);
-    return false;
+    return { ok: false, reason: "no_recipients" };
   }
 
   try {
@@ -340,9 +344,9 @@ export async function sendFlashEmail(options: {
         pptxIncluded: shouldAttachPptx,
       },
     });
-    return true;
+    return { ok: true };
   } catch (err) {
     console.error("[flash-email] failed to send flash email", err);
-    return false;
+    return { ok: false, reason: "send_failed" };
   }
 }

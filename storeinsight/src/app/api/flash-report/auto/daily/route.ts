@@ -411,7 +411,7 @@ export async function POST(req: NextRequest) {
             console.warn("[flash-report/email] unable to generate signed pdf url", { propertyCode, reportDate, pdfPath }, err);
           }
         }
-        emailSent = await sendFlashEmail({
+        const emailResult = await sendFlashEmail({
           property: prop,
           pptxBuffer: generation.pptxBuffer,
           pptxFilename,
@@ -426,8 +426,9 @@ export async function POST(req: NextRequest) {
           devModeOverride: flashDevMode,
           pdfUrl: pdfDownloadUrl,
         });
-        if (!emailSent) {
-          throw new Error("Email delivery failed or skipped");
+        emailSent = emailResult.ok;
+        if (!emailResult.ok) {
+          throw new Error(`Email delivery failed or skipped (${emailResult.reason})`);
         }
       } else {
         console.info("[flash-report/email] sendEmails=false, skipping send", { reportDate, propertyCode });
