@@ -11,6 +11,11 @@ type MailerConfig = {
   user?: string;
   pass?: string;
   from: string;
+  connectionTimeoutMs: number;
+  greetingTimeoutMs: number;
+  socketTimeoutMs: number;
+  maxRetries: number;
+  retryDelayMs: number;
 };
 
 const DASHBOARD_BETA_PROPERTY_ID = "L001";
@@ -53,7 +58,23 @@ const resolveMailerConfig = (): MailerConfig | null => {
     console.warn("[flash-email] Invalid SMTP_PORT; skipping email delivery");
     return null;
   }
-  return { host, port, user: user || undefined, pass: pass || undefined, from };
+  const connectionTimeoutMs = Number(process.env.SMTP_CONNECTION_TIMEOUT_MS ?? 20_000);
+  const greetingTimeoutMs = Number(process.env.SMTP_GREETING_TIMEOUT_MS ?? 60_000);
+  const socketTimeoutMs = Number(process.env.SMTP_SOCKET_TIMEOUT_MS ?? 120_000);
+  const maxRetries = Number(process.env.SMTP_MAX_RETRIES ?? 2);
+  const retryDelayMs = Number(process.env.SMTP_RETRY_DELAY_MS ?? 1_500);
+  return {
+    host,
+    port,
+    user: user || undefined,
+    pass: pass || undefined,
+    from,
+    connectionTimeoutMs,
+    greetingTimeoutMs,
+    socketTimeoutMs,
+    maxRetries: Number.isFinite(maxRetries) && maxRetries >= 0 ? maxRetries : 2,
+    retryDelayMs: Number.isFinite(retryDelayMs) && retryDelayMs >= 0 ? retryDelayMs : 1_500,
+  };
 };
 
 const escapeHtml = (value: string): string =>
@@ -86,6 +107,20 @@ const buildHtmlContent = (opts: {
   return `
     ${bodySection}
   `;
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientSmtpError = (err: unknown): boolean => {
+  if (!err || typeof err !== "object") return false;
+  const code = "code" in err ? String((err as { code?: unknown }).code ?? "") : "";
+  const command = "command" in err ? String((err as { command?: unknown }).command ?? "") : "";
+  const responseCode = "responseCode" in err ? Number((err as { responseCode?: unknown }).responseCode) : NaN;
+
+  if (["ETIMEDOUT", "ECONNRESET", "EAI_AGAIN", "ENOTFOUND", "ECONNREFUSED"].includes(code)) return true;
+  if (["CONN", "STARTTLS"].includes(command)) return true;
+  if (Number.isFinite(responseCode) && responseCode >= 400 && responseCode < 500) return true;
+  return false;
 };
 
 const buildAppleEmailHtml = (opts: {
@@ -219,13 +254,6 @@ export async function sendFlashEmail(options: {
       devMode: options.devModeOverride === true,
     });
 
-    const transporter = nodemailer.createTransport({
-      host: mailConfig.host,
-      port: mailConfig.port,
-      secure: mailConfig.port === 465,
-      auth: mailConfig.user && mailConfig.pass ? { user: mailConfig.user, pass: mailConfig.pass } : undefined,
-    });
-
     const propertyLabel =
       (options.tokens?.PROPERTYDISPLAYNAME as string) ||
       (options.tokens?.FACILITYSHORTNAME as string) ||
@@ -318,14 +346,43 @@ export async function sendFlashEmail(options: {
         contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       });
     }
+    const maxAttempts = mailConfig.maxRetries + 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: mailConfig.host,
+          port: mailConfig.port,
+          secure: mailConfig.port === 465,
+          auth: mailConfig.user && mailConfig.pass ? { user: mailConfig.user, pass: mailConfig.pass } : undefined,
+          connectionTimeout: mailConfig.connectionTimeoutMs,
+          greetingTimeout: mailConfig.greetingTimeoutMs,
+          socketTimeout: mailConfig.socketTimeoutMs,
+        });
 
-    await transporter.sendMail({
-      from: fromAddress,
-      to: recipients,
-      subject,
-      html,
-      attachments,
-    });
+        await transporter.sendMail({
+          from: fromAddress,
+          to: recipients,
+          subject,
+          html,
+          attachments,
+        });
+        break;
+      } catch (err) {
+        const transient = isTransientSmtpError(err);
+        if (!transient || attempt >= maxAttempts) {
+          throw err;
+        }
+        const delay = mailConfig.retryDelayMs * attempt;
+        console.warn("[flash-email] transient smtp error, retrying", {
+          attempt,
+          maxAttempts,
+          delayMs: delay,
+          code: (err as { code?: string }).code,
+          command: (err as { command?: string }).command,
+        });
+        await sleep(delay);
+      }
+    }
 
     const propertyCode =
       (options.tokens?.FACILITYCODE as string) ||
