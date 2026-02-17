@@ -69,7 +69,11 @@ const COMPSET_HEADERS = {
   state: ['state', 'st'],
 } as const;
 
-const findHeaderIndex = (headers: string[], keywords: string[], options?: { rejectIfId?: boolean }): number => {
+const findHeaderIndex = (
+  headers: string[],
+  keywords: readonly string[],
+  options?: { rejectIfId?: boolean },
+): number => {
   const { rejectIfId } = options ?? {};
   const normalizedKeywords = keywords.map((value) => ({
     raw: value,
