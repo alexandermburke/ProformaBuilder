@@ -199,7 +199,8 @@ export async function POST(req: NextRequest) {
     MRSCC: formatRate(marketRates.climate ?? marketRates.overall),
   };
 
-  selectedComps.forEach((property, index) => {
+  for (let index = 0; index < selectedComps.length; index += 1) {
+    const property = selectedComps[index];
     const propNumber = index + 1;
     const nameToken = PROP_NAME_TOKENS[index];
     if (nameToken) {
@@ -220,7 +221,7 @@ export async function POST(req: NextRequest) {
       tokens[`PP${propNumber}${sizeDef.key}`] = formatRate(pricing.bySize[sizeDef.key]);
     }
     tokens[`PP${propNumber}XAVG`] = formatRate(pricing.average);
-  });
+  }
 
   for (const token of COMPSET_TOKENS) {
     if (tokens[token] == null || tokens[token]?.trim() === "") {
