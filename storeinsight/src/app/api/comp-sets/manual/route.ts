@@ -136,14 +136,23 @@ const geocodeAddress = async (address: string): Promise<{ lat: number; lon: numb
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
+  const subjectName = String(formData.get("subjectName") ?? "").trim();
+  const subjectAddress = String(formData.get("subjectAddress") ?? "").trim();
+  const preparedFor = String(formData.get("preparedFor") ?? "").trim();
   const propertyId = String(formData.get("propertyId") ?? "").trim();
-  const propertyName = String(formData.get("propertyName") ?? "").trim();
-  const propertyCode = String(formData.get("propertyCode") ?? "").trim();
   const asOfDate = String(formData.get("asOfDate") ?? "").trim();
   const file = formData.get("file");
 
-  if (!propertyId) {
-    return NextResponse.json({ error: "propertyId is required" }, { status: 400 });
+  if (!subjectName) {
+    return NextResponse.json({ error: "subjectName is required" }, { status: 400 });
+  }
+
+  if (!subjectAddress) {
+    return NextResponse.json({ error: "subjectAddress is required" }, { status: 400 });
+  }
+
+  if (!preparedFor) {
+    return NextResponse.json({ error: "preparedFor is required" }, { status: 400 });
   }
 
   if (!asOfDate) {
@@ -171,29 +180,48 @@ export async function POST(req: NextRequest) {
   }
 
   const properties = groupProperties(rows);
-  const subject = resolveSubjectProperty(properties, { propertyId, propertyName, propertyCode });
-  const comps = subject ? properties.filter((prop) => prop.key !== subject.key) : properties.slice();
-  const orderedComps = comps.sort((a, b) => {
+  const orderedComps = properties.sort((a, b) => {
     const countDiff = b.rows.length - a.rows.length;
     if (countDiff !== 0) return countDiff;
     const nameDiff = a.name.localeCompare(b.name);
     if (nameDiff !== 0) return nameDiff;
     return a.address.localeCompare(b.address);
   });
-  const selectedComps = orderedComps.slice(0, 6);
+  const distanceMap = new Map<string, number | null>();
 
   const monthYear = formatMonthYear(asOfDate);
-  const subjectAddress = subject ? formatFullAddress(subject) : "";
-  const subjectCityState = subject ? formatCityState(subject) : "";
-
   const subjectCoords = subjectAddress ? await geocodeAddress(subjectAddress) : null;
+
+  let sortedComps = orderedComps;
+  if (subjectCoords) {
+    const withDistance: Array<{ property: CompProperty; distance: number | null; order: number }> = [];
+    for (let index = 0; index < orderedComps.length; index += 1) {
+      const property = orderedComps[index];
+      const compCoords = await geocodeAddress(formatFullAddress(property));
+      const distance =
+        compCoords
+          ? haversineMiles(subjectCoords.lat, subjectCoords.lon, compCoords.lat, compCoords.lon)
+          : null;
+      distanceMap.set(property.key, distance);
+      withDistance.push({ property, distance, order: index });
+    }
+    withDistance.sort((a, b) => {
+      const aDist = Number.isFinite(a.distance) ? (a.distance as number) : Number.POSITIVE_INFINITY;
+      const bDist = Number.isFinite(b.distance) ? (b.distance as number) : Number.POSITIVE_INFINITY;
+      if (aDist !== bDist) return aDist - bDist;
+      return a.order - b.order;
+    });
+    sortedComps = withDistance.map((entry) => entry.property);
+  }
+
+  const selectedComps = sortedComps.slice(0, 6);
 
   const marketRates = computeMarketRates(rows);
 
   const tokens: Record<string, string> = {
     MONTHYEAR: monthYear || DASH,
-    SUBPROP: propertyName || propertyId,
-    PREPCOMP: subjectCityState || propertyCode || propertyName || propertyId,
+    SUBPROP: subjectName,
+    PREPCOMP: preparedFor,
     ADDRESS: subjectAddress || DASH,
     MRSFIRST: formatRate(marketRates.firstFloor ?? marketRates.overall),
     MRSCC: formatRate(marketRates.climate ?? marketRates.overall),
@@ -208,11 +236,17 @@ export async function POST(req: NextRequest) {
     }
     tokens[`PP${propNumber}ADDRESS`] = formatFullAddress(property) || DASH;
 
-    const compCoords = subjectCoords ? await geocodeAddress(formatFullAddress(property)) : null;
-    const distanceMiles =
-      subjectCoords && compCoords
-        ? haversineMiles(subjectCoords.lat, subjectCoords.lon, compCoords.lat, compCoords.lon)
-        : null;
+    const cachedDistance = distanceMap.get(property.key);
+    let distanceMiles: number | null =
+      cachedDistance === undefined ? null : cachedDistance;
+    if (cachedDistance === undefined && subjectCoords) {
+      const compCoords = await geocodeAddress(formatFullAddress(property));
+      distanceMiles =
+        compCoords && subjectCoords
+          ? haversineMiles(subjectCoords.lat, subjectCoords.lon, compCoords.lat, compCoords.lon)
+          : null;
+      distanceMap.set(property.key, distanceMiles);
+    }
     tokens[`PP${propNumber}DIST`] = formatMiles(distanceMiles);
 
     const pricing = computePropertyPricing(property.rows);
@@ -234,7 +268,7 @@ export async function POST(req: NextRequest) {
   scrubHiddenCharactersFromZip(zip);
   const pptxBuffer = await renderTokensIntoZip(zip, tokens);
 
-  const safeProperty = (propertyCode || propertyName || propertyId).replace(/[^A-Za-z0-9._-]+/g, "_");
+  const safeProperty = (subjectName || propertyId || "CompSet").replace(/[^A-Za-z0-9._-]+/g, "_");
   const safeAsOfSegment = (asOfDate || "latest").replace(/[^0-9A-Za-z._-]+/g, "_");
   const filename = `CompSet-${safeProperty}-${safeAsOfSegment}.pptx`;
 
@@ -413,26 +447,6 @@ function normalizeKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
 }
 
-function resolveSubjectProperty(
-  properties: CompProperty[],
-  input: { propertyId: string; propertyName: string; propertyCode: string },
-): CompProperty | null {
-  const candidates = [input.propertyId, input.propertyName, input.propertyCode]
-    .filter(Boolean)
-    .map((value) => normalizeKey(value));
-  if (candidates.length === 0) return null;
-  return (
-    properties.find((prop) =>
-      candidates.some((candidate) =>
-        candidate &&
-        (normalizeKey(prop.name).includes(candidate) ||
-          normalizeKey(prop.address).includes(candidate) ||
-          candidate.includes(normalizeKey(prop.name))),
-      ),
-    ) ?? null
-  );
-}
-
 function formatMonthYear(value: string): string {
   if (!value) return "";
   const parsed = new Date(value);
@@ -443,11 +457,6 @@ function formatMonthYear(value: string): string {
 
 function formatFullAddress(property: { address: string; city: string; state: string }): string {
   const parts = [property.address, property.city, property.state].filter(Boolean);
-  return parts.join(", ").trim();
-}
-
-function formatCityState(property: { city: string; state: string }): string {
-  const parts = [property.city, property.state].filter(Boolean);
   return parts.join(", ").trim();
 }
 

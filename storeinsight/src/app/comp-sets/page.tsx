@@ -11,260 +11,31 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
-type SpreadsheetProperty = {
-  id: string;
-  name: string;
-  code?: string;
-};
-
-const normalizeFilenameValue = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-const PROPERTY_NAME_HEADERS = [
-  'property name',
-  'facility name',
-  'site name',
-  'store name',
-  'location name',
-  'property',
-  'facility',
-  'site',
-  'store',
-  'location',
-];
-const PROPERTY_ID_HEADERS = [
-  'property id',
-  'property code',
-  'facility id',
-  'facility code',
-  'site id',
-  'site code',
-  'store id',
-  'store code',
-  'store #',
-  'store number',
-  'facility #',
-  'property #',
-  'site #',
-];
-const PLACEHOLDER_PROPERTIES = Array.from({ length: 8 }, (_, idx) => `Placeholder property ${idx + 1}`);
-const IGNORED_PROPERTY_TOKENS = new Set(
-  ['', 'n/a', 'na', 'none', 'total', 'grand total', 'summary', '-'].map((value) => normalizeFilenameValue(value)),
-);
-const normalizeCellValue = (value: unknown): string => {
-  if (value == null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).trim();
-};
-const normalizeHeaderValue = (value: unknown): string =>
-  normalizeCellValue(value).toLowerCase().replace(/[\s_]+/g, ' ').trim();
-const normalizeHeaderToken = (value: string): string => value.toLowerCase().replace(/\s+/g, '');
-const hasIdMarker = (header: string): boolean =>
-  ['id', 'code', '#', 'number'].some((marker) => header.includes(marker));
-
-const COMPSET_HEADERS = {
-  storeName: ['storename', 'store name', 'facility name', 'property name'],
-  address: ['address', 'street', 'address1'],
-  city: ['city'],
-  state: ['state', 'st'],
-} as const;
-
-const findHeaderIndex = (
-  headers: string[],
-  keywords: readonly string[],
-  options?: { rejectIfId?: boolean },
-): number => {
-  const { rejectIfId } = options ?? {};
-  const normalizedKeywords = keywords.map((value) => ({
-    raw: value,
-    token: normalizeHeaderToken(value),
-  }));
-  for (let idx = 0; idx < headers.length; idx += 1) {
-    const header = headers[idx] ?? '';
-    const token = normalizeHeaderToken(header);
-    if (!header) continue;
-    if (rejectIfId && hasIdMarker(header)) continue;
-    const match = normalizedKeywords.some((keyword) => header.includes(keyword.raw) || token.includes(keyword.token));
-    if (match) return idx;
-  }
-  return -1;
-};
-
-const findHeaderRow = (rows: unknown[][]): { index: number; nameIndex: number; idIndex: number } | null => {
-  const scanLimit = Math.min(rows.length, 12);
-  for (let idx = 0; idx < scanLimit; idx += 1) {
-    const row = rows[idx] ?? [];
-    const headers = row.map((cell) => normalizeHeaderValue(cell));
-    const nameIndex = findHeaderIndex(headers, PROPERTY_NAME_HEADERS, { rejectIfId: true });
-    const idIndex = findHeaderIndex(headers, PROPERTY_ID_HEADERS);
-    if (nameIndex >= 0 || idIndex >= 0) {
-      return { index: idx, nameIndex, idIndex };
-    }
-  }
-  return null;
-};
-
-const findCompSetHeaderRow = (
-  rows: unknown[][],
-): { index: number; storeIndex: number; addressIndex: number; cityIndex: number; stateIndex: number } | null => {
-  const scanLimit = Math.min(rows.length, 12);
-  for (let idx = 0; idx < scanLimit; idx += 1) {
-    const row = rows[idx] ?? [];
-    const headers = row.map((cell) => normalizeHeaderValue(cell));
-    const storeIndex = findHeaderIndex(headers, COMPSET_HEADERS.storeName, { rejectIfId: true });
-    const addressIndex = findHeaderIndex(headers, COMPSET_HEADERS.address);
-    if (storeIndex < 0 || addressIndex < 0) continue;
-    return {
-      index: idx,
-      storeIndex,
-      addressIndex,
-      cityIndex: findHeaderIndex(headers, COMPSET_HEADERS.city),
-      stateIndex: findHeaderIndex(headers, COMPSET_HEADERS.state),
-    };
-  }
-  return null;
-};
-
-const addPropertyCandidate = (candidates: Map<string, SpreadsheetProperty>, candidate: SpreadsheetProperty): void => {
-  const key = normalizeFilenameValue(candidate.id || candidate.name);
-  if (!key || IGNORED_PROPERTY_TOKENS.has(key)) return;
-  if (candidates.has(key)) return;
-  candidates.set(key, candidate);
-};
-
-const extractPropertiesFromRows = (rows: unknown[][]): SpreadsheetProperty[] => {
-  const candidates = new Map<string, SpreadsheetProperty>();
-
-  const compHeader = findCompSetHeaderRow(rows);
-  if (compHeader) {
-    const { index, storeIndex, addressIndex, cityIndex, stateIndex } = compHeader;
-    for (let rowIdx = index + 1; rowIdx < rows.length; rowIdx += 1) {
-      const row = rows[rowIdx] ?? [];
-      const nameValue = normalizeCellValue(row[storeIndex]);
-      const addressValue = normalizeCellValue(row[addressIndex]);
-      const cityValue = cityIndex >= 0 ? normalizeCellValue(row[cityIndex]) : '';
-      const stateValue = stateIndex >= 0 ? normalizeCellValue(row[stateIndex]) : '';
-      if (!nameValue || !addressValue) continue;
-      const id = [nameValue, addressValue, cityValue, stateValue].filter(Boolean).join(' | ');
-      const candidate: SpreadsheetProperty = {
-        id,
-        name: nameValue,
-        code: [cityValue, stateValue].filter(Boolean).join(', ') || undefined,
-      };
-      addPropertyCandidate(candidates, candidate);
-    }
-    return Array.from(candidates.values());
-  }
-  const headerInfo = findHeaderRow(rows);
-  if (headerInfo) {
-    const { index, nameIndex, idIndex } = headerInfo;
-    for (let rowIdx = index + 1; rowIdx < rows.length; rowIdx += 1) {
-      const row = rows[rowIdx] ?? [];
-      const nameValue = nameIndex >= 0 ? normalizeCellValue(row[nameIndex]) : '';
-      const idValue = idIndex >= 0 ? normalizeCellValue(row[idIndex]) : '';
-      const name = nameValue.trim();
-      const id = idValue.trim();
-      if (!name && !id) continue;
-      const candidate: SpreadsheetProperty = {
-        id: id || name,
-        name: name || id,
-        code: id || undefined,
-      };
-      if (IGNORED_PROPERTY_TOKENS.has(normalizeFilenameValue(candidate.name))) continue;
-      addPropertyCandidate(candidates, candidate);
-    }
-  }
-
-  if (candidates.size === 0) {
-    for (const row of rows) {
-      const primaryValue = normalizeCellValue(row?.[0]);
-      if (!primaryValue) continue;
-      const normalizedValue = normalizeHeaderToken(primaryValue);
-      if (IGNORED_PROPERTY_TOKENS.has(normalizeFilenameValue(normalizedValue))) continue;
-      const candidate: SpreadsheetProperty = {
-        id: primaryValue,
-        name: primaryValue,
-      };
-      addPropertyCandidate(candidates, candidate);
-    }
-  }
-
-  return Array.from(candidates.values());
-};
-
-const extractPropertiesFromWorkbook = async (file: File): Promise<SpreadsheetProperty[]> => {
-  const buffer = await file.arrayBuffer();
-  const XLSX = await import('xlsx');
-  const workbook = XLSX.read(buffer, { type: 'array' });
-  for (const sheetName of workbook.SheetNames ?? []) {
-    const sheet = workbook.Sheets?.[sheetName];
-    if (!sheet) continue;
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, blankrows: false }) as unknown[][];
-    if (!rows || rows.length === 0) continue;
-    const result = extractPropertiesFromRows(rows);
-    if (result.length > 0) {
-      return result;
-    }
-  }
-  return [];
-};
+const DATE_MATCH = /\d{4}-\d{2}-\d{2}/;
 
 export default function CompSetsPage() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const [properties, setProperties] = useState<SpreadsheetProperty[]>([]);
   const [manualSubmitting, setManualSubmitting] = useState(false);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [asOfDate, setAsOfDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
     return d.toISOString().slice(0, 10);
   });
+  const [subjectName, setSubjectName] = useState('');
+  const [subjectAddress, setSubjectAddress] = useState('');
+  const [preparedFor, setPreparedFor] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [manualMessage, setManualMessage] = useState<string | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState('');
-  const [propertyListMessage, setPropertyListMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const propertiesRef = useRef<SpreadsheetProperty[]>([]);
-
-  const autoDetectFromFile = useCallback(
-    (
-      file: File | null | undefined,
-      propertyList: SpreadsheetProperty[],
-    ): { foundProperty?: SpreadsheetProperty; date?: string } => {
-      if (!file) return {};
-      const fileName = file.name.toLowerCase();
-      const normalizedFileName = normalizeFilenameValue(file.name);
-      const dateMatch = fileName.match(/\d{4}-\d{2}-\d{2}/);
-      const date = dateMatch?.[0];
-      const foundProperty = propertyList.find((prop) => {
-        const candidates = [prop.name, prop.code, prop.id].filter(Boolean);
-        return candidates.some((candidate) => normalizedFileName.includes(normalizeFilenameValue(String(candidate))));
-      });
-      return { foundProperty, date };
-    },
-    [],
-  );
-
-  const refreshProperties = useCallback((nextProperties: SpreadsheetProperty[]) => {
-    setProperties(nextProperties);
-    propertiesRef.current = nextProperties;
+  const autoDetectDateFromFile = useCallback((file: File | null | undefined): string | null => {
+    if (!file) return null;
+    const match = file.name.match(DATE_MATCH);
+    return match?.[0] ?? null;
   }, []);
-
-  useEffect(() => {
-    if (!uploadFile || properties.length === 0) return;
-    const { foundProperty, date } = autoDetectFromFile(uploadFile, properties);
-    if (foundProperty) {
-      setSelectedPropertyId(foundProperty.id);
-    } else if (!selectedPropertyId || !properties.some((prop) => prop.id === selectedPropertyId)) {
-      setSelectedPropertyId(properties[0].id);
-    }
-    if (date) {
-      setAsOfDate(date);
-    }
-  }, [uploadFile, properties, autoDetectFromFile, selectedPropertyId]);
 
   const parseErrorMessage = async (res: Response): Promise<string | null> => {
     try {
@@ -284,34 +55,10 @@ export default function CompSetsPage() {
       return;
     }
     setManualMessage(null);
-    setPropertyListMessage(null);
     setUploadFile(file);
-    const { date } = autoDetectFromFile(file, propertiesRef.current);
+    const date = autoDetectDateFromFile(file);
     if (date) {
       setAsOfDate(date);
-    }
-
-    try {
-      const extracted = await extractPropertiesFromWorkbook(file);
-      refreshProperties(extracted);
-      if (extracted.length > 0) {
-        const propertyFromFilename = autoDetectFromFile(file, extracted).foundProperty;
-        if (propertyFromFilename) {
-          setSelectedPropertyId(propertyFromFilename.id);
-        } else if (!selectedPropertyId || !extracted.some((prop) => prop.id === selectedPropertyId)) {
-          setSelectedPropertyId(extracted[0].id);
-        }
-        setPropertyListMessage(`Loaded ${extracted.length} properties from the spreadsheet.`);
-      } else {
-        refreshProperties([]);
-        setSelectedPropertyId('');
-        setPropertyListMessage('No properties detected in the spreadsheet.');
-      }
-    } catch (err) {
-      console.error('[comp-sets] unable to parse spreadsheet properties', err);
-      refreshProperties([]);
-      setSelectedPropertyId('');
-      setPropertyListMessage('Unable to read property list from the spreadsheet.');
     }
   };
 
@@ -347,8 +94,16 @@ export default function CompSetsPage() {
   }, [toast]);
 
   const handleManualCompSet = async () => {
-    if (!selectedPropertyId) {
-      setToast('Select a property from the spreadsheet.');
+    if (!subjectName.trim()) {
+      setToast('Enter the subject property name.');
+      return;
+    }
+    if (!subjectAddress.trim()) {
+      setToast('Enter the subject property address.');
+      return;
+    }
+    if (!preparedFor.trim()) {
+      setToast('Enter who this comp set is prepared for.');
       return;
     }
     if (!asOfDate) {
@@ -356,7 +111,7 @@ export default function CompSetsPage() {
       return;
     }
     if (!uploadFile) {
-      setToast('Upload a comp set workbook (.xlsx).');
+      setToast('Upload a comp set workbook (.xlsx or .csv).');
       return;
     }
 
@@ -364,17 +119,10 @@ export default function CompSetsPage() {
     setManualMessage(null);
 
     try {
-      const property = properties.find((prop) => prop.id === selectedPropertyId);
-      if (!property) {
-        setToast('Select a property from the spreadsheet.');
-        return;
-      }
       const form = new FormData();
-      form.append('propertyId', selectedPropertyId);
-      form.append('propertyName', property.name || selectedPropertyId);
-      if (property.code) {
-        form.append('propertyCode', property.code);
-      }
+      form.append('subjectName', subjectName.trim());
+      form.append('subjectAddress', subjectAddress.trim());
+      form.append('preparedFor', preparedFor.trim());
       form.append('asOfDate', asOfDate);
       form.append('file', uploadFile);
       if (manualNotes.trim()) {
@@ -393,8 +141,7 @@ export default function CompSetsPage() {
       }
 
       const blob = await res.blob();
-      const propertyLabel = property.code || property.name || property.id || selectedPropertyId;
-      const safeProperty = propertyLabel.replace(/[^A-Za-z0-9._-]+/g, '_');
+      const safeProperty = subjectName.trim().replace(/[^A-Za-z0-9._-]+/g, '_');
       const safeDate = (asOfDate || 'latest').replace(/[^0-9A-Za-z._-]+/g, '_');
       const filename = `CompSet-${safeProperty}-${safeDate}.pptx`;
       const url = URL.createObjectURL(blob);
@@ -454,53 +201,43 @@ export default function CompSetsPage() {
             </div>
 
             <div className="space-y-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                  Property list
-                </label>
-                <div
-                  className="rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 p-2 shadow-inner"
-                  role="listbox"
-                  aria-label="Comp set properties"
-                  aria-disabled={properties.length === 0}
-                >
-                  <ul className="max-h-60 divide-y divide-[color:var(--border-soft)] overflow-y-auto">
-                    {properties.length > 0 ? (
-                      properties.map((prop) => {
-                        const isSelected = prop.id === selectedPropertyId;
-                        return (
-                          <li key={prop.id}>
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={isSelected}
-                              onClick={() => setSelectedPropertyId(prop.id)}
-                              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${
-                                isSelected
-                                  ? 'bg-[rgba(37,99,235,0.16)] text-[color:var(--text-primary)]'
-                                  : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-subtle)]/70'
-                              }`}
-                            >
-                              <span className="font-semibold text-[color:var(--text-primary)]">{prop.name}</span>
-                              {prop.code && (
-                                <span className="text-xs font-semibold text-[color:var(--text-muted)]">{prop.code}</span>
-                              )}
-                            </button>
-                          </li>
-                        );
-                      })
-                    ) : (
-                      PLACEHOLDER_PROPERTIES.map((label) => (
-                        <li key={label} className="px-3 py-2 text-xs text-[color:var(--text-muted)]">
-                          {label}
-                        </li>
-                      ))
-                    )}
-                  </ul>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    Subject property name
+                  </label>
+                  <input
+                    type="text"
+                    value={subjectName}
+                    onChange={(e) => setSubjectName(e.target.value)}
+                    placeholder="Subject property name"
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                  />
                 </div>
-                {propertyListMessage && (
-                  <p className="text-xs text-[color:var(--text-secondary)]">{propertyListMessage}</p>
-                )}
+                <div className="flex flex-col gap-1 md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    Subject property address
+                  </label>
+                  <input
+                    type="text"
+                    value={subjectAddress}
+                    onChange={(e) => setSubjectAddress(e.target.value)}
+                    placeholder="Street, City, State ZIP"
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    Prepared for
+                  </label>
+                  <input
+                    type="text"
+                    value={preparedFor}
+                    onChange={(e) => setPreparedFor(e.target.value)}
+                    placeholder="Client or owner"
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col gap-1">
@@ -572,7 +309,7 @@ export default function CompSetsPage() {
 
               <button
                 type="button"
-                disabled={!selectedPropertyId || !uploadFile || manualSubmitting}
+                disabled={!subjectName.trim() || !subjectAddress.trim() || !preparedFor.trim() || !uploadFile || manualSubmitting}
                 className="ios-button w-full px-4 py-2 text-sm font-semibold"
                 data-variant="primary"
                 onClick={handleManualCompSet}
