@@ -9,6 +9,8 @@ export const runtime = "nodejs";
 
 const TEMPLATE_PATH = path.join(process.cwd(), "public", "COMPSETTEMPLATE.pptx");
 const DASH = "-";
+const PROP_NAME_MAX = 10;
+const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
 const SIZE_DEFS = [
   { key: "X25", width: 5, length: 5, area: 25 },
@@ -37,6 +39,7 @@ const COMPSET_TOKENS = [
   ...PROP_NAME_TOKENS,
   ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}ADDRESS`),
   ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}FIRSTFLOORORAC`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}DIST`),
   ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X25`),
   ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X50`),
   ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X100`),
@@ -66,6 +69,69 @@ type CompProperty = {
   city: string;
   state: string;
   rows: CompSetRow[];
+};
+
+const truncateNameToken = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.length <= PROP_NAME_MAX) return trimmed;
+  return `${trimmed.slice(0, Math.max(0, PROP_NAME_MAX - 2))}..`;
+};
+
+const formatMiles = (value: number | null): string => {
+  if (!Number.isFinite(value)) return DASH;
+  return value.toFixed(1);
+};
+
+const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 3958.8; // Earth radius in miles
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const geocodeCache = new Map<string, { lat: number; lon: number } | null>();
+
+const geocodeAddress = async (address: string): Promise<{ lat: number; lon: number } | null> => {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  const cacheHit = geocodeCache.get(trimmed);
+  if (cacheHit !== undefined) return cacheHit;
+  const url = new URL(NOMINATIM_URL);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("q", trimmed);
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        "User-Agent": "storeinsight-comp-sets/1.0",
+      },
+    });
+    if (!res.ok) {
+      geocodeCache.set(trimmed, null);
+      return null;
+    }
+    const data = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+    const first = data?.[0];
+    const lat = first?.lat ? Number(first.lat) : Number.NaN;
+    const lon = first?.lon ? Number(first.lon) : Number.NaN;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      geocodeCache.set(trimmed, null);
+      return null;
+    }
+    const result = { lat, lon };
+    geocodeCache.set(trimmed, result);
+    return result;
+  } catch {
+    geocodeCache.set(trimmed, null);
+    return null;
+  }
 };
 
 export async function POST(req: NextRequest) {
@@ -120,6 +186,8 @@ export async function POST(req: NextRequest) {
   const subjectAddress = subject ? formatFullAddress(subject) : "";
   const subjectCityState = subject ? formatCityState(subject) : "";
 
+  const subjectCoords = subjectAddress ? await geocodeAddress(subjectAddress) : null;
+
   const marketRates = computeMarketRates(rows);
 
   const tokens: Record<string, string> = {
@@ -135,9 +203,16 @@ export async function POST(req: NextRequest) {
     const propNumber = index + 1;
     const nameToken = PROP_NAME_TOKENS[index];
     if (nameToken) {
-      tokens[nameToken] = property.name || DASH;
+      tokens[nameToken] = property.name ? truncateNameToken(property.name) : DASH;
     }
     tokens[`PP${propNumber}ADDRESS`] = formatFullAddress(property) || DASH;
+
+    const compCoords = subjectCoords ? await geocodeAddress(formatFullAddress(property)) : null;
+    const distanceMiles =
+      subjectCoords && compCoords
+        ? haversineMiles(subjectCoords.lat, subjectCoords.lon, compCoords.lat, compCoords.lon)
+        : null;
+    tokens[`PP${propNumber}DIST`] = formatMiles(distanceMiles);
 
     const pricing = computePropertyPricing(property.rows);
     tokens[`PP${propNumber}FIRSTFLOORORAC`] = pricing.label;
