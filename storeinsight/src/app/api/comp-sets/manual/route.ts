@@ -1,156 +1,589 @@
-import { NextRequest, NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { NextRequest, NextResponse } from "next/server";
+import * as XLSX from "xlsx";
+import PizZip from "pizzip";
+import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
-const formatBytes = (bytes: number): string => {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  const precision = value >= 10 || index === 0 ? 0 : 1;
-  return `${value.toFixed(precision)} ${units[index]}`;
+const TEMPLATE_PATH = path.join(process.cwd(), "public", "COMPSETTEMPLATE.pptx");
+const DASH = "-";
+
+const SIZE_DEFS = [
+  { key: "X25", width: 5, length: 5, area: 25 },
+  { key: "X50", width: 5, length: 10, area: 50 },
+  { key: "X100", width: 10, length: 10, area: 100 },
+  { key: "X150", width: 10, length: 15, area: 150 },
+  { key: "X200", width: 10, length: 20, area: 200 },
+] as const;
+
+const PROP_NAME_TOKENS = [
+  "PROPONENAME",
+  "PROPTWONAME",
+  "PROPTHREENAME",
+  "PROPFOURNAME",
+  "PROPFIVENAME",
+  "PROPSIXNAME",
+] as const;
+
+const COMPSET_TOKENS = [
+  "ADDRESS",
+  "MONTHYEAR",
+  "MRSCC",
+  "MRSFIRST",
+  "PREPCOMP",
+  "SUBPROP",
+  ...PROP_NAME_TOKENS,
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}ADDRESS`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}FIRSTFLOORORAC`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X25`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X50`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X100`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X150`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}X200`),
+  ...Array.from({ length: 6 }, (_, idx) => `PP${idx + 1}XAVG`),
+];
+
+type CompSetRow = {
+  storeName: string;
+  address: string;
+  city: string;
+  state: string;
+  onlinePrice: number | null;
+  regularPrice: number | null;
+  width: number | null;
+  length: number | null;
+  cc: boolean;
+  floor: number | null;
+  description: string;
 };
 
-const summarizeWorkbook = (buffer: Buffer): { sheetNames: string[]; sheetCount: number } => {
-  try {
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
-    const sheetNames = workbook.SheetNames.filter(Boolean);
-    return { sheetNames, sheetCount: sheetNames.length };
-  } catch (err) {
-    console.warn('[comp-sets/manual] unable to parse workbook', err);
-    return { sheetNames: [], sheetCount: 0 };
-  }
+type CompProperty = {
+  key: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  rows: CompSetRow[];
 };
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
-  const propertyId = String(formData.get('propertyId') ?? '').trim();
-  const propertyName = String(formData.get('propertyName') ?? '').trim();
-  const propertyCode = String(formData.get('propertyCode') ?? '').trim();
-  const asOfDate = String(formData.get('asOfDate') ?? '').trim();
-  const notes = String(formData.get('notes') ?? '').trim();
-  const file = formData.get('file');
+  const propertyId = String(formData.get("propertyId") ?? "").trim();
+  const propertyName = String(formData.get("propertyName") ?? "").trim();
+  const propertyCode = String(formData.get("propertyCode") ?? "").trim();
+  const asOfDate = String(formData.get("asOfDate") ?? "").trim();
+  const file = formData.get("file");
 
   if (!propertyId) {
-    return NextResponse.json({ error: 'propertyId is required' }, { status: 400 });
+    return NextResponse.json({ error: "propertyId is required" }, { status: 400 });
   }
 
   if (!asOfDate) {
-    return NextResponse.json({ error: 'asOfDate is required' }, { status: 400 });
+    return NextResponse.json({ error: "asOfDate is required" }, { status: 400 });
   }
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'file is required' }, { status: 400 });
+    return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
 
-  if (!file.name.toLowerCase().endsWith('.xlsx')) {
-    return NextResponse.json({ error: 'Upload must be a .xlsx file.' }, { status: 400 });
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith(".xlsx") && !lowerName.endsWith(".csv")) {
+    return NextResponse.json({ error: "Upload must be a .xlsx or .csv file." }, { status: 400 });
   }
 
   const workbookBuffer = Buffer.from(await file.arrayBuffer());
-  const workbookSummary = summarizeWorkbook(workbookBuffer);
+  const workbook = XLSX.read(workbookBuffer, { type: "buffer" });
+  const rows = extractCompSetRows(workbook);
 
-  const PptxGenJS = (await import('pptxgenjs')).default;
-  const deck = new PptxGenJS();
-  deck.layout = '16x9';
-
-  const titleSlide = deck.addSlide();
-  titleSlide.background = { color: 'F8FAFC' };
-
-  titleSlide.addText('STORE Comp Set Report', {
-    x: 0.6,
-    y: 0.4,
-    w: 12,
-    fontSize: 34,
-    bold: true,
-    color: '0B1120',
-    fontFace: 'Segoe UI',
-  });
-
-  titleSlide.addText(propertyName || propertyId, {
-    x: 0.6,
-    y: 1.25,
-    w: 12,
-    fontSize: 24,
-    bold: true,
-    color: '2563EB',
-    fontFace: 'Segoe UI',
-  });
-
-  titleSlide.addText(asOfDate ? `As of ${asOfDate}` : 'As of latest', {
-    x: 0.6,
-    y: 1.85,
-    fontSize: 14,
-    color: '475569',
-    fontFace: 'Segoe UI',
-  });
-
-  const sheetPreview = workbookSummary.sheetNames.slice(0, 6);
-  const sheetSuffix =
-    workbookSummary.sheetCount > sheetPreview.length
-      ? ` +${workbookSummary.sheetCount - sheetPreview.length} more`
-      : '';
-  const infoLines = [
-    `Property ID: ${propertyId}`,
-    `Property code: ${propertyCode || propertyId}`,
-    `Source workbook: ${file.name}`,
-    `Workbook size: ${formatBytes(file.size)}`,
-    workbookSummary.sheetCount > 0
-      ? `Sheets: ${sheetPreview.join(', ')}${sheetSuffix}`
-      : 'Sheets: (not detected)',
-  ];
-  if (notes) {
-    infoLines.push(`Notes: ${notes}`);
+  if (rows.length === 0) {
+    return NextResponse.json(
+      { error: "No comp set rows detected. Confirm the CSV includes store name, address, and pricing columns." },
+      { status: 400 },
+    );
   }
 
-  titleSlide.addText(infoLines.join('\n'), {
-    x: 0.6,
-    y: 2.4,
-    w: 12,
-    h: 3.2,
-    fontSize: 13,
-    color: '1F2937',
-    fontFace: 'Segoe UI',
+  const properties = groupProperties(rows);
+  const subject = resolveSubjectProperty(properties, { propertyId, propertyName, propertyCode });
+  const comps = subject ? properties.filter((prop) => prop.key !== subject.key) : properties.slice();
+  const orderedComps = comps.sort((a, b) => {
+    const countDiff = b.rows.length - a.rows.length;
+    if (countDiff !== 0) return countDiff;
+    const nameDiff = a.name.localeCompare(b.name);
+    if (nameDiff !== 0) return nameDiff;
+    return a.address.localeCompare(b.address);
+  });
+  const selectedComps = orderedComps.slice(0, 6);
+
+  const monthYear = formatMonthYear(asOfDate);
+  const subjectAddress = subject ? formatFullAddress(subject) : "";
+  const subjectCityState = subject ? formatCityState(subject) : "";
+
+  const marketRates = computeMarketRates(rows);
+
+  const tokens: Record<string, string> = {
+    MONTHYEAR: monthYear || DASH,
+    SUBPROP: propertyName || propertyId,
+    PREPCOMP: subjectCityState || propertyCode || propertyName || propertyId,
+    ADDRESS: subjectAddress || DASH,
+    MRSFIRST: formatRate(marketRates.firstFloor ?? marketRates.overall),
+    MRSCC: formatRate(marketRates.climate ?? marketRates.overall),
+  };
+
+  selectedComps.forEach((property, index) => {
+    const propNumber = index + 1;
+    const nameToken = PROP_NAME_TOKENS[index];
+    if (nameToken) {
+      tokens[nameToken] = property.name || DASH;
+    }
+    tokens[`PP${propNumber}ADDRESS`] = formatFullAddress(property) || DASH;
+
+    const pricing = computePropertyPricing(property.rows);
+    tokens[`PP${propNumber}FIRSTFLOORORAC`] = pricing.label;
+    for (const sizeDef of SIZE_DEFS) {
+      tokens[`PP${propNumber}${sizeDef.key}`] = formatRate(pricing.bySize[sizeDef.key]);
+    }
+    tokens[`PP${propNumber}XAVG`] = formatRate(pricing.average);
   });
 
-  const placeholderSlide = deck.addSlide();
-  placeholderSlide.background = { color: 'FFFFFF' };
-  placeholderSlide.addText('Benchmark summary (coming soon)', {
-    x: 0.6,
-    y: 0.6,
-    w: 12,
-    fontSize: 26,
-    bold: true,
-    color: '0B1120',
-    fontFace: 'Segoe UI',
-  });
-  placeholderSlide.addText(
-    'This section will compare pricing, occupancy, and availability changes against the selected comp set.',
-    {
-      x: 0.6,
-      y: 1.4,
-      w: 12,
-      fontSize: 14,
-      color: '475569',
-      fontFace: 'Segoe UI',
-    },
-  );
+  for (const token of COMPSET_TOKENS) {
+    if (tokens[token] == null || tokens[token]?.trim() === "") {
+      tokens[token] = DASH;
+    }
+  }
 
-  const pptxBuffer = (await deck.write({ outputType: 'nodebuffer' })) as Buffer;
-  const safeProperty = (propertyCode || propertyName || propertyId).replace(/[^A-Za-z0-9._-]+/g, '_');
-  const safeAsOfSegment = (asOfDate || 'latest').replace(/[^0-9A-Za-z._-]+/g, '_');
+  const templateBuffer = await fs.readFile(TEMPLATE_PATH);
+  const zip = new PizZip(templateBuffer);
+  scrubHiddenCharactersFromZip(zip);
+  const pptxBuffer = await renderTokensIntoZip(zip, tokens);
+
+  const safeProperty = (propertyCode || propertyName || propertyId).replace(/[^A-Za-z0-9._-]+/g, "_");
+  const safeAsOfSegment = (asOfDate || "latest").replace(/[^0-9A-Za-z._-]+/g, "_");
   const filename = `CompSet-${safeProperty}-${safeAsOfSegment}.pptx`;
 
   return new NextResponse(pptxBuffer as unknown as BodyInit, {
     status: 200,
     headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
+}
+
+function extractCompSetRows(workbook: XLSX.WorkBook): CompSetRow[] {
+  for (const sheetName of workbook.SheetNames ?? []) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, blankrows: false }) as unknown[][];
+    if (!rows || rows.length === 0) continue;
+    const headerInfo = findCompSetHeaderRow(rows);
+    if (!headerInfo) continue;
+    const { index, columns } = headerInfo;
+
+    const results: CompSetRow[] = [];
+    for (let rowIdx = index + 1; rowIdx < rows.length; rowIdx += 1) {
+      const row = rows[rowIdx] ?? [];
+      const storeName = getCellString(row, columns.storeName);
+      const address = getCellString(row, columns.address);
+      const city = getCellString(row, columns.city);
+      const state = getCellString(row, columns.state);
+      if (!storeName || !address) continue;
+      const description = getCellString(row, columns.description);
+      const ccValue = getCellString(row, columns.cc);
+      const floorValue = getCellString(row, columns.floor);
+      const width = toNumber(getCellString(row, columns.width));
+      const length = toNumber(getCellString(row, columns.length));
+
+      results.push({
+        storeName,
+        address,
+        city,
+        state,
+        onlinePrice: toNumber(getCellString(row, columns.onlinePrice)),
+        regularPrice: toNumber(getCellString(row, columns.regularPrice)),
+        width: Number.isFinite(width) ? width : null,
+        length: Number.isFinite(length) ? length : null,
+        cc: isTruthy(ccValue) || /climate|air\s*cooled/i.test(description),
+        floor: Number.isFinite(toNumber(floorValue)) ? toNumber(floorValue) : null,
+        description,
+      });
+    }
+
+    if (results.length > 0) {
+      return results;
+    }
+  }
+
+  return [];
+}
+
+type HeaderInfo = {
+  index: number;
+  columns: {
+    storeName: number;
+    address: number;
+    city: number;
+    state: number;
+    onlinePrice: number;
+    regularPrice: number;
+    width: number;
+    length: number;
+    cc: number;
+    floor: number;
+    description: number;
+  };
+};
+
+const HEADER_ALIASES = {
+  storeName: ["storename", "store name", "facility name", "property name"],
+  address: ["address", "street", "address1"],
+  city: ["city"],
+  state: ["state", "st"],
+  onlinePrice: ["onlineprice", "online price", "web price", "online rate"],
+  regularPrice: ["regularprice", "regular price", "street price", "standard price"],
+  width: ["width"],
+  length: ["length"],
+  cc: ["cc", "climate", "climatecontrolled"],
+  floor: ["floor", "level"],
+  description: ["description", "desc"],
+} as const;
+
+function findCompSetHeaderRow(rows: unknown[][]): HeaderInfo | null {
+  const scanLimit = Math.min(rows.length, 15);
+  for (let idx = 0; idx < scanLimit; idx += 1) {
+    const row = rows[idx] ?? [];
+    const headerTokens = row.map((cell) => normalizeHeader(cell));
+    const storeName = findHeaderIndex(headerTokens, HEADER_ALIASES.storeName);
+    const address = findHeaderIndex(headerTokens, HEADER_ALIASES.address);
+    if (storeName === -1 || address === -1) continue;
+
+    const info: HeaderInfo = {
+      index: idx,
+      columns: {
+        storeName,
+        address,
+        city: findHeaderIndex(headerTokens, HEADER_ALIASES.city),
+        state: findHeaderIndex(headerTokens, HEADER_ALIASES.state),
+        onlinePrice: findHeaderIndex(headerTokens, HEADER_ALIASES.onlinePrice),
+        regularPrice: findHeaderIndex(headerTokens, HEADER_ALIASES.regularPrice),
+        width: findHeaderIndex(headerTokens, HEADER_ALIASES.width),
+        length: findHeaderIndex(headerTokens, HEADER_ALIASES.length),
+        cc: findHeaderIndex(headerTokens, HEADER_ALIASES.cc),
+        floor: findHeaderIndex(headerTokens, HEADER_ALIASES.floor),
+        description: findHeaderIndex(headerTokens, HEADER_ALIASES.description),
+      },
+    };
+
+    return info;
+  }
+  return null;
+}
+
+function normalizeHeader(value: unknown): string {
+  if (value == null) return "";
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+}
+
+function findHeaderIndex(headers: string[], aliases: readonly string[]): number {
+  const normalizedAliases = aliases.map((alias) => alias.replace(/[^a-z0-9]+/g, ""));
+  return headers.findIndex((header) => normalizedAliases.includes(header));
+}
+
+function getCellString(row: unknown[], index: number): string {
+  if (index < 0) return "";
+  const raw = row?.[index];
+  if (raw == null) return "";
+  return String(raw).trim();
+}
+
+function toNumber(raw: string | number): number {
+  if (typeof raw === "number") return raw;
+  if (!raw) return Number.NaN;
+  const cleaned = raw.replace(/[,$()%]/g, "");
+  if (!cleaned) return Number.NaN;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function isTruthy(value: string): boolean {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed === "1" || trimmed === "true" || trimmed === "yes";
+}
+
+function groupProperties(rows: CompSetRow[]): CompProperty[] {
+  const map = new Map<string, CompProperty>();
+  for (const row of rows) {
+    const key = normalizeKey(`${row.storeName}|${row.address}|${row.city}|${row.state}`);
+    if (!key) continue;
+    const existing = map.get(key);
+    if (existing) {
+      existing.rows.push(row);
+      continue;
+    }
+    map.set(key, {
+      key,
+      name: row.storeName,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      rows: [row],
+    });
+  }
+  return Array.from(map.values());
+}
+
+function normalizeKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "").trim();
+}
+
+function resolveSubjectProperty(
+  properties: CompProperty[],
+  input: { propertyId: string; propertyName: string; propertyCode: string },
+): CompProperty | null {
+  const candidates = [input.propertyId, input.propertyName, input.propertyCode]
+    .filter(Boolean)
+    .map((value) => normalizeKey(value));
+  if (candidates.length === 0) return null;
+  return (
+    properties.find((prop) =>
+      candidates.some((candidate) =>
+        candidate &&
+        (normalizeKey(prop.name).includes(candidate) ||
+          normalizeKey(prop.address).includes(candidate) ||
+          candidate.includes(normalizeKey(prop.name))),
+      ),
+    ) ?? null
+  );
+}
+
+function formatMonthYear(value: string): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const formatter = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+  return formatter.format(parsed);
+}
+
+function formatFullAddress(property: { address: string; city: string; state: string }): string {
+  const parts = [property.address, property.city, property.state].filter(Boolean);
+  return parts.join(", ").trim();
+}
+
+function formatCityState(property: { city: string; state: string }): string {
+  const parts = [property.city, property.state].filter(Boolean);
+  return parts.join(", ").trim();
+}
+
+function computeMarketRates(rows: CompSetRow[]): { overall: number | null; climate: number | null; firstFloor: number | null } {
+  const allRates: number[] = [];
+  const climateRates: number[] = [];
+  const firstFloorRates: number[] = [];
+
+  for (const row of rows) {
+    const rate = getRowRate(row);
+    if (rate == null) continue;
+    allRates.push(rate);
+    if (isClimateRow(row)) climateRates.push(rate);
+    if (isFirstFloorRow(row)) firstFloorRates.push(rate);
+  }
+
+  return {
+    overall: average(allRates),
+    climate: average(climateRates),
+    firstFloor: average(firstFloorRates),
+  };
+}
+
+function computePropertyPricing(rows: CompSetRow[]): { label: string; bySize: Record<string, number | null>; average: number | null } {
+  const climateRows = rows.filter((row) => isClimateRow(row));
+  const firstFloorRows = rows.filter((row) => isFirstFloorRow(row));
+  let filterLabel = "Standard";
+  let filteredRows = rows;
+
+  if (climateRows.length > 0) {
+    filterLabel = "Climate Controlled";
+    filteredRows = climateRows;
+  } else if (firstFloorRows.length > 0) {
+    filterLabel = "First Floor";
+    filteredRows = firstFloorRows;
+  }
+
+  const bySize: Record<string, number | null> = {};
+  let fallbackUsed = false;
+
+  for (const sizeDef of SIZE_DEFS) {
+    const sizeRates = collectRatesForSize(filteredRows, sizeDef);
+    if (sizeRates.length === 0 && filteredRows !== rows) {
+      fallbackUsed = true;
+      sizeRates.push(...collectRatesForSize(rows, sizeDef));
+    }
+    bySize[sizeDef.key] = average(sizeRates);
+  }
+
+  if (fallbackUsed && filterLabel !== "Standard") {
+    filterLabel = "First Floor / A/C";
+  }
+
+  const sizeValues = Object.values(bySize).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const averageValue = average(sizeValues);
+
+  return { label: filterLabel, bySize, average: averageValue };
+}
+
+function collectRatesForSize(rows: CompSetRow[], sizeDef: (typeof SIZE_DEFS)[number]): number[] {
+  const rates: number[] = [];
+  for (const row of rows) {
+    const sizeKey = resolveSizeKey(row);
+    if (sizeKey !== sizeDef.key) continue;
+    const rate = getRowRate(row);
+    if (rate == null) continue;
+    rates.push(rate);
+  }
+  return rates;
+}
+
+function resolveSizeKey(row: CompSetRow): string | null {
+  if (!Number.isFinite(row.width ?? Number.NaN) || !Number.isFinite(row.length ?? Number.NaN)) return null;
+  const width = Math.abs(row.width ?? 0);
+  const length = Math.abs(row.length ?? 0);
+  const min = Math.min(width, length);
+  const max = Math.max(width, length);
+  for (const sizeDef of SIZE_DEFS) {
+    const targetMin = Math.min(sizeDef.width, sizeDef.length);
+    const targetMax = Math.max(sizeDef.width, sizeDef.length);
+    if (Math.abs(min - targetMin) < 0.01 && Math.abs(max - targetMax) < 0.01) {
+      return sizeDef.key;
+    }
+  }
+  return null;
+}
+
+function getRowRate(row: CompSetRow): number | null {
+  const width = row.width ?? Number.NaN;
+  const length = row.length ?? Number.NaN;
+  if (!Number.isFinite(width) || !Number.isFinite(length)) return null;
+  const area = Math.abs(width * length);
+  if (!Number.isFinite(area) || area <= 0) return null;
+  const price = Number.isFinite(row.onlinePrice ?? Number.NaN)
+    ? (row.onlinePrice as number)
+    : Number.isFinite(row.regularPrice ?? Number.NaN)
+      ? (row.regularPrice as number)
+      : Number.NaN;
+  if (!Number.isFinite(price) || price <= 0) return null;
+  return price / area;
+}
+
+function isClimateRow(row: CompSetRow): boolean {
+  if (row.cc) return true;
+  const description = row.description.toLowerCase();
+  return /climate|air\s*cooled/.test(description);
+}
+
+function isFirstFloorRow(row: CompSetRow): boolean {
+  const floor = row.floor;
+  if (Number.isFinite(floor ?? Number.NaN) && floor != null) {
+    if (floor === 0 || floor === 1) return true;
+  }
+  const description = row.description.toLowerCase();
+  return /\b(1st|first|ground)\b/.test(description);
+}
+
+function average(values: number[]): number | null {
+  if (!values || values.length === 0) return null;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
+}
+
+function formatRate(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return DASH;
+  return `$${value.toFixed(2)}`;
+}
+
+const PPT_XML_FILE_PATTERN = /^ppt\/(slides|slideLayouts|slideMasters)\/.*\.xml$/;
+
+function scrubHiddenCharactersFromZip(zip: PizZip): void {
+  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
+  for (const filename of xmlPaths) {
+    const file = zip.file(filename);
+    if (!file) continue;
+    const original = file.asText();
+    const sanitized = stripHiddenTokenCharacters(original);
+    if (sanitized !== original) {
+      zip.file(filename, sanitized);
+    }
+  }
+}
+
+function normalizeTokenKey(key: string): string {
+  return stripHiddenTokenCharacters(key).replace(/\s+/g, "").toUpperCase();
+}
+
+async function renderTokensIntoZip(zip: PizZip, tokens: Record<string, string>): Promise<Buffer> {
+  const normalizedTokens: Record<string, string> = {};
+  for (const [key, value] of Object.entries(tokens)) {
+    const normalizedKey = normalizeTokenKey(key);
+    if (!normalizedKey) continue;
+    normalizedTokens[normalizedKey] = value ?? "";
+  }
+
+  const pptXmlPaths = Object.keys(zip.files).filter(
+    (filename) => filename.startsWith("ppt/") && filename.endsWith(".xml") && !filename.startsWith("ppt/embeddings/"),
+  );
+  for (const filename of pptXmlPaths) {
+    const file = zip.file(filename);
+    if (!file) continue;
+    const original = file.asText();
+    const replaced = replaceTokensInContent(original, normalizedTokens);
+    if (replaced !== original) {
+      zip.file(filename, replaced);
+    }
+  }
+
+  await processEmbeddedWorkbooks(zip, normalizedTokens);
+
+  return zip.generate({ type: "nodebuffer" });
+}
+
+function replaceTokensInContent(content: string, normalizedTokens: Record<string, string>): string {
+  return content.replace(/{{\s*([^{}]+?)\s*}}/g, (_match, rawKey) => {
+    const key = normalizeTokenKey(String(rawKey));
+    if (!key) return "";
+    const value = normalizedTokens[key];
+    return value ?? "";
+  });
+}
+
+async function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<string, string>): Promise<void> {
+  const embeddedPaths = Object.keys(zip.files).filter((p) => p.startsWith("ppt/embeddings/") && p.endsWith(".xlsx"));
+
+  for (const embeddedPath of embeddedPaths) {
+    const file = zip.file(embeddedPath);
+    if (!file) continue;
+    const buffer =
+      typeof file.asUint8Array === "function"
+        ? file.asUint8Array()
+        : file.asNodeBuffer
+          ? file.asNodeBuffer()
+          : new Uint8Array(Buffer.from(file.asBinary(), "binary"));
+    const workbookZip = new PizZip(buffer);
+    const innerXmlPaths = Object.keys(workbookZip.files).filter(
+      (innerPath) => innerPath.startsWith("xl/") && innerPath.endsWith(".xml"),
+    );
+    let mutated = false;
+    for (const innerPath of innerXmlPaths) {
+      const workbookFile = workbookZip.file(innerPath);
+      if (!workbookFile) continue;
+      const original = workbookFile.asText();
+      const replaced = replaceTokensInContent(original, normalizedTokens);
+      if (replaced !== original) {
+        workbookZip.file(innerPath, replaced);
+        mutated = true;
+      }
+    }
+    if (mutated) {
+      const updatedBuffer = workbookZip.generate({ type: "uint8array" });
+      zip.file(embeddedPath, updatedBuffer);
+    }
+  }
 }

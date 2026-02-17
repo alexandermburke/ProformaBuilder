@@ -62,6 +62,13 @@ const normalizeHeaderToken = (value: string): string => value.toLowerCase().repl
 const hasIdMarker = (header: string): boolean =>
   ['id', 'code', '#', 'number'].some((marker) => header.includes(marker));
 
+const COMPSET_HEADERS = {
+  storeName: ['storename', 'store name', 'facility name', 'property name'],
+  address: ['address', 'street', 'address1'],
+  city: ['city'],
+  state: ['state', 'st'],
+} as const;
+
 const findHeaderIndex = (headers: string[], keywords: string[], options?: { rejectIfId?: boolean }): number => {
   const { rejectIfId } = options ?? {};
   const normalizedKeywords = keywords.map((value) => ({
@@ -93,6 +100,27 @@ const findHeaderRow = (rows: unknown[][]): { index: number; nameIndex: number; i
   return null;
 };
 
+const findCompSetHeaderRow = (
+  rows: unknown[][],
+): { index: number; storeIndex: number; addressIndex: number; cityIndex: number; stateIndex: number } | null => {
+  const scanLimit = Math.min(rows.length, 12);
+  for (let idx = 0; idx < scanLimit; idx += 1) {
+    const row = rows[idx] ?? [];
+    const headers = row.map((cell) => normalizeHeaderValue(cell));
+    const storeIndex = findHeaderIndex(headers, COMPSET_HEADERS.storeName, { rejectIfId: true });
+    const addressIndex = findHeaderIndex(headers, COMPSET_HEADERS.address);
+    if (storeIndex < 0 || addressIndex < 0) continue;
+    return {
+      index: idx,
+      storeIndex,
+      addressIndex,
+      cityIndex: findHeaderIndex(headers, COMPSET_HEADERS.city),
+      stateIndex: findHeaderIndex(headers, COMPSET_HEADERS.state),
+    };
+  }
+  return null;
+};
+
 const addPropertyCandidate = (candidates: Map<string, SpreadsheetProperty>, candidate: SpreadsheetProperty): void => {
   const key = normalizeFilenameValue(candidate.id || candidate.name);
   if (!key || IGNORED_PROPERTY_TOKENS.has(key)) return;
@@ -102,6 +130,27 @@ const addPropertyCandidate = (candidates: Map<string, SpreadsheetProperty>, cand
 
 const extractPropertiesFromRows = (rows: unknown[][]): SpreadsheetProperty[] => {
   const candidates = new Map<string, SpreadsheetProperty>();
+
+  const compHeader = findCompSetHeaderRow(rows);
+  if (compHeader) {
+    const { index, storeIndex, addressIndex, cityIndex, stateIndex } = compHeader;
+    for (let rowIdx = index + 1; rowIdx < rows.length; rowIdx += 1) {
+      const row = rows[rowIdx] ?? [];
+      const nameValue = normalizeCellValue(row[storeIndex]);
+      const addressValue = normalizeCellValue(row[addressIndex]);
+      const cityValue = cityIndex >= 0 ? normalizeCellValue(row[cityIndex]) : '';
+      const stateValue = stateIndex >= 0 ? normalizeCellValue(row[stateIndex]) : '';
+      if (!nameValue || !addressValue) continue;
+      const id = [nameValue, addressValue, cityValue, stateValue].filter(Boolean).join(' | ');
+      const candidate: SpreadsheetProperty = {
+        id,
+        name: nameValue,
+        code: [cityValue, stateValue].filter(Boolean).join(', ') || undefined,
+      };
+      addPropertyCandidate(candidates, candidate);
+    }
+    return Array.from(candidates.values());
+  }
   const headerInfo = findHeaderRow(rows);
   if (headerInfo) {
     const { index, nameIndex, idIndex } = headerInfo;
@@ -225,8 +274,9 @@ export default function CompSetsPage() {
 
   const acceptUploadFile = async (file: File | null | undefined) => {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      setToast('Upload must be a .xlsx file.');
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.csv')) {
+      setToast('Upload must be a .xlsx or .csv file.');
       return;
     }
     setManualMessage(null);
@@ -487,18 +537,18 @@ export default function CompSetsPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    accept=".xlsx,.csv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     className="hidden"
                     onChange={handleFileInputChange}
                   />
                   <div className="flex flex-col gap-1 text-sm text-[color:var(--text-secondary)]">
-                    <span className="font-semibold text-[color:var(--text-primary)]">Drop XLSX here</span>
+                    <span className="font-semibold text-[color:var(--text-primary)]">Drop XLSX or CSV here</span>
                     <span>or click to browse</span>
                   </div>
                   {uploadFile ? (
                     <span className="text-xs font-semibold text-[color:var(--text-primary)]">Selected: {uploadFile.name}</span>
                   ) : (
-                    <span className="text-xs text-[color:var(--text-muted)]">Only one .xlsx file is needed.</span>
+                    <span className="text-xs text-[color:var(--text-muted)]">Only one .xlsx or .csv file is needed.</span>
                   )}
                 </div>
               </div>

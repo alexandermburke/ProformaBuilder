@@ -21,7 +21,12 @@ export function ChartCard({
   className,
 }: ChartCardProps): JSX.Element {
   return (
-    <section className={['ios-card ios-animate-up space-y-4 p-6', className].filter(Boolean).join(' ')}>
+    <section
+      className={['ios-card ios-animate-up relative overflow-visible space-y-4 p-6', className]
+        .filter(Boolean)
+        .join(' ')}
+      style={{ overflow: 'visible' }}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-base font-semibold text-[color:var(--text-primary)]">

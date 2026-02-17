@@ -35,7 +35,25 @@ export type MsrSnapshot = {
     economicOccupancy?: number;
     netRevenueMtd?: number;
     grossPotentialRevenue?: number;
+    totalOperatingExpense?: number;
+    totalOperatingExpenseMtd?: number;
+    operatingExpenseMtd?: number;
+    expensesMtd?: number;
+    noi?: number;
+    noiMtd?: number;
+    netOperatingIncome?: number;
+    netOperatingIncomeMtd?: number;
     occupiedRateVariancePct?: number;
+  };
+  financials?: {
+    expenses?: number;
+    expensesMtd?: number;
+    totalOperatingExpense?: number;
+    totalOperatingExpenseMtd?: number;
+    noi?: number;
+    noiMtd?: number;
+    netOperatingIncome?: number;
+    netOperatingIncomeMtd?: number;
   };
   rentals?: {
     moveInsMtd?: number;
@@ -145,7 +163,6 @@ type SeriesPoint = {
 
 type SignalTone = 'success' | 'warning' | 'neutral';
 
-const ECRI_INFO = 'ECRI = Existing Customer Rate Increase (from MSR pricing cadence).';
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
   { key: '3M', months: 3 },
@@ -197,6 +214,87 @@ const toPct01 = (value: unknown): number | null => {
   const abs = Math.abs(value);
   if (abs > 1) return value / 100;
   return value;
+};
+
+const OCCUPANCY_VALUE_PATHS = [
+  ['occupancy', 'rsfOccPct'],
+  ['occupancy', 'occupancyPct'],
+  ['occupancy', 'occupiedPct'],
+  ['occupancyPct'],
+] as const;
+
+const NET_REVENUE_VALUE_PATHS = [
+  ['revenue', 'netRevenueMtd'],
+  ['revenue', 'netRevenue'],
+  ['financials', 'netRevenueMtd'],
+  ['financials', 'netRevenue'],
+  ['netRevenueMtd'],
+  ['netRevenue'],
+] as const;
+
+const EXPENSES_VALUE_PATHS = [
+  ['financials', 'totalOperatingExpenseMtd'],
+  ['financials', 'totalOperatingExpense'],
+  ['financials', 'operatingExpenseMtd'],
+  ['financials', 'expensesMtd'],
+  ['financials', 'expenses'],
+  ['revenue', 'totalOperatingExpenseMtd'],
+  ['revenue', 'totalOperatingExpense'],
+  ['revenue', 'operatingExpenseMtd'],
+  ['revenue', 'expensesMtd'],
+  ['expenses', 'mtd'],
+  ['expenses', 'totalOperating'],
+  ['totalOperatingExpenseMtd'],
+  ['totalOperatingExpense'],
+  ['operatingExpenseMtd'],
+  ['expensesMtd'],
+  ['expenseMtd'],
+  ['toe'],
+] as const;
+
+const NOI_VALUE_PATHS = [
+  ['financials', 'noiMtd'],
+  ['financials', 'noi'],
+  ['financials', 'netOperatingIncomeMtd'],
+  ['financials', 'netOperatingIncome'],
+  ['revenue', 'noiMtd'],
+  ['revenue', 'noi'],
+  ['revenue', 'netOperatingIncomeMtd'],
+  ['revenue', 'netOperatingIncome'],
+  ['noiMtd'],
+  ['noi'],
+  ['netOperatingIncomeMtd'],
+  ['netOperatingIncome'],
+] as const;
+
+const asFiniteNumber = (value: unknown): number | null => {
+  if (isFiniteNumber(value)) return value;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const usesParens = /^\(.*\)$/.test(trimmed);
+  const normalized = trimmed.replace(/[$,%\s,()]/g, '');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return usesParens ? -parsed : parsed;
+};
+
+const getNestedValue = (source: unknown, path: readonly string[]): unknown => {
+  let current: unknown = source;
+  for (const key of path) {
+    if (!current || typeof current !== 'object') return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+};
+
+const getSnapshotNumber = (snapshot: MsrSnapshot, paths: ReadonlyArray<readonly string[]>): number | null => {
+  for (const path of paths) {
+    const value = asFiniteNumber(getNestedValue(snapshot, path));
+    if (isFiniteNumber(value)) return value;
+  }
+  return null;
 };
 
 const buildLinePathWithGaps = (
@@ -437,7 +535,6 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   const hasLimitedRange = isPittmanProperty(propertyId);
   const [range, setRange] = useState<RangeKey>(hasLimitedRange ? '3M' : '6M');
   const [section, setSection] = useState<SectionKey>('overview');
-  const [occupancyHoverIndex, setOccupancyHoverIndex] = useState<number | null>(null);
   const [netRevenueHoverIndex, setNetRevenueHoverIndex] = useState<number | null>(null);
   const hideHeaderDetailsOnMobile = section !== 'overview';
   const currentYear = new Date().getFullYear();
@@ -500,30 +597,73 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
         : null;
   const netRevenueValue = latestSnapshot?.revenue?.netRevenueMtd;
   const grossPotentialRentValue = latestSnapshot?.revenue?.grossPotentialRevenue;
+  const formatCurrencyPoint = (value: number) => formatCompactCurrency(value);
+
+  const coreTrendRows = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          if (!entry.monthIso) return null;
+          const occupancyRaw = getSnapshotNumber(entry.snapshot, OCCUPANCY_VALUE_PATHS);
+          const occupancy = toPct01(occupancyRaw);
+          const netRevenue = getSnapshotNumber(entry.snapshot, NET_REVENUE_VALUE_PATHS);
+          const expenses = getSnapshotNumber(entry.snapshot, EXPENSES_VALUE_PATHS);
+          const directNoi = getSnapshotNumber(entry.snapshot, NOI_VALUE_PATHS);
+          const noi =
+            isFiniteNumber(directNoi)
+              ? directNoi
+              : isFiniteNumber(netRevenue) && isFiniteNumber(expenses)
+                ? netRevenue - expenses
+                : null;
+          return {
+            monthIso: entry.monthIso,
+            occupancy,
+            netRevenue,
+            expenses,
+            noi,
+          };
+        })
+        .filter((row): row is { monthIso: string; occupancy: number | null; netRevenue: number | null; expenses: number | null; noi: number | null } => Boolean(row)),
+    [seriesEntries],
+  );
+
+  const netRevenueCoreSeries = useMemo(
+    () =>
+      coreTrendRows.flatMap((row) =>
+        isFiniteNumber(row.netRevenue) ? [{ monthIso: row.monthIso, value: row.netRevenue }] : [],
+      ),
+    [coreTrendRows],
+  );
+  const expensesCoreSeries = useMemo(
+    () =>
+      coreTrendRows.flatMap((row) =>
+        isFiniteNumber(row.expenses) ? [{ monthIso: row.monthIso, value: row.expenses }] : [],
+      ),
+    [coreTrendRows],
+  );
+  const noiCoreSeries = useMemo(
+    () =>
+      coreTrendRows.flatMap((row) =>
+        isFiniteNumber(row.noi) ? [{ monthIso: row.monthIso, value: row.noi }] : [],
+      ),
+    [coreTrendRows],
+  );
+  const netRevenueCoreEmpty = getSeriesEmptyMessage(
+    netRevenueCoreSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const expensesCoreEmpty = getSeriesEmptyMessage(
+    expensesCoreSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const noiCoreEmpty = getSeriesEmptyMessage(
+    noiCoreSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
 
   const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
   const occupancyValues = occupancySeries.map((point) => point.value);
-  const occupancyTrendHint = seriesEntries.length < 2 ? 'Need 2+ months for trend' : null;
-
-  const sellRateSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.avgCurrentRentOccupied);
-
   const chartMonths = useMemo(() => seriesEntries.map((entry) => entry.monthIso ?? ''), [seriesEntries]);
-  const occupancyChartValues = useMemo(
-    () =>
-      seriesEntries.map((entry) => {
-        const value = entry.snapshot.occupancy?.rsfOccPct;
-        return isFiniteNumber(value) ? value * 100 : null;
-      }),
-    [seriesEntries],
-  );
-  const sellChartValues = useMemo(
-    () =>
-      seriesEntries.map((entry) => {
-        const value = entry.snapshot.pricing?.avgCurrentRentOccupied;
-        return isFiniteNumber(value) ? value : null;
-      }),
-    [seriesEntries],
-  );
 
   useEffect(() => {
     const valid = occupancyValues.filter((value) => isFiniteNumber(value));
@@ -536,7 +676,6 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   }, [JSON.stringify(occupancyValues)]);
 
   useEffect(() => {
-    setOccupancyHoverIndex(null);
     setNetRevenueHoverIndex(null);
   }, [range]);
 
@@ -566,127 +705,12 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
     }
   }, [section]);
 
-  const occAxis = useMemo(() => {
-    const valid = occupancyChartValues.filter(isFiniteNumber);
-    if (!valid.length) {
-      return { min: 0, max: 100, step: 10, ticks: [0, 25, 50, 75, 100] };
-    }
-    let minOcc = Math.max(0, Math.min(...valid) - 2);
-    let maxOcc = Math.min(100, Math.max(...valid) + 2);
-    if (maxOcc - minOcc < 6) {
-      const center = (minOcc + maxOcc) / 2;
-      minOcc = Math.max(0, center - 3);
-      maxOcc = Math.min(100, center + 3);
-    }
-    if (maxOcc - minOcc < 6) {
-      if (minOcc <= 0) {
-        maxOcc = Math.min(100, minOcc + 6);
-      } else if (maxOcc >= 100) {
-        minOcc = Math.max(0, maxOcc - 6);
-      }
-    }
-    const range = maxOcc - minOcc;
-    const step = range <= 10 ? 1 : range <= 20 ? 2 : 5;
-    const start = Math.ceil(minOcc / step) * step;
-    const ticks: number[] = [];
-    for (let value = start; value <= maxOcc + 0.001; value += step) {
-      ticks.push(Number(value.toFixed(1)));
-    }
-    return { min: minOcc, max: maxOcc, step, ticks };
-  }, [occupancyChartValues]);
-
-  const sellAxis = useMemo(() => {
-    const valid = sellChartValues.filter(isFiniteNumber);
-    if (!valid.length) {
-      return { min: 0, max: 10, step: 5, ticks: [0, 5, 10] };
-    }
-    let minSell = Math.min(...valid);
-    let maxSell = Math.max(...valid);
-    let range = maxSell - minSell;
-    if (range < 10) {
-      const center = (minSell + maxSell) / 2;
-      minSell = center - 5;
-      maxSell = center + 5;
-      range = maxSell - minSell;
-    } else {
-      const padding = Math.max(range * 0.05, 5);
-      minSell -= padding;
-      maxSell += padding;
-      range = maxSell - minSell;
-    }
-    const step = range <= 25 ? 5 : range <= 60 ? 10 : range <= 150 ? 25 : range <= 300 ? 50 : 100;
-    const start = Math.ceil(minSell / step) * step;
-    const ticks: number[] = [];
-    for (let value = start; value <= maxSell + 0.001; value += step) {
-      ticks.push(Number(value.toFixed(0)));
-    }
-    return { min: minSell, max: maxSell, step, ticks };
-  }, [sellChartValues]);
-
   const plotLeft = 58;
   const plotRight = CHART_WIDTH - 58;
   const plotTop = 18;
   const plotBottom = CHART_HEIGHT - 30;
   const bandCount = Math.max(chartMonths.length, 1);
   const bandWidth = (plotRight - plotLeft) / bandCount;
-  const occRange = Math.max(1, occAxis.max - occAxis.min);
-  const sellRange = Math.max(1, sellAxis.max - sellAxis.min);
-
-  const occupancyPoints = useMemo(
-    () =>
-      occupancyChartValues.map((value, index) => {
-        if (!isFiniteNumber(value)) return null;
-        const x = plotLeft + bandWidth * index + bandWidth / 2;
-        const y = plotTop + ((occAxis.max - value) / occRange) * (plotBottom - plotTop);
-        return { x, y, value };
-      }),
-    [occupancyChartValues, occAxis.max, occRange, bandWidth, plotBottom, plotLeft, plotTop],
-  );
-  const sellPoints = useMemo(
-    () =>
-      sellChartValues.map((value, index) => {
-        if (!isFiniteNumber(value)) return null;
-        const x = plotLeft + bandWidth * index + bandWidth / 2;
-        const y = plotTop + ((sellAxis.max - value) / sellRange) * (plotBottom - plotTop);
-        return { x, y, value };
-      }),
-    [sellChartValues, sellAxis.max, sellRange, bandWidth, plotBottom, plotLeft, plotTop],
-  );
-  const occupancyLine = buildPathFromPoints(occupancyPoints);
-  const sellLine = buildPathFromPoints(sellPoints);
-  const occupancyAreaPaths = useMemo(() => {
-    const segments: Array<Array<{ x: number; y: number }>> = [];
-    let current: Array<{ x: number; y: number }> = [];
-    occupancyPoints.forEach((point) => {
-      if (!point) {
-        if (current.length) {
-          segments.push(current);
-          current = [];
-        }
-        return;
-      }
-      current.push(point);
-    });
-    if (current.length) segments.push(current);
-    return segments.map((segment) => {
-      const start = segment[0];
-      const end = segment[segment.length - 1];
-      const path = [`M ${start.x} ${plotBottom}`, `L ${start.x} ${start.y}`];
-      segment.slice(1).forEach((point) => path.push(`L ${point.x} ${point.y}`));
-      path.push(`L ${end.x} ${plotBottom}`, 'Z');
-      return path.join(' ');
-    });
-  }, [occupancyPoints, plotBottom]);
-
-  const occupancyHasData = occupancyChartValues.some((value) => isFiniteNumber(value));
-  const sellHasData = sellChartValues.some((value) => isFiniteNumber(value));
-  const occupancyChartHint =
-    occupancyTrendHint ?? (!occupancyHasData && !sellHasData ? 'N/A' : null);
-
-  const occupancyChartKey = `${range}-${chartMonths.length}`;
-
-  const latestOccupancyPoint = occupancySeries.length ? occupancySeries[occupancySeries.length - 1].value : null;
-  const latestSellRatePoint = sellRateSeries.length ? sellRateSeries[sellRateSeries.length - 1].value : null;
 
   const netRevenueChartValues = useMemo(
     () =>
@@ -741,38 +765,8 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   const occupancyDelta = sparkHasHistory ? sparkValues[sparkValues.length - 1] - sparkValues[0] : null;
   const trendStatus = deriveTrendStatus(occupancyDelta);
 
-  const unitMix = latestSnapshot?.unitMix;
-  const occupiedByType = unitMix?.occupiedRsfByType ?? {};
-  const unitMixEntries = Object.entries(occupiedByType).filter(([, value]) => isFiniteNumber(value) && value > 0);
-  const totalOccupiedRsf =
-    isFiniteNumber(unitMix?.totalOccupiedRsf)
-      ? Number(unitMix?.totalOccupiedRsf)
-      : unitMixEntries.reduce((sum, [, value]) => sum + Number(value), 0);
-  const totalRsf = isFiniteNumber(unitMix?.totalRsf) ? Number(unitMix?.totalRsf) : null;
-  const sortedUnitMix = unitMixEntries.sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 4);
-  const unitMixSegments = useMemo(() => {
-    if (!totalOccupiedRsf || sortedUnitMix.length === 0) return [];
-    let offset = 0;
-    return sortedUnitMix.map(([label, value], index) => {
-      const percent = (Number(value) / totalOccupiedRsf) * 100;
-      const start = 25 - offset;
-      offset += percent;
-      return {
-        label,
-        value: percent,
-        color: UNIT_MIX_COLORS[index % UNIT_MIX_COLORS.length],
-        offset: start,
-        delay: `${index * 0.12}s`,
-      };
-    });
-  }, [sortedUnitMix, totalOccupiedRsf]);
-  const unitMixChartKey = `${range}-${unitMixSegments
-    .map((segment) => `${segment.label}-${segment.value.toFixed(2)}`)
-    .join('|')}`;
-  const occupiedPct = totalRsf && totalOccupiedRsf ? (totalOccupiedRsf / totalRsf) * 100 : null;
-
   return (
-    <div className="token-dashboard-print relative min-h-screen w-full overflow-hidden text-[color:var(--text-primary)]">
+    <div className="token-dashboard-print relative min-h-screen w-full overflow-visible text-[color:var(--text-primary)]">
       <style jsx global>{`
         @media print {
           html,
@@ -944,11 +938,26 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="ios-button ml-auto px-3 py-1 text-[11px] sm:hidden"
+                className="ios-button ml-auto flex h-8 w-8 items-center justify-center p-0 text-[color:var(--text-primary)] sm:hidden hover:text-[color:var(--accent-strong)]"
                 data-variant="secondary"
                 aria-label="Print dashboard"
+                style={{ color: 'var(--text-primary)' }}
               >
-                Print
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M7 8V4h10v4M7 17h10v3H7v-3Zm-2-6h14a2 2 0 0 1 2 2v4h-3v-2H6v2H3v-4a2 2 0 0 1 2-2Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </div>
           </div>
@@ -956,370 +965,75 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
 
         {section === 'overview' ? (
           <div key={`overview-${range}`} className="space-y-6">
-            <LazyBlock minHeight={420}>
-              <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-                <ChartCard
-                  key={`token-occupancy-${range}`}
-                  title="Occupancy trend (RSF)"
-                  subtitle={`Selected range snapshots (${range})`}
-                >
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-4 text-xs text-[color:var(--text-secondary)]">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.8)]" />
-                      Occupancy (RSF)
-                    </span>
-                    {sellHasData ? (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.8)]" />
-                        Sell rate
-                      </span>
-                    ) : (
-                      <span className="text-[color:var(--text-muted)]">Sell rate: N/A</span>
-                    )}
-                  </div>
+            <LazyBlock minHeight={360}>
+              <section className="space-y-4">
+                <SectionHeader
+                  title="Core Financial Trends"
+                  subtitle={`Historical snapshots for expenses, net revenue, and NOI (${range}).`}
+                />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <ChartCard
+                    key={`overview-net-revenue-core-${range}`}
+                    title="Net Revenue"
+                    subtitle="Monthly trend"
+                    info="Parsed from the MSR 'Net Revenue' block (month-to-date) and stored per snapshot."
+                    emptyMessage={netRevenueCoreEmpty}
+                  >
+                    <MemoLineChartWithMonths
+                      series={netRevenueCoreSeries}
+                      color="rgba(14,165,233,0.9)"
+                      label="Net revenue (MTD)"
+                      formatValue={formatCurrencyPoint}
+                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                      emphasizeTrend
+                    />
+                  </ChartCard>
+
+                  <ChartCard
+                    key={`overview-expenses-core-${range}`}
+                    title="Expenses"
+                    subtitle="Monthly trend"
+                    info="Expense totals are not present in the MSR; this uses stored snapshot financials when available."
+                    emptyMessage={expensesCoreEmpty}
+                  >
+                    <MemoLineChartWithMonths
+                      series={expensesCoreSeries}
+                      color="rgba(248,113,113,0.86)"
+                      label="Operating expenses"
+                      formatValue={formatCurrencyPoint}
+                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                      emphasizeTrend
+                    />
+                  </ChartCard>
+
+                  <ChartCard
+                    key={`overview-noi-core-${range}`}
+                    title="NOI"
+                    subtitle="Monthly trend"
+                    info="NOI is sourced from stored snapshot financials when available; otherwise derived as Net Revenue minus Expenses."
+                    emptyMessage={noiCoreEmpty}
+                  >
+                    <MemoLineChartWithMonths
+                      series={noiCoreSeries}
+                      color="rgba(16,185,129,0.9)"
+                      label="Net operating income"
+                      formatValue={formatCurrencyPoint}
+                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                      emphasizeTrend
+                    />
+                  </ChartCard>
                 </div>
-
-                <div className="mt-4 rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
-                  <div className="relative">
-                    <svg
-                      key={occupancyChartKey}
-                      viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                      className="h-72 w-full"
-                      role="img"
-                      aria-label="Occupancy trend chart"
-                      onMouseLeave={() => setOccupancyHoverIndex(null)}
-                    >
-                      <defs>
-                        <linearGradient id="token-occupancy-area" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="rgba(37,99,235,0.28)" />
-                          <stop offset="100%" stopColor="rgba(37,99,235,0.04)" />
-                        </linearGradient>
-                        <linearGradient id="token-rate-glow" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="rgba(14,165,233,0.85)" />
-                          <stop offset="100%" stopColor="rgba(56,189,248,0.95)" />
-                        </linearGradient>
-                      </defs>
-
-                      {occAxis.ticks.map((tick) => {
-                        const y = plotTop + ((occAxis.max - tick) / occRange) * (plotBottom - plotTop);
-                        return (
-                          <line
-                            key={`occ-grid-${tick}`}
-                            x1={plotLeft}
-                            x2={plotRight}
-                            y1={y}
-                            y2={y}
-                            stroke="rgba(148,163,255,0.22)"
-                            strokeDasharray="6 8"
-                          />
-                        );
-                      })}
-
-                      <line
-                        x1={plotLeft}
-                        x2={plotLeft}
-                        y1={plotTop}
-                        y2={plotBottom}
-                        stroke="rgba(148,163,255,0.4)"
-                      />
-                      <line
-                        x1={plotRight}
-                        x2={plotRight}
-                        y1={plotTop}
-                        y2={plotBottom}
-                        stroke="rgba(148,163,255,0.4)"
-                      />
-
-                      {occAxis.ticks.map((tick) => {
-                        const y = plotTop + ((occAxis.max - tick) / occRange) * (plotBottom - plotTop);
-                        return (
-                          <text
-                            key={`occ-tick-${tick}`}
-                            x={plotLeft - 8}
-                            y={y + 4}
-                            fontSize={10}
-                            textAnchor="end"
-                            fill="rgba(71,85,105,0.9)"
-                          >
-                            {tick.toFixed(0)}%
-                          </text>
-                        );
-                      })}
-                      {sellAxis.ticks.map((tick) => {
-                        const y = plotTop + ((sellAxis.max - tick) / sellRange) * (plotBottom - plotTop);
-                        return (
-                          <text
-                            key={`sell-tick-${tick}`}
-                            x={plotRight + 8}
-                            y={y + 4}
-                            fontSize={10}
-                            textAnchor="start"
-                            fill="rgba(71,85,105,0.9)"
-                          >
-                            {formatCurrency(tick)}
-                          </text>
-                        );
-                      })}
-
-                      <text
-                        x={plotLeft - 38}
-                        y={(plotTop + plotBottom) / 2}
-                        fontSize={10}
-                        fill="rgba(100,116,139,0.9)"
-                        textAnchor="middle"
-                        transform={`rotate(-90 ${plotLeft - 38} ${(plotTop + plotBottom) / 2})`}
-                      >
-                        Occupancy (RSF)
-                      </text>
-                      <text
-                        x={plotRight + 38}
-                        y={(plotTop + plotBottom) / 2}
-                        fontSize={10}
-                        fill="rgba(100,116,139,0.9)"
-                        textAnchor="middle"
-                        transform={`rotate(90 ${plotRight + 38} ${(plotTop + plotBottom) / 2})`}
-                      >
-                        Sell rate ($)
-                      </text>
-
-                      {occupancyAreaPaths.map((path, index) => (
-                        <path
-                          key={`occ-area-${index}`}
-                          d={path}
-                          fill="url(#token-occupancy-area)"
-                          className="history-chart-area"
-                        />
-                      ))}
-
-                      <path
-                        d={occupancyLine}
-                        fill="none"
-                        stroke="rgba(37,99,235,0.95)"
-                        strokeWidth={3}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        pathLength={1}
-                        className="history-chart-line"
-                        style={{ animationDelay: '0.1s' }}
-                      />
-                      <path
-                        d={sellLine}
-                        fill="none"
-                        stroke="url(#token-rate-glow)"
-                        strokeWidth={2.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        pathLength={1}
-                        className="history-chart-line"
-                        style={{ animationDelay: '0.25s' }}
-                      />
-
-                      {occupancyPoints.map((point, index) => {
-                        if (!point) return null;
-                        const labelOffset = index % 2 === 0 ? -12 : -22;
-                        const xNudge = index % 2 === 0 ? -4 : 4;
-                        const labelY = Math.max(plotTop - 6, point.y + labelOffset);
-                        return (
-                          <g key={`occ-point-${index}`}>
-                            <circle cx={point.x} cy={point.y} r={4.6} fill="#fff" stroke="rgba(37,99,235,0.9)" strokeWidth={2} />
-                            <text
-                              x={point.x + xNudge}
-                              y={labelY}
-                              fontSize={9.5}
-                              textAnchor="middle"
-                              fill="rgba(37,99,235,0.9)"
-                            >
-                              {formatPercent(point.value, 1)}
-                            </text>
-                          </g>
-                        );
-                      })}
-                      {sellPoints.map((point, index) => {
-                        if (!point) return null;
-                        const labelOffset = index % 2 === 0 ? 16 : 26;
-                        const xNudge = index % 2 === 0 ? 4 : -4;
-                        const labelY = Math.min(plotBottom + 18, point.y + labelOffset);
-                        return (
-                          <g key={`sell-point-${index}`}>
-                            <circle cx={point.x} cy={point.y} r={4.2} fill="#fff" stroke="rgba(14,165,233,0.9)" strokeWidth={2} />
-                            <text
-                              x={point.x + xNudge}
-                              y={labelY}
-                              fontSize={9}
-                              textAnchor="middle"
-                              fill="rgba(14,165,233,0.95)"
-                            >
-                              {formatCurrency(point.value)}
-                            </text>
-                          </g>
-                        );
-                      })}
-
-                      {chartMonths.map((monthIso, index) => {
-                        const x = plotLeft + bandWidth * index;
-                        return (
-                          <rect
-                            key={`hover-${index}`}
-                            x={x}
-                            y={plotTop}
-                            width={bandWidth}
-                            height={plotBottom - plotTop}
-                            fill="transparent"
-                            onMouseEnter={() => setOccupancyHoverIndex(index)}
-                          />
-                        );
-                      })}
-                    </svg>
-
-                    {occupancyHoverIndex != null ? (
-                      <div
-                        className="pointer-events-none absolute top-2 rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-secondary)] shadow-lg"
-                        style={{
-                          left: `${((plotLeft + bandWidth * occupancyHoverIndex + bandWidth / 2) / CHART_WIDTH) * 100}%`,
-                          transform: 'translate(-50%, 0)',
-                        }}
-                      >
-                        <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                          {chartMonths[occupancyHoverIndex]
-                            ? formatMonthLabel(chartMonths[occupancyHoverIndex])
-                            : 'N/A'}
-                        </div>
-                        <div className="mt-1 flex flex-col gap-1">
-                          <span>
-                            Occupancy:{' '}
-                            {occupancyChartValues[occupancyHoverIndex] != null
-                              ? formatPercent(occupancyChartValues[occupancyHoverIndex] ?? 0, 1)
-                              : 'N/A'}
-                          </span>
-                          <span>
-                            Sell rate:{' '}
-                            {sellChartValues[occupancyHoverIndex] != null
-                              ? formatCurrency(sellChartValues[occupancyHoverIndex] ?? 0)
-                              : 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {occupancyChartHint ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[color:var(--text-muted)]">
-                        {occupancyChartHint}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
-                    {chartMonths.map((monthIso, index) => (
-                      <span key={`${monthIso}-${index}`} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
-                        {monthIso ? formatMonthLabel(monthIso) : '—'}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-[color:var(--text-secondary)]">
-                  <div className="ios-list-card flex items-center gap-3 px-4 py-2">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        Latest occupancy (RSF)
-                      </div>
-                      <div className="text-lg font-semibold text-[color:var(--text-primary)]">
-                        {formatMaybePercent(latestOccupancyPoint)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ios-list-card flex items-center gap-3 px-4 py-2">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        Latest sell rate
-                      </div>
-                      <div className="text-lg font-semibold text-[color:var(--text-primary)]">
-                        {formatMaybeCurrency(latestSellRatePoint)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ios-list-card flex items-center gap-3 px-4 py-2">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                        YoY change
-                      </div>
-                      <div className="text-lg font-semibold text-[color:var(--text-primary)]">N/A</div>
-                    </div>
-                  </div>
-                </div>
-              </ChartCard>
-
-              <ChartCard
-                key={`token-unitmix-${range}`}
-                title="Unit mix"
-                subtitle="Occupied RSF by type (latest MSR)"
-                emptyMessage={!totalOccupiedRsf || unitMixSegments.length === 0 ? 'N/A' : undefined}
-              >
-                <div className="flex items-center justify-center">
-                  <div className="relative flex h-40 w-40 items-center justify-center">
-                    <svg
-                      key={unitMixChartKey}
-                      viewBox="0 0 120 120"
-                      className="h-full w-full"
-                      role="img"
-                      aria-label="Unit mix donut chart"
-                    >
-                      <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,255,0.2)" strokeWidth="12" />
-                      {unitMixSegments.map((segment) => (
-                        <circle
-                          key={segment.label}
-                          cx="60"
-                          cy="60"
-                          r="46"
-                          fill="none"
-                          stroke={segment.color}
-                          strokeWidth="12"
-                          strokeLinecap="round"
-                          pathLength={100}
-                          strokeDashoffset={segment.offset}
-                          className="history-donut-ring"
-                          style={
-                            {
-                              '--dash': `${segment.value} ${Math.max(0, 100 - segment.value)}`,
-                              '--delay': segment.delay,
-                            } as CSSProperties
-                          }
-                        />
-                      ))}
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <div className="text-2xl font-semibold text-[color:var(--text-primary)]">
-                        {occupiedPct ? formatMaybePercent(occupiedPct, 1) : formatMaybeNumber(totalOccupiedRsf)}
-                      </div>
-                      <div className="text-xs text-[color:var(--text-secondary)]">Occupied RSF</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  {unitMixSegments.map((segment) => (
-                    <div key={segment.label} className="ios-list-card flex items-center justify-between px-4 py-2 text-sm">
-                      <div className="flex items-center gap-3 text-[color:var(--text-primary)]">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
-                        <span>{segment.label}</span>
-                      </div>
-                      <span className="tabular-nums text-[color:var(--text-secondary)]">
-                        {formatMaybePercent(segment.value, 0)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </ChartCard>
               </section>
             </LazyBlock>
 
             <LazyBlock minHeight={360}>
               <section className="grid gap-6 lg:grid-cols-2">
-              <ChartCard
-                title="Monthly Net Revenue (MTD)"
-                subtitle={`Net revenue per snapshot (${range} range)`}
-                actions={
+                <ChartCard
+                  title="Monthly Net Revenue (MTD)"
+                  subtitle={`Net revenue per snapshot (${range} range)`}
+                  info="From the MSR 'Net Revenue' block (MTD) for each uploaded snapshot."
+                  actions={
                   <div className="text-right text-sm text-[color:var(--text-secondary)]">
                     <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
                       Range total
@@ -1670,6 +1384,601 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   );
 }
 
+function OccupancyUnitMixSection({
+  latestSnapshot,
+  seriesEntries,
+  rangeKey,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+  rangeKey: RangeKey;
+}): JSX.Element {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
+  const occupancyTrendHint = seriesEntries.length < 2 ? 'Need 2+ months for trend' : null;
+  const sellRateSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.avgSellRateOccupied);
+
+  const chartMonths = useMemo(() => seriesEntries.map((entry) => entry.monthIso ?? ''), [seriesEntries]);
+  const occupancyChartValues = useMemo(
+    () =>
+      seriesEntries.map((entry) => {
+        const value = entry.snapshot.occupancy?.rsfOccPct;
+        return isFiniteNumber(value) ? value * 100 : null;
+      }),
+    [seriesEntries],
+  );
+  const sellChartValues = useMemo(
+    () =>
+      seriesEntries.map((entry) => {
+        const value = entry.snapshot.pricing?.avgSellRateOccupied;
+        return isFiniteNumber(value) ? value : null;
+      }),
+    [seriesEntries],
+  );
+  const occupancyTrendDelta =
+    occupancyChartValues.length > 1 && isFiniteNumber(occupancyChartValues[0]) && isFiniteNumber(occupancyChartValues[occupancyChartValues.length - 1])
+      ? Number(occupancyChartValues[occupancyChartValues.length - 1]) - Number(occupancyChartValues[0])
+      : 0;
+  const occupancyTrendUp = occupancyChartValues.length > 1 ? occupancyTrendDelta >= 0 : false;
+
+  const occAxis = useMemo(() => {
+    const valid = occupancyChartValues.filter(isFiniteNumber);
+    if (!valid.length) {
+      return { min: 0, max: 100, step: 10, ticks: [0, 25, 50, 75, 100] };
+    }
+    let minOcc = Math.max(0, Math.min(...valid) - 2);
+    let maxOcc = Math.min(100, Math.max(...valid) + 2);
+    if (maxOcc - minOcc < 6) {
+      const center = (minOcc + maxOcc) / 2;
+      minOcc = Math.max(0, center - 3);
+      maxOcc = Math.min(100, center + 3);
+    }
+    if (maxOcc - minOcc < 6) {
+      if (minOcc <= 0) {
+        maxOcc = Math.min(100, minOcc + 6);
+      } else if (maxOcc >= 100) {
+        minOcc = Math.max(0, maxOcc - 6);
+      }
+    }
+    const range = maxOcc - minOcc;
+    const step = range <= 10 ? 1 : range <= 20 ? 2 : 5;
+    const start = Math.ceil(minOcc / step) * step;
+    const ticks: number[] = [];
+    for (let value = start; value <= maxOcc + 0.001; value += step) {
+      ticks.push(Number(value.toFixed(1)));
+    }
+    return { min: minOcc, max: maxOcc, step, ticks };
+  }, [occupancyChartValues]);
+
+  const sellAxis = useMemo(() => {
+    const valid = sellChartValues.filter(isFiniteNumber);
+    if (!valid.length) {
+      return { min: 0, max: 10, step: 5, ticks: [0, 5, 10] };
+    }
+    let minSell = Math.min(...valid);
+    let maxSell = Math.max(...valid);
+    let range = maxSell - minSell;
+    if (range < 10) {
+      const center = (minSell + maxSell) / 2;
+      minSell = center - 5;
+      maxSell = center + 5;
+      range = maxSell - minSell;
+    } else {
+      const padding = Math.max(range * 0.05, 5);
+      minSell -= padding;
+      maxSell += padding;
+      range = maxSell - minSell;
+    }
+    const step = range <= 25 ? 5 : range <= 60 ? 10 : range <= 150 ? 25 : range <= 300 ? 50 : 100;
+    const start = Math.ceil(minSell / step) * step;
+    const ticks: number[] = [];
+    for (let value = start; value <= maxSell + 0.001; value += step) {
+      ticks.push(Number(value.toFixed(0)));
+    }
+    return { min: minSell, max: maxSell, step, ticks };
+  }, [sellChartValues]);
+
+  const plotLeft = 58;
+  const plotRight = CHART_WIDTH - 58;
+  const plotTop = 18;
+  const plotBottom = CHART_HEIGHT - 30;
+  const bandCount = Math.max(chartMonths.length, 1);
+  const bandWidth = (plotRight - plotLeft) / bandCount;
+  const occRange = Math.max(1, occAxis.max - occAxis.min);
+  const sellRange = Math.max(1, sellAxis.max - sellAxis.min);
+
+  const occupancyPoints = useMemo(
+    () =>
+      occupancyChartValues.map((value, index) => {
+        if (!isFiniteNumber(value)) return null;
+        const x = plotLeft + bandWidth * index + bandWidth / 2;
+        const y = plotTop + ((occAxis.max - value) / occRange) * (plotBottom - plotTop);
+        return { x, y, value };
+      }),
+    [occupancyChartValues, occAxis.max, occRange, bandWidth, plotBottom, plotLeft, plotTop],
+  );
+  const sellPoints = useMemo(
+    () =>
+      sellChartValues.map((value, index) => {
+        if (!isFiniteNumber(value)) return null;
+        const x = plotLeft + bandWidth * index + bandWidth / 2;
+        const y = plotTop + ((sellAxis.max - value) / sellRange) * (plotBottom - plotTop);
+        return { x, y, value };
+      }),
+    [sellChartValues, sellAxis.max, sellRange, bandWidth, plotBottom, plotLeft, plotTop],
+  );
+  const occupancyLine = buildPathFromPoints(occupancyPoints);
+  const sellLine = buildPathFromPoints(sellPoints);
+  const occupancyAreaPaths = useMemo(() => {
+    const segments: Array<Array<{ x: number; y: number }>> = [];
+    let current: Array<{ x: number; y: number }> = [];
+    occupancyPoints.forEach((point) => {
+      if (!point) {
+        if (current.length) {
+          segments.push(current);
+          current = [];
+        }
+        return;
+      }
+      current.push(point);
+    });
+    if (current.length) segments.push(current);
+    return segments.map((segment) => {
+      const start = segment[0];
+      const end = segment[segment.length - 1];
+      const path = [`M ${start.x} ${plotBottom}`, `L ${start.x} ${start.y}`];
+      segment.slice(1).forEach((point) => path.push(`L ${point.x} ${point.y}`));
+      path.push(`L ${end.x} ${plotBottom}`, 'Z');
+      return path.join(' ');
+    });
+  }, [occupancyPoints, plotBottom]);
+
+  const occupancyHasData = occupancyChartValues.some((value) => isFiniteNumber(value));
+  const sellHasData = sellChartValues.some((value) => isFiniteNumber(value));
+  const occupancyChartHint =
+    occupancyTrendHint ?? (!occupancyHasData && !sellHasData ? 'N/A' : null);
+
+  const occupancyChartKey = `${rangeKey}-${chartMonths.length}`;
+
+  const latestOccupancyPoint = occupancySeries.length ? occupancySeries[occupancySeries.length - 1].value : null;
+  const latestSellRatePoint = sellRateSeries.length ? sellRateSeries[sellRateSeries.length - 1].value : null;
+
+  const unitMix = latestSnapshot?.unitMix;
+  const occupiedByType = unitMix?.occupiedRsfByType ?? {};
+  const unitMixEntries = Object.entries(occupiedByType).filter(([, value]) => isFiniteNumber(value) && value > 0);
+  const totalOccupiedRsf =
+    isFiniteNumber(unitMix?.totalOccupiedRsf)
+      ? Number(unitMix?.totalOccupiedRsf)
+      : unitMixEntries.reduce((sum, [, value]) => sum + Number(value), 0);
+  const totalRsf = isFiniteNumber(unitMix?.totalRsf) ? Number(unitMix?.totalRsf) : null;
+  const sortedUnitMix = unitMixEntries.sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 4);
+  const unitMixSegments = useMemo(() => {
+    if (!totalOccupiedRsf || sortedUnitMix.length === 0) return [];
+    let offset = 0;
+    return sortedUnitMix.map(([label, value], index) => {
+      const percent = (Number(value) / totalOccupiedRsf) * 100;
+      const start = 25 - offset;
+      offset += percent;
+      return {
+        label,
+        value: percent,
+        color: UNIT_MIX_COLORS[index % UNIT_MIX_COLORS.length],
+        offset: start,
+        delay: `${index * 0.12}s`,
+      };
+    });
+  }, [sortedUnitMix, totalOccupiedRsf]);
+  const unitMixChartKey = `${rangeKey}-${unitMixSegments
+    .map((segment) => `${segment.label}-${segment.value.toFixed(2)}`)
+    .join('|')}`;
+  const occupiedPct = totalRsf && totalOccupiedRsf ? (totalOccupiedRsf / totalRsf) * 100 : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-1">
+          <div className="text-lg font-semibold text-[color:var(--text-primary)]">Occupancy & Unit Mix</div>
+          <div className="text-sm text-[color:var(--text-secondary)]">
+            RSF occupancy, sell rate, and latest unit mix.
+          </div>
+        </div>
+        <span className="ios-pill text-[10px]" data-tone="neutral">
+          Range {rangeKey}
+        </span>
+      </div>
+
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <ChartCard
+          key={`token-occupancy-${rangeKey}`}
+          title="Occupancy trend (RSF)"
+          subtitle={`Selected range snapshots (${rangeKey})`}
+          info="RSF occupancy percent parsed from the Occupancy tab; falls back to the MSR Space Occupancy block when present."
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4 text-xs text-[color:var(--text-secondary)]">
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.8)]" />
+                Occupancy (RSF)
+              </span>
+              {sellHasData ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.8)]" />
+                  Sell rate
+                </span>
+              ) : (
+                <span className="text-[color:var(--text-muted)]">Sell rate: N/A</span>
+              )}
+            </div>
+          </div>
+
+          <div className="relative mt-4 rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
+            <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[linear-gradient(135deg,rgba(16,185,129,0.16),transparent_55%)]" />
+            {occupancyTrendUp ? (
+              <div className="pointer-events-none absolute right-4 top-4 text-[10px] font-semibold text-[color:var(--text-secondary)]">
+                <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--surface-subtle)] px-2 py-1 shadow-inner">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden="true" focusable="false">
+                    <path
+                      d="M6 16l6-6 4 4 4-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Trend
+                </span>
+              </div>
+            ) : null}
+            <div className="relative">
+              <svg
+                key={occupancyChartKey}
+                viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+                className="h-72 w-full"
+                role="img"
+                aria-label="Occupancy trend chart"
+                onMouseLeave={() => setHoverIndex(null)}
+              >
+                <defs>
+                  <linearGradient id="token-occupancy-area" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="rgba(37,99,235,0.28)" />
+                    <stop offset="100%" stopColor="rgba(37,99,235,0.04)" />
+                  </linearGradient>
+                  <linearGradient id="token-rate-glow" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="rgba(14,165,233,0.85)" />
+                    <stop offset="100%" stopColor="rgba(56,189,248,0.95)" />
+                  </linearGradient>
+                </defs>
+
+                {occAxis.ticks.map((tick) => {
+                  const y = plotTop + ((occAxis.max - tick) / occRange) * (plotBottom - plotTop);
+                  return (
+                    <line
+                      key={`occ-grid-${tick}`}
+                      x1={plotLeft}
+                      x2={plotRight}
+                      y1={y}
+                      y2={y}
+                      stroke="rgba(148,163,255,0.22)"
+                      strokeDasharray="6 8"
+                    />
+                  );
+                })}
+
+                <line
+                  x1={plotLeft}
+                  x2={plotLeft}
+                  y1={plotTop}
+                  y2={plotBottom}
+                  stroke="rgba(148,163,255,0.4)"
+                />
+                <line
+                  x1={plotRight}
+                  x2={plotRight}
+                  y1={plotTop}
+                  y2={plotBottom}
+                  stroke="rgba(148,163,255,0.4)"
+                />
+
+                {occAxis.ticks.map((tick) => {
+                  const y = plotTop + ((occAxis.max - tick) / occRange) * (plotBottom - plotTop);
+                  return (
+                    <text
+                      key={`occ-tick-${tick}`}
+                      x={plotLeft - 8}
+                      y={y + 4}
+                      fontSize={10}
+                      textAnchor="end"
+                      fill="rgba(71,85,105,0.9)"
+                    >
+                      {tick.toFixed(0)}%
+                    </text>
+                  );
+                })}
+                {sellAxis.ticks.map((tick) => {
+                  const y = plotTop + ((sellAxis.max - tick) / sellRange) * (plotBottom - plotTop);
+                  return (
+                    <text
+                      key={`sell-tick-${tick}`}
+                      x={plotRight + 8}
+                      y={y + 4}
+                      fontSize={10}
+                      textAnchor="start"
+                      fill="rgba(71,85,105,0.9)"
+                    >
+                      {formatCurrency(tick)}
+                    </text>
+                  );
+                })}
+
+                <text
+                  x={plotLeft - 38}
+                  y={(plotTop + plotBottom) / 2}
+                  fontSize={10}
+                  fill="rgba(100,116,139,0.9)"
+                  textAnchor="middle"
+                  transform={`rotate(-90 ${plotLeft - 38} ${(plotTop + plotBottom) / 2})`}
+                >
+                  Occupancy (RSF)
+                </text>
+                <text
+                  x={plotRight + 38}
+                  y={(plotTop + plotBottom) / 2}
+                  fontSize={10}
+                  fill="rgba(100,116,139,0.9)"
+                  textAnchor="middle"
+                  transform={`rotate(90 ${plotRight + 38} ${(plotTop + plotBottom) / 2})`}
+                >
+                  Sell rate ($)
+                </text>
+
+                {occupancyAreaPaths.map((path, index) => (
+                  <path
+                    key={`occ-area-${index}`}
+                    d={path}
+                    fill="url(#token-occupancy-area)"
+                    className="history-chart-area"
+                  />
+                ))}
+
+                <path
+                  d={occupancyLine}
+                  fill="none"
+                  stroke="rgba(37,99,235,0.95)"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength={1}
+                  className="history-chart-line"
+                  style={{ animationDelay: '0.1s' }}
+                />
+                <path
+                  d={sellLine}
+                  fill="none"
+                  stroke="url(#token-rate-glow)"
+                  strokeWidth={2.6}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  pathLength={1}
+                  className="history-chart-line"
+                  style={{ animationDelay: '0.25s' }}
+                />
+
+                {occupancyPoints.map((point, index) => {
+                  if (!point) return null;
+                  const labelOffset = index % 2 === 0 ? -12 : -22;
+                  const xNudge = index % 2 === 0 ? -4 : 4;
+                  const labelY = Math.max(plotTop - 6, point.y + labelOffset);
+                  return (
+                    <g key={`occ-point-${index}`}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={4.6}
+                        fill="#fff"
+                        stroke="rgba(37,99,235,0.9)"
+                        strokeWidth={2}
+                      />
+                      <text
+                        x={point.x + xNudge}
+                        y={labelY}
+                        fontSize={9.5}
+                        textAnchor="middle"
+                        fill="rgba(37,99,235,0.9)"
+                      >
+                        {formatPercent(point.value, 1)}
+                      </text>
+                    </g>
+                  );
+                })}
+                {sellPoints.map((point, index) => {
+                  if (!point) return null;
+                  const labelOffset = index % 2 === 0 ? 16 : 26;
+                  const xNudge = index % 2 === 0 ? 4 : -4;
+                  const labelY = Math.min(plotBottom + 18, point.y + labelOffset);
+                  return (
+                    <g key={`sell-point-${index}`}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={4.2}
+                        fill="#fff"
+                        stroke="rgba(14,165,233,0.9)"
+                        strokeWidth={2}
+                      />
+                      <text
+                        x={point.x + xNudge}
+                        y={labelY}
+                        fontSize={9}
+                        textAnchor="middle"
+                        fill="rgba(14,165,233,0.95)"
+                      >
+                        {formatCurrency(point.value)}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {chartMonths.map((monthIso, index) => {
+                  const x = plotLeft + bandWidth * index;
+                  return (
+                    <rect
+                      key={`hover-${index}`}
+                      x={x}
+                      y={plotTop}
+                      width={bandWidth}
+                      height={plotBottom - plotTop}
+                      fill="transparent"
+                      onMouseEnter={() => setHoverIndex(index)}
+                    />
+                  );
+                })}
+              </svg>
+
+              {hoverIndex != null ? (
+                <div
+                  className="pointer-events-none absolute top-2 rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text-secondary)] shadow-lg"
+                  style={{
+                    left: `${((plotLeft + bandWidth * hoverIndex + bandWidth / 2) / CHART_WIDTH) * 100}%`,
+                    transform: 'translate(-50%, 0)',
+                  }}
+                >
+                  <div className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                    {chartMonths[hoverIndex] ? formatMonthLabel(chartMonths[hoverIndex]) : 'N/A'}
+                  </div>
+                  <div className="mt-1 flex flex-col gap-1">
+                    <span>
+                      Occupancy:{' '}
+                      {occupancyChartValues[hoverIndex] != null
+                        ? formatPercent(occupancyChartValues[hoverIndex] ?? 0, 1)
+                        : 'N/A'}
+                    </span>
+                    <span>
+                      Sell rate:{' '}
+                      {sellChartValues[hoverIndex] != null
+                        ? formatCurrency(sellChartValues[hoverIndex] ?? 0)
+                        : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
+              {occupancyChartHint ? (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[color:var(--text-muted)]">
+                  {occupancyChartHint}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
+              {chartMonths.map((monthIso, index) => (
+                <span key={`${monthIso}-${index}`} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
+                  {monthIso ? formatMonthLabel(monthIso) : '-'}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-[color:var(--text-secondary)]">
+            <div className="ios-list-card flex items-center gap-3 px-4 py-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                  Latest occupancy (RSF)
+                </div>
+                <div className="text-lg font-semibold text-[color:var(--text-primary)]">
+                  {formatMaybePercent(latestOccupancyPoint)}
+                </div>
+              </div>
+            </div>
+            <div className="ios-list-card flex items-center gap-3 px-4 py-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                  Latest sell rate
+                </div>
+                <div className="text-lg font-semibold text-[color:var(--text-primary)]">
+                  {formatMaybeCurrency(latestSellRatePoint)}
+                </div>
+              </div>
+            </div>
+            <div className="ios-list-card flex items-center gap-3 px-4 py-2">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                  YoY change
+                </div>
+                <div className="text-lg font-semibold text-[color:var(--text-primary)]">N/A</div>
+              </div>
+            </div>
+          </div>
+        </ChartCard>
+
+        <ChartCard
+          key={`token-unitmix-${rangeKey}`}
+          title="Unit mix"
+          subtitle="Occupied RSF by type (latest MSR)"
+          info="Occupied RSF by unit type from the Occupancy tab; aggregated into the latest snapshot."
+          emptyMessage={!totalOccupiedRsf || unitMixSegments.length === 0 ? 'N/A' : undefined}
+        >
+          <div className="flex items-center justify-center">
+            <div className="relative flex h-40 w-40 items-center justify-center">
+              <svg
+                key={unitMixChartKey}
+                viewBox="0 0 120 120"
+                className="h-full w-full"
+                role="img"
+                aria-label="Unit mix donut chart"
+              >
+                <circle cx="60" cy="60" r="46" fill="none" stroke="rgba(148,163,255,0.2)" strokeWidth="12" />
+                {unitMixSegments.map((segment) => (
+                  <circle
+                    key={segment.label}
+                    cx="60"
+                    cy="60"
+                    r="46"
+                    fill="none"
+                    stroke={segment.color}
+                    strokeWidth="12"
+                    strokeLinecap="round"
+                    pathLength={100}
+                    strokeDashoffset={segment.offset}
+                    className="history-donut-ring"
+                    style={
+                      {
+                        '--dash': `${segment.value} ${Math.max(0, 100 - segment.value)}`,
+                        '--delay': segment.delay,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                <div className="text-2xl font-semibold text-[color:var(--text-primary)]">
+                  {occupiedPct ? formatMaybePercent(occupiedPct, 1) : formatMaybeNumber(totalOccupiedRsf)}
+                </div>
+                <div className="text-xs text-[color:var(--text-secondary)]">Occupied RSF</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {unitMixSegments.map((segment) => (
+              <div key={segment.label} className="ios-list-card flex items-center justify-between px-4 py-2 text-sm">
+                <div className="flex items-center gap-3 text-[color:var(--text-primary)]">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
+                  <span>{segment.label}</span>
+                </div>
+                <span className="tabular-nums text-[color:var(--text-secondary)]">
+                  {formatMaybePercent(segment.value, 0)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </ChartCard>
+      </section>
+    </div>
+  );
+}
+
 function CollectionsSection({
   latestSnapshot,
   seriesEntries,
@@ -1725,6 +2034,7 @@ function CollectionsSection({
         <ChartCard
           title="AR Aging Trend"
           subtitle="Past due buckets"
+          info="Parsed from the MSR AR Aging buckets and trended across snapshots."
           emptyMessage={agingEmptyMessage}
           className="md:col-span-2 xl:col-span-2"
         >
@@ -1782,7 +2092,11 @@ function CollectionsSection({
           </div>
         </ChartCard>
 
-        <ChartCard title="Overlock Risk" subtitle="Overlocked spaces">
+        <ChartCard
+          title="Overlock Risk"
+          subtitle="Overlocked spaces"
+          info="Parsed from the MSR Overlocked Spaces sheet and summarized in the latest snapshot."
+        >
             <KpiRow
               items={[
                 { label: 'Overlocked units', value: formatMaybeNumber(latestAr?.overlockedUnitCount) },
@@ -1820,6 +2134,7 @@ function CollectionsSection({
         <ChartCard
           title="Top Delinquencies"
           subtitle="Latest snapshot"
+          info="Parsed from the MSR Delinquencies detail list when available."
           emptyMessage={
             topDelinquencies.length === 0
               ? 'N/A (not available in MSR snapshot storage yet)'
@@ -1862,8 +2177,6 @@ function PricingSection({
     isFiniteNumber(currentRent) && isFiniteNumber(sellRate) && sellRate !== 0
       ? ((currentRent - sellRate) / sellRate) * 100
       : null;
-  const occupiedVariancePct = pricing?.occupiedRateVariancePct;
-  const occupiedVariance = pricing?.occupiedRateVariance;
   const rentChangeCount = pricing?.rentChangeCountMtd ?? pricing?.rentChangeCount;
   const avgRentChangePct = pricing?.avgRentChangePct;
   const staleRentCount = pricing?.noRentChange12MoCount;
@@ -2006,11 +2319,15 @@ function PricingSection({
       <section className="space-y-6">
         <SectionHeader title="Pricing & Revenue Quality" subtitle="Rates and pricing cadence from MSR snapshots." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <ChartCard title="Set Rate vs Sell Rate (Occupied)" subtitle="Target vs actual rates">
+        <ChartCard
+          title="Set Rate vs Sell Rate (Occupied)"
+          subtitle="Target vs actual rates"
+          info="Set rate = avg current rent occupied; sell rate = avg sell rate occupied. Both parsed from the MSR Rent Analysis block."
+        >
             <KpiRow
               items={[
-                { label: 'Sell rate (actual avg)', value: formatMaybeCurrency(currentRent) },
-                { label: 'Set rate (target avg)', value: formatMaybeCurrency(sellRate) },
+                { label: 'Set rate (actual avg)', value: formatMaybeCurrency(currentRent) },
+                { label: 'Sell rate (target avg)', value: formatMaybeCurrency(sellRate) },
                 { label: 'Sell vs set spread', value: formatMaybePercent(spreadPct, 1) },
               ]}
               columns={3}
@@ -2127,7 +2444,7 @@ function PricingSection({
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.8)]" />
-                    Current rent
+                    Set rate
                   </span>
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.8)]" />
@@ -2146,14 +2463,18 @@ function PricingSection({
           )}
         </ChartCard>
 
-        <ChartCard title="Occupied Rate Variance" subtitle="MSR variance metric">
+        <ChartCard
+          title="Rate Gap"
+          subtitle="Set rate vs sell rate delta"
+          info="Computed from MSR Rent Analysis: avg current rent occupied minus avg sell rate occupied."
+        >
           <div className="ios-list-card space-y-2 p-4 text-sm">
-            <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Variance</div>
+            <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Set - Sell</div>
             <div className="text-lg font-semibold text-[color:var(--text-primary)]">
-              {isFiniteNumber(occupiedVariancePct)
-                ? formatMaybePercent(occupiedVariancePct, 1)
-                : isFiniteNumber(occupiedVariance)
-                  ? formatMaybeCurrency(occupiedVariance)
+              {isFiniteNumber(spreadPct)
+                ? formatMaybePercent(spreadPct * 100, 1)
+                : isFiniteNumber(currentRent) && isFiniteNumber(sellRate)
+                  ? formatMaybeCurrency(currentRent - sellRate)
                   : 'N/A'}
             </div>
           </div>
@@ -2243,18 +2564,20 @@ function PricingSection({
           </div>
         </ChartCard>
 
-        <ChartCard title="ECRI Cadence" subtitle="Existing Customer Rate Increase (MTD)">
+        <ChartCard
+          title="Rent Change Activity"
+          subtitle="How often and how much rates moved"
+          info="Parsed from the MSR Rent Change Summary (rent change counts and average change %)."
+        >
           <KpiRow
             items={[
               {
-                label: 'ECRI count (MTD)',
+                label: 'Rent changes (MTD)',
                 value: formatMaybeNumber(rentChangeCount),
-                info: ECRI_INFO,
               },
               {
-                label: 'Avg ECRI %',
+                label: 'Avg change %',
                 value: formatMaybePercent(avgRentChangePct, 1),
-                info: ECRI_INFO,
               },
             ]}
             columns={2}
@@ -2379,7 +2702,11 @@ function PricingSection({
         </ChartCard>
         </div>
 
-        <ChartCard title="Stale Rent Exposure" subtitle="No ECRI in 12 months">
+        <ChartCard
+          title="Stale Rent Exposure"
+          subtitle="No ECRI in 12 months"
+          info="Parsed from the MSR No Rent Change Last 12 Months sheet, grouped by unit type."
+        >
         <KpiRow
           items={[
             {
@@ -2526,7 +2853,13 @@ function OperationalSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader title="Operational Drilldowns" subtitle="Demand, concessions, and autopay performance." />
+        <SectionHeader title="Operational Drilldowns" subtitle="Occupancy mix, demand, concessions, and autopay performance." />
+
+        <OccupancyUnitMixSection
+          latestSnapshot={latestSnapshot}
+          seriesEntries={seriesEntries}
+          rangeKey={rangeKey}
+        />
 
         <div className="ios-card ios-animate-up space-y-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
@@ -2570,6 +2903,7 @@ function OperationalSection({
                 key={`demand-leads-${rangeKey}`}
                 title="Leads by channel (MTD)"
                 subtitle="Latest snapshot"
+                info="Parsed from the MSR Leads MTD table by channel."
                 emptyMessage={!channelSum ? 'N/A' : undefined}
               >
                 <div className="flex flex-wrap items-center gap-4 text-xs text-[color:var(--text-secondary)]">
@@ -2635,6 +2969,7 @@ function OperationalSection({
                 key={`demand-conversion-${rangeKey}`}
                 title="Conversion rate"
                 subtitle="Move-ins vs leads"
+                info="Computed from MSR Leads MTD total and Move-Ins MTD counts."
                 emptyMessage={conversionEmptyMessage}
               >
                 <MemoLineChartWithMonths
@@ -2674,6 +3009,7 @@ function OperationalSection({
                 key={`concessions-promos-${rangeKey}`}
                 title="Promos and discounts"
                 subtitle="Monthly trend"
+                info="Parsed from the MSR Discounts & Promotions MTD sheet."
                 emptyMessage={concessionsEmpty}
               >
                 <MemoLineChartWithMonths
@@ -2688,6 +3024,7 @@ function OperationalSection({
                 key={`concessions-credits-${rangeKey}`}
                 title="Credits and adjustments"
                 subtitle="Monthly trend"
+                info="Parsed from the MSR Credits & Adjustments MTD sheet."
                 emptyMessage={creditsEmpty}
               >
                 <MemoLineChartWithMonths
@@ -2702,6 +3039,7 @@ function OperationalSection({
                 key={`concessions-refunds-${rangeKey}`}
                 title="Refunds + write-offs"
                 subtitle="Monthly trend"
+                info="Parsed from the MSR Refunds MTD and Write-Offs MTD sheets (combined)."
                 emptyMessage={refundsEmpty}
               >
                 <MemoLineChartWithMonths
@@ -2740,6 +3078,7 @@ function OperationalSection({
                 key={`autopay-adoption-${rangeKey}`}
                 title="Autopay adoption"
                 subtitle="Monthly trend"
+                info="Parsed from the MSR Autopay Enrolled sheet."
                 emptyMessage={autopayEmpty}
               >
                 <MemoLineChartWithMonths
@@ -2754,6 +3093,7 @@ function OperationalSection({
                 key={`autopay-coverage-${rangeKey}`}
                 title="Coverage enrollment"
                 subtitle="Monthly trend"
+                info="Parsed from the MSR Coverage Enrollment sheet."
                 emptyMessage={coverageEmpty}
               >
                 <MemoLineChartWithMonths
@@ -2779,19 +3119,44 @@ function LineChartWithMonths({
   label,
   formatValue,
   labelColor,
+  emphasizeTrend,
 }: {
   series: SeriesPoint[];
   color: string;
   label: string;
   formatValue: (value: number) => string;
   labelColor?: string;
+  emphasizeTrend?: boolean;
 }): JSX.Element {
   const values = series.map((point) => point.value);
   const points = getChartPoints(values, SMALL_CHART_WIDTH, SMALL_CHART_HEIGHT, SMALL_CHART_PADDING);
   const linePath = buildLinePath(points);
+  const trendDelta = values.length > 1 ? values[values.length - 1] - values[0] : 0;
+  const trendUp = values.length > 1 ? trendDelta >= 0 : false;
+  const lastPoint = points[points.length - 1] ?? null;
 
   return (
-    <div className="rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
+    <div className="relative rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
+      {emphasizeTrend ? (
+        <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[linear-gradient(135deg,rgba(16,185,129,0.18),transparent_55%)]" />
+      ) : null}
+      {emphasizeTrend && trendUp ? (
+        <div className="pointer-events-none absolute right-4 top-4 text-[10px] font-semibold text-[color:var(--text-secondary)]">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--surface-subtle)] px-2 py-1 shadow-inner">
+            <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden="true" focusable="false">
+              <path
+                d="M6 16l6-6 4 4 4-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Trend
+          </span>
+        </div>
+      ) : null}
       <div className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
         <span>{label}</span>
@@ -2821,6 +3186,16 @@ function LineChartWithMonths({
           pathLength={1}
           className="history-chart-line"
         />
+        {emphasizeTrend && lastPoint ? (
+          <circle
+            cx={lastPoint.x}
+            cy={lastPoint.y}
+            r={6}
+            fill="none"
+            stroke="rgba(16,185,129,0.85)"
+            strokeWidth={2}
+          />
+        ) : null}
         {points.map((point, index) => {
           const value = values[index];
           const labelText = formatValue(value);
@@ -2858,3 +3233,4 @@ const MemoLineChartWithMonths = memo(LineChartWithMonths);
 const MemoCollectionsSection = memo(CollectionsSection);
 const MemoPricingSection = memo(PricingSection);
 const MemoOperationalSection = memo(OperationalSection);
+
