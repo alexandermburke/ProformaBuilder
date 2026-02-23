@@ -79,7 +79,7 @@ const truncateNameToken = (value: string): string => {
 };
 
 const formatMiles = (value: number | null): string => {
-  if (!Number.isFinite(value)) return DASH;
+  if (value == null || !Number.isFinite(value)) return DASH;
   return value.toFixed(1);
 };
 

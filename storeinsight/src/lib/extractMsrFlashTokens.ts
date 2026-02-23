@@ -7,6 +7,15 @@ const normalizeCellValue = (value: ExcelJS.CellValue): ExcelJS.CellValue | null 
   if (value && typeof value === "object" && "result" in value && value.result != null) {
     return value.result as ExcelJS.CellValue;
   }
+  if (value && typeof value === "object" && "error" in value && typeof value.error === "string") {
+    return value.error;
+  }
+  if (value && typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
+    const text = value.richText
+      .map((part) => (part && typeof part === "object" && "text" in part ? String(part.text ?? "") : ""))
+      .join("");
+    return text;
+  }
   return value ?? null;
 };
 
@@ -15,26 +24,57 @@ const coerceNumber = (value: ExcelJS.CellValue | null): number => {
   if (typeof value === "number") return value;
   if (value instanceof Date) return value.getTime();
   if (typeof value === "string") {
-    if (!value.trim()) return 0;
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const lower = trimmed.toLowerCase();
+    if (
+      lower === "-" ||
+      lower === "--" ||
+      lower === "n/a" ||
+      lower === "na" ||
+      lower === "#n/a" ||
+      lower === "#value!" ||
+      lower === "#div/0!"
+    ) {
+      return 0;
+    }
     const negative = /^\(.*\)$/.test(value);
-    const cleaned = value.replace(/[,$\s]/g, "").replace(/%/g, "");
+    const cleaned = value.replace(/[,$\s]/g, "").replace(/%/g, "").replace(/[()]/g, "");
     const parsed = Number(cleaned);
-    if (!Number.isFinite(parsed)) return Number.NaN;
-    return negative ? -parsed : parsed;
+    if (Number.isFinite(parsed)) {
+      return negative ? -Math.abs(parsed) : parsed;
+    }
+
+    // Support display strings like "12,345 SF" by extracting the first numeric token.
+    const tokenMatch = trimmed.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+    if (!tokenMatch) return Number.NaN;
+    const tokenValue = Number(tokenMatch[0]);
+    if (!Number.isFinite(tokenValue)) return Number.NaN;
+    return negative ? -Math.abs(tokenValue) : tokenValue;
   }
   return Number.NaN;
 };
 
 const readNumber = (sheet: ExcelJS.Worksheet, address: string, label: string): number => {
-  const value = normalizeCellValue(sheet.getCell(address).value);
-  if (value == null) {
+  const primaryValue = normalizeCellValue(sheet.getCell(address).value);
+  const primaryNumeric = coerceNumber(primaryValue);
+  if (Number.isFinite(primaryNumeric)) {
+    return primaryNumeric;
+  }
+
+  const shiftedAddress = shiftAddressByRow(address, 1);
+  if (shiftedAddress) {
+    const shiftedValue = normalizeCellValue(sheet.getCell(shiftedAddress).value);
+    const shiftedNumeric = coerceNumber(shiftedValue);
+    if (Number.isFinite(shiftedNumeric)) {
+      return shiftedNumeric;
+    }
+  }
+
+  if (primaryValue == null) {
     throw new Error(`${label} is missing.`);
   }
-  const numeric = coerceNumber(value);
-  if (!Number.isFinite(numeric)) {
-    throw new Error(`${label} is not a number.`);
-  }
-  return numeric;
+  throw new Error(`${label} is not a number.`);
 };
 
 const formatToTwo = (value: number): number => {
@@ -71,6 +111,17 @@ const normalizeArrayBuffer = (
   copy.set(view);
 
   return copy.buffer;
+};
+
+const shiftAddressByRow = (address: string, delta: number): string | null => {
+  const match = /^([A-Za-z]+)(\d+)$/.exec(address.trim());
+  if (!match) return null;
+  const column = match[1];
+  const row = Number(match[2]);
+  if (!Number.isFinite(row)) return null;
+  // New MSR templates inserted one row below the performance indicator block.
+  if (row <= 22) return null;
+  return `${column}${row + delta}`;
 };
 
 export async function extractMsrFlashTokens(

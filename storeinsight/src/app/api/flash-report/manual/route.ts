@@ -15,7 +15,7 @@ import ChartDataLabels from "chartjs-plugin-datalabels";
 import "@/lib/chartFonts";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
-import { getMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
+import { buildPlaceholderMoMSeries, getMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { createShareLink } from "@/lib/shareLinks";
 import { firestore, storage } from "@/server/firebaseAdmin";
@@ -801,10 +801,10 @@ export async function POST(req: NextRequest) {
   }
 
   const momSeries = getMoMSeries(propertyId);
+  const resolvedMoMSeries = momSeries ?? buildPlaceholderMoMSeries();
   if (!momSeries) {
-    return NextResponse.json(
-      { error: `No month-over-month series configured for propertyId "${propertyId}".` },
-      { status: 400 },
+    console.warn(
+      `[flash-report/manual] No month-over-month series configured for propertyId "${propertyId}". Using zero-value placeholder series.`,
     );
   }
   const facilityOpenDate = property.facilityOpenDate;
@@ -813,8 +813,8 @@ export async function POST(req: NextRequest) {
   }
 
   const [rentChartJpeg, momOccupancyChartJpeg] = await Promise.all([
-    renderMoMGrossAccruedRentChart(momSeries, propertyId),
-    renderMoMOccupancyChart(momSeries, propertyId),
+    renderMoMGrossAccruedRentChart(resolvedMoMSeries, propertyId),
+    renderMoMOccupancyChart(resolvedMoMSeries, propertyId),
   ]);
 
   const templatePath = path.join(process.cwd(), "public", "FLASHTEMPLATE.pptx");
@@ -915,12 +915,12 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
   const mtdVacates = readNumber(msrSheet, "J9", "MTD vacates (MSR!J9)");
   const dailyVacates = readNumber(msrSheet, "I9", "Daily vacates (MSR!I9)");
   const mtdNetRentals = readNumber(msrSheet, "J10", "MTD net rentals (MSR!J10)");
-  const webLeadsMtd = readNumber(msrSheet, "M47", "Web leads MTD (MSR!M47)");
-  const walkInLeadsMtd = readNumber(msrSheet, "M48", "Walk-in leads MTD (MSR!M48)");
-  const phoneLeadsMtd = readNumber(msrSheet, "M49", "Phone leads MTD (MSR!M49)");
-  const otherLeadsMtd = readNumber(msrSheet, "M50", "Other leads MTD (MSR!M50)");
+  const webLeadsMtd = readNumberOrZero(msrSheet, "M47", "Web leads MTD (MSR!M47)");
+  const walkInLeadsMtd = readNumberOrZero(msrSheet, "M48", "Walk-in leads MTD (MSR!M48)");
+  const phoneLeadsMtd = readNumberOrZero(msrSheet, "M49", "Phone leads MTD (MSR!M49)");
+  const otherLeadsMtd = readNumberOrZero(msrSheet, "M50", "Other leads MTD (MSR!M50)");
   const leadsMtdByChannel = webLeadsMtd + walkInLeadsMtd + phoneLeadsMtd + otherLeadsMtd;
-  const leadsMtd = readNumber(msrSheet, "O8", "Leads MTD total (MSR!O8)");
+  const leadsMtd = readNumberOptional(msrSheet, "O8", "Leads MTD total (MSR!O8)");
   const leadConversion = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
 
   const totalRsf = readNumber(msrSheet, "M44", "Total RSF (MSR!M44)");
@@ -1039,15 +1039,45 @@ function readString(sheet: ExcelJS.Worksheet, address: string, label: string): s
 }
 
 function readNumber(sheet: ExcelJS.Worksheet, address: string, label: string): number {
-  const value = normalizeCellValue(sheet.getCell(address).value);
-  if (value == null) {
+  const primaryValue = normalizeCellValue(sheet.getCell(address).value);
+  const primaryNumeric = coerceNumber(primaryValue);
+  if (Number.isFinite(primaryNumeric)) {
+    return primaryNumeric;
+  }
+
+  const shiftedAddress = shiftAddressByRow(address, 1);
+  if (shiftedAddress) {
+    const shiftedValue = normalizeCellValue(sheet.getCell(shiftedAddress).value);
+    const shiftedNumeric = coerceNumber(shiftedValue);
+    if (Number.isFinite(shiftedNumeric)) {
+      return shiftedNumeric;
+    }
+  }
+
+  if (primaryValue == null) {
     throw new Error(`${label} is missing.`);
   }
-  const numeric = coerceNumber(value);
-  if (!Number.isFinite(numeric)) {
-    throw new Error(`${label} is not a number.`);
+  throw new Error(`${label} is not a number.`);
+}
+
+function readNumberOptional(sheet: ExcelJS.Worksheet, address: string, label: string): number | null {
+  try {
+    return readNumber(sheet, address, label);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[flash-report/manual] ${label} unavailable at ${address}; defaulting to null (${reason})`);
+    return null;
   }
-  return numeric;
+}
+
+function readNumberOrZero(sheet: ExcelJS.Worksheet, address: string, label: string): number {
+  try {
+    return readNumber(sheet, address, label);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[flash-report/manual] ${label} unavailable at ${address}; defaulting to 0 (${reason})`);
+    return 0;
+  }
 }
 
 function readDate(sheet: ExcelJS.Worksheet, address: string, label: string): Date {
@@ -1106,7 +1136,27 @@ function normalizeCellValue(value: ExcelJS.CellValue): ExcelJS.CellValue | null 
   if (value && typeof value === "object" && "result" in value && value.result != null) {
     return value.result as ExcelJS.CellValue;
   }
+  if (value && typeof value === "object" && "error" in value && typeof value.error === "string") {
+    return value.error;
+  }
+  if (value && typeof value === "object" && "richText" in value && Array.isArray(value.richText)) {
+    const text = value.richText
+      .map((part) => (part && typeof part === "object" && "text" in part ? String(part.text ?? "") : ""))
+      .join("");
+    return text;
+  }
   return value ?? null;
+}
+
+function shiftAddressByRow(address: string, delta: number): string | null {
+  const match = /^([A-Za-z]+)(\d+)$/.exec(address.trim());
+  if (!match) return null;
+  const column = match[1];
+  const row = Number(match[2]);
+  if (!Number.isFinite(row)) return null;
+  // New MSR templates inserted one row below the performance indicator block.
+  if (row <= 22) return null;
+  return `${column}${row + delta}`;
 }
 
 function coerceNumber(value: ExcelJS.CellValue | null): number {
@@ -1114,12 +1164,33 @@ function coerceNumber(value: ExcelJS.CellValue | null): number {
   if (typeof value === "number") return value;
   if (value instanceof Date) return value.getTime();
   if (typeof value === "string") {
-    if (!value.trim()) return 0;
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const lower = trimmed.toLowerCase();
+    if (
+      lower === "-" ||
+      lower === "--" ||
+      lower === "n/a" ||
+      lower === "na" ||
+      lower === "#n/a" ||
+      lower === "#value!" ||
+      lower === "#div/0!"
+    ) {
+      return 0;
+    }
     const negative = /^\(.*\)$/.test(value);
-    const cleaned = value.replace(/[,$\s]/g, "").replace(/%/g, "");
+    const cleaned = value.replace(/[,$\s]/g, "").replace(/%/g, "").replace(/[()]/g, "");
     const parsed = Number(cleaned);
-    if (!Number.isFinite(parsed)) return Number.NaN;
-    return negative ? -parsed : parsed;
+    if (Number.isFinite(parsed)) {
+      return negative ? -Math.abs(parsed) : parsed;
+    }
+
+    // Support display strings like "12,345 SF" by extracting the first numeric token.
+    const tokenMatch = trimmed.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+    if (!tokenMatch) return Number.NaN;
+    const tokenValue = Number(tokenMatch[0]);
+    if (!Number.isFinite(tokenValue)) return Number.NaN;
+    return negative ? -Math.abs(tokenValue) : tokenValue;
   }
   return Number.NaN;
 }

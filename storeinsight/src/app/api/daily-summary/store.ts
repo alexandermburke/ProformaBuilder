@@ -65,7 +65,7 @@ export async function listProperties(): Promise<PropertyConfig[]> {
       sendTimeLocal,
       sendTimeMst: data.sendTimeMst ?? sendTimeLocal,
       ownerEmails: Array.isArray(data.ownerEmails) ? data.ownerEmails : [],
-      enabled: Boolean(data.enabled),
+      enabled: data.enabled === undefined ? true : Boolean(data.enabled),
       facilityOpenDate: data.FACILITYOPENDATE ?? data.facilityOpenDate ?? '',
       heroImageUrl,
       heroImagePath,

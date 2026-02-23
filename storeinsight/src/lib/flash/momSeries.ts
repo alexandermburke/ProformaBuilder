@@ -114,3 +114,24 @@ export const getMoMSeries = (propertyId: string): MoMSeries | null => {
   }
   return null;
 };
+
+const buildPlaceholderMonths = (count = 12, now = new Date()): string[] => {
+  const months: string[] = [];
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  for (let i = 0; i < count; i += 1) {
+    const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() - i, 1));
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+    months.push(`${yyyy}-${mm}`);
+  }
+  return months;
+};
+
+export const buildPlaceholderMoMSeries = (monthCount = 12): MoMSeries => {
+  const months = buildPlaceholderMonths(monthCount);
+  return {
+    months,
+    grossAccruedRent: new Array(months.length).fill(0),
+    occupiedPct: new Array(months.length).fill(0),
+  };
+};
