@@ -445,11 +445,11 @@ export function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: E
 
   const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
   const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
-  const gpr = readNumber(msrSheet, "L26", "Gross potential rent (MSR!L26)");
+  const gpr = readNumber(msrSheet, "L27", "Gross potential rent (MSR!L27)");
   const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
   const grossPotRentSf = readNumber(msrSheet, "N26", "Gross potential rent per SF (MSR!N26)");
   const grossVacantRevenue = readNumber(msrSheet, "I28", "Gross Vacant Revenue (MSR!I28)");
-  const avgSfVaca = readNumber(msrSheet, "L38", "Average SF Vacant (MSR!L38)");
+  const avgSfVaca = readNumber(msrSheet, "L39", "Average SF Vacant (MSR!L39)");
   const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
   const effPotRent = projRent + grossVacantRevenue;
   const effRentSf = totalRsf > 0 ? effPotRent / totalRsf : 0;
