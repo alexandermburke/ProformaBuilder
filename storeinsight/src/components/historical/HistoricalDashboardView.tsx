@@ -44,7 +44,7 @@ export type HistoricalDashboardViewProps = {
 
 const SECTION_TABS: Array<{ id: SectionKey; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'collections', label: 'Collections & AR' },
+  { id: 'collections', label: 'Accounts Receivable' },
   { id: 'pricing', label: 'Pricing & Revenue' },
   { id: 'drilldowns', label: 'Operational' },
 ];

@@ -115,6 +115,8 @@ export type MsrSnapshot = {
   pricing?: {
     avgSellRateOccupied?: number;
     avgCurrentRentOccupied?: number;
+    avgSellRatePerSqftOccupied?: number;
+    avgCurrentRentPerSqftOccupied?: number;
     occupiedRateVariancePct?: number;
     occupiedRateVariance?: number;
     rentChangeCountMtd?: number;
@@ -145,7 +147,7 @@ type TokenDashboardViewProps = {
 
 type RangeKey = '3M' | '6M';
 
-type SectionKey = 'overview' | 'collections' | 'pricing' | 'drilldowns';
+type SectionKey = 'overview' | 'collections' | 'pricing' | 'drilldowns' | 'accounting';
 
 type DrilldownTab = 'demand' | 'concessions' | 'autopay';
 
@@ -168,9 +170,10 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
 
 const SECTION_TABS: Array<{ id: SectionKey; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'collections', label: 'Collections & AR' },
-  { id: 'pricing', label: 'Pricing & Revenue' },
-  { id: 'drilldowns', label: 'Operational' },
+  { id: 'collections', label: 'Delinquency' },
+  { id: 'pricing', label: 'Revenue' },
+  { id: 'drilldowns', label: 'Operations' },
+  { id: 'accounting', label: 'Financial' },
 ];
 
 const SECTION_MOBILE_LABELS: Record<SectionKey, string> = {
@@ -178,12 +181,13 @@ const SECTION_MOBILE_LABELS: Record<SectionKey, string> = {
   collections: 'AR',
   pricing: 'Pricing',
   drilldowns: 'Ops',
+  accounting: 'Finance',
 };
 
 
 const DRILLDOWN_TABS: Array<{ id: DrilldownTab; label: string; mobileLabel: string }> = [
   { id: 'demand', label: 'Demand Funnel', mobileLabel: 'Demand' },
-  { id: 'concessions', label: 'Concessions & Leakage', mobileLabel: 'Concess' },
+  { id: 'concessions', label: 'Allowances', mobileLabel: 'Concess' },
   { id: 'autopay', label: 'Autopay & Coverage', mobileLabel: 'Autopay' },
 ];
 
@@ -380,6 +384,16 @@ const getSeriesEmptyMessage = (values: number[], snapshotCount: number): string 
 
 const formatMaybeCurrency = (value: number | null | undefined): string =>
   isFiniteNumber(value) ? formatCurrency(value) : 'N/A';
+
+const formatMaybeCurrencyPerSqft = (value: number | null | undefined): string =>
+  isFiniteNumber(value)
+    ? value.toLocaleString('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : 'N/A';
 
 const formatMaybeCompactCurrency = (value: number | null | undefined): string =>
   isFiniteNumber(value) ? formatCompactCurrency(value) : 'N/A';
@@ -795,7 +809,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(projRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy (latest MSR)</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy </div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
@@ -804,14 +818,14 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatSignedNumber(netMoveInsValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs (latest MSR)</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs </div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Gross Potential Rent</div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(grossPotentialRentValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Revenue statistics (latest MSR)</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Revenue statistics </div>
             </div>
           </div>
 
@@ -918,7 +932,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                     emptyMessage={netRevenueCoreEmpty}
                   >
                     <div className="text-xs text-[color:var(--text-muted)]">
-                      Current month is in progress; not all rent has been collected yet.
+                      Current month is in progress; revenue will continue to increase throughout the month.
                     </div>
                     <MemoLineChartWithMonths
                       series={netRevenueCoreSeries}
@@ -933,7 +947,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   <ChartCard
                     key={`overview-expenses-core-${range}`}
                     title="Expenses"
-                    subtitle="Monthly trend"
+                    subtitle="Historical Data Only"
                     info="Expense totals are not present in the MSR; this uses stored snapshot financials when available."
                     emptyMessage={expensesCoreEmpty}
                   >
@@ -950,7 +964,7 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   <ChartCard
                     key={`overview-noi-core-${range}`}
                     title="NOI"
-                    subtitle="Monthly trend"
+                    subtitle="Historical Data Only"
                     info="NOI is sourced from stored snapshot financials when available; otherwise derived as Net Revenue minus Expenses."
                     emptyMessage={noiCoreEmpty}
                   >
@@ -1573,7 +1587,7 @@ function OccupancyUnitMixSection({
         <ChartCard
           key={`token-unitmix-${rangeKey}`}
           title="Unit mix"
-          subtitle="Occupied RSF by type (latest MSR)"
+          subtitle="Occupied RSF by type "
           info="Occupied RSF by unit type from the Occupancy tab; aggregated into the latest snapshot."
           emptyMessage={!totalOccupiedRsf || unitMixSegments.length === 0 ? 'N/A' : undefined}
         >
@@ -1677,12 +1691,12 @@ function CollectionsSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader title="Collections & AR" subtitle="Delinquency exposure and AR aging from MSR snapshots." />
+        <SectionHeader title="Delinquency" subtitle="Accounts Receivable - amount of rent currently unpaid beyond it's due date." />
 
         <KpiRow
           items={[
-            { label: 'Total past due', value: formatMaybeCurrency(latestAr?.totalPastDue) },
-            { label: '61+ past due', value: formatMaybeCurrency(latestAr?.pastDue61Plus) },
+            { label: 'Total days past due', value: formatMaybeCurrency(latestAr?.totalPastDue) },
+            { label: '61+ days past due', value: formatMaybeCurrency(latestAr?.pastDue61Plus) },
             { label: 'Delinquent tenants', value: formatMaybeNumber(latestAr?.delinquentTenantCount) },
           ]}
           columns={3}
@@ -1691,7 +1705,7 @@ function CollectionsSection({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard
           title="AR Aging Trend"
-          subtitle="Past due buckets"
+          subtitle="Days past"
           info="Parsed from the MSR AR Aging buckets and trended across snapshots."
           emptyMessage={agingEmptyMessage}
           className="md:col-span-2 xl:col-span-2"
@@ -1790,8 +1804,8 @@ function CollectionsSection({
       </div>
 
         <ChartCard
-          title="Top Delinquencies"
-          subtitle="Latest snapshot"
+          title="Top delinquent units"
+          subtitle="Highest deliquencent units per dollar"
           info="Parsed from the MSR Delinquencies detail list when available."
           emptyMessage={
             topDelinquencies.length === 0
@@ -1829,8 +1843,8 @@ function PricingSection({
   const needsTrendHint = trendSnapshotCount < 2;
 
   const pricing = latestSnapshot?.pricing;
-  const currentRent = pricing?.avgCurrentRentOccupied;
-  const sellRate = pricing?.avgSellRateOccupied;
+  const currentRent = pricing?.avgCurrentRentPerSqftOccupied ?? pricing?.avgCurrentRentOccupied;
+  const sellRate = pricing?.avgSellRatePerSqftOccupied ?? pricing?.avgSellRateOccupied;
   const spreadPct =
     isFiniteNumber(currentRent) && isFiniteNumber(sellRate) && sellRate !== 0
       ? ((currentRent - sellRate) / sellRate) * 100
@@ -1943,8 +1957,8 @@ function PricingSection({
   const rateSeries = seriesEntries
     .map((entry) => ({
       monthIso: entry.monthIso,
-      current: entry.snapshot.pricing?.avgCurrentRentOccupied,
-      sell: entry.snapshot.pricing?.avgSellRateOccupied,
+      current: entry.snapshot.pricing?.avgCurrentRentPerSqftOccupied ?? entry.snapshot.pricing?.avgCurrentRentOccupied,
+      sell: entry.snapshot.pricing?.avgSellRatePerSqftOccupied ?? entry.snapshot.pricing?.avgSellRateOccupied,
     }))
     .filter((entry): entry is { monthIso: string; current: number; sell: number } => {
       return Boolean(entry.monthIso) && isFiniteNumber(entry.current) && isFiniteNumber(entry.sell);
@@ -1975,18 +1989,18 @@ function PricingSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader title="Pricing & Revenue Quality" subtitle="Rates and pricing cadence from MSR snapshots." />
+        <SectionHeader title="Revenue Quality" subtitle="Rates and pricing data updated daily." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard
-          title="Set Rate vs Sell Rate (Occupied)"
-          subtitle="Target vs actual rates"
-          info="Set rate = avg current rent occupied; sell rate = avg sell rate occupied. Both parsed from the MSR Rent Analysis block."
+          title="Projected Rate vs Sell Rate"
+          subtitle="Target (Proj) vs actual (Sell) rates"
+          info="Set rate = MSR!K33 and sell rate = MSR!K29 from the uploaded MSR; values shown as $/sqft."
         >
             <KpiRow
               items={[
-                { label: 'Set rate (actual avg)', value: formatMaybeCurrency(currentRent) },
-                { label: 'Sell rate (target avg)', value: formatMaybeCurrency(sellRate) },
-                { label: 'Sell vs set spread', value: formatMaybePercent(spreadPct, 1) },
+                { label: 'Proj rate ($/sqft)', value: formatMaybeCurrencyPerSqft(currentRent) },
+                { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
+                { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
               ]}
               columns={3}
             />
@@ -2061,11 +2075,11 @@ function PricingSection({
                       <text
                         x={point.x}
                         y={labelY}
-                        fontSize={12}
+                        fontSize={18}
                         textAnchor="middle"
                         fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                       >
-                        {formatMaybeCurrency(value)}
+                        {formatMaybeCurrencyPerSqft(value)}
                       </text>
                     </g>
                   );
@@ -2087,11 +2101,11 @@ function PricingSection({
                       <text
                         x={point.x}
                         y={labelY}
-                        fontSize={12}
+                        fontSize={18}
                         textAnchor="middle"
                         fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                       >
-                        {formatMaybeCurrency(value)}
+                        {formatMaybeCurrencyPerSqft(value)}
                       </text>
                     </g>
                   );
@@ -2511,9 +2525,7 @@ function OperationalSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader title="Operational Drilldowns" subtitle="Occupancy mix, demand, concessions, and autopay performance." />
-
-        <OccupancyUnitMixSection
+         <OccupancyUnitMixSection
           latestSnapshot={latestSnapshot}
           seriesEntries={seriesEntries}
           rangeKey={rangeKey}
@@ -2718,13 +2730,13 @@ function OperationalSection({
               items={[
                 { label: 'Autopay adoption', value: formatMaybePercent(latestSnapshot?.autopay?.autopayPct, 1) },
                 {
-                  label: 'Coverage enrolled',
+                  label: 'TPP enrolled',
                   value: isFiniteNumber(latestSnapshot?.coverage?.enrolledCount)
                     ? formatMaybeNumber(latestSnapshot?.coverage?.enrolledCount)
                     : formatMaybePercent(latestSnapshot?.coverage?.enrolledPct, 1),
                 },
                 {
-                  label: 'Coverage premium (MTD)',
+                  label: 'TPP premium (MTD)',
                   value: formatMaybeCurrency(latestSnapshot?.coverage?.premiumMtd),
                 },
               ]}
@@ -2735,7 +2747,7 @@ function OperationalSection({
               <ChartCard
                 key={`autopay-adoption-${rangeKey}`}
                 title="Autopay adoption"
-                subtitle="Monthly trend"
+                subtitle="Percentage of new customers that enroll in TPP"
                 info="Parsed from the MSR Autopay Enrolled sheet."
                 emptyMessage={autopayEmpty}
               >
@@ -2749,8 +2761,8 @@ function OperationalSection({
               </ChartCard>
               <ChartCard
                 key={`autopay-coverage-${rangeKey}`}
-                title="Coverage enrollment"
-                subtitle="Monthly trend"
+                title="TPP enrollment"
+                subtitle="Percentage of all customers that are enrolled in TPP"
                 info="Parsed from the MSR Coverage Enrollment sheet."
                 emptyMessage={coverageEmpty}
               >
@@ -2891,4 +2903,3 @@ const MemoLineChartWithMonths = memo(LineChartWithMonths);
 const MemoCollectionsSection = memo(CollectionsSection);
 const MemoPricingSection = memo(PricingSection);
 const MemoOperationalSection = memo(OperationalSection);
-

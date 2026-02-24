@@ -771,29 +771,29 @@ export default function DailySummaryPage() {
             </div>
 
             <div
-              className="overflow-x-auto overflow-y-auto rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/40 shadow-inner max-h-[480px]"
+              className="h-[320px] overflow-x-auto overflow-y-scroll overscroll-contain rounded-2xl border border-[color:var(--border-soft)] bg-[color:var(--surface)]/40 shadow-inner"
               style={{ contentVisibility: 'auto', containIntrinsicSize: '720px' }}
             >
-              <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-sm">
+              <table className="min-w-full divide-y divide-[color:var(--border-soft)] text-xs">
                 <thead className="bg-[linear-gradient(135deg,color-mix(in_srgb,var(--surface-muted) 92%,transparent),color-mix(in_srgb,var(--tint-blue) 36%,transparent))] text-[color:var(--text-secondary)]">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold">Property</th>
-                    <th className="px-4 py-3 text-left font-semibold">MSR received</th>
-                    <th className="px-4 py-3 text-left font-semibold">Last run</th>
-                    <th className="px-4 py-3 text-left font-semibold">Next run</th>
-                    <th className="px-4 py-3 text-left font-semibold">Status</th>
+                    <th className="px-3 py-2 text-left font-semibold">Property</th>
+                    <th className="px-3 py-2 text-left font-semibold">MSR received</th>
+                    <th className="px-3 py-2 text-left font-semibold">Last run</th>
+                    <th className="px-3 py-2 text-left font-semibold">Next run</th>
+                    <th className="px-3 py-2 text-left font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[color:var(--border-soft)]">
                   {cloudStatusLoading ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-[color:var(--text-secondary)]">
+                      <td colSpan={5} className="px-3 py-4 text-center text-[color:var(--text-secondary)]">
                         Loading cloud run status...
                       </td>
                     </tr>
                   ) : cloudStatuses.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-[color:var(--text-secondary)]">
+                      <td colSpan={5} className="px-3 py-4 text-center text-[color:var(--text-secondary)]">
                         No cloud run records yet.
                       </td>
                     </tr>
@@ -805,45 +805,45 @@ export default function DailySummaryPage() {
                           key={`${entry.propertyId}-${entry.status}-${entry.lastRunAt ?? 'na'}`}
                           className="transition-colors hover:bg-[color:var(--surface-subtle)]/70"
                         >
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-0.5">
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-0">
                               <span className="font-semibold text-[color:var(--text-primary)]">{entry.propertyName}</span>
-                              <span className="text-sm text-[color:var(--text-secondary)]">{entry.propertyId}</span>
+                              <span className="text-[11px] text-[color:var(--text-secondary)]">{entry.propertyId}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 align-top text-[color:var(--text-secondary)]">
-                            <div className="flex flex-col whitespace-nowrap leading-tight">
-                              <span className="font-medium text-[color:var(--text-primary)]">
+                          <td className="px-3 py-2 align-top text-[color:var(--text-secondary)]">
+                            <div className="flex flex-col whitespace-nowrap leading-snug">
+                              <span className="text-[11px] font-medium text-[color:var(--text-primary)]">
                                 {formatDateOnly(entry.lastMsrReceivedAt)}
                               </span>
-                              <span className="text-xs text-[color:var(--text-secondary)]">
+                              <span className="text-[10px] text-[color:var(--text-secondary)]">
                                 {formatDateTime(entry.lastMsrReceivedAt)}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 align-top text-[color:var(--text-secondary)]">
-                            <div className="flex flex-col whitespace-nowrap leading-tight">
-                              <span className="font-medium text-[color:var(--text-primary)]">
+                          <td className="px-3 py-2 align-top text-[color:var(--text-secondary)]">
+                            <div className="flex flex-col whitespace-nowrap leading-snug">
+                              <span className="text-[11px] font-medium text-[color:var(--text-primary)]">
                                 {formatDateOnly(entry.lastRunAt)}
                               </span>
-                              <span className="text-xs text-[color:var(--text-secondary)]">
+                              <span className="text-[10px] text-[color:var(--text-secondary)]">
                                 {formatDateTime(entry.lastRunAt)}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 align-top text-[color:var(--text-secondary)]">
-                            <div className="flex flex-col whitespace-nowrap leading-tight min-w-[140px]">
-                              <span className="font-medium text-[color:var(--text-primary)]">
+                          <td className="px-3 py-2 align-top text-[color:var(--text-secondary)]">
+                            <div className="flex flex-col whitespace-nowrap leading-snug min-w-[128px]">
+                              <span className="text-[11px] font-medium text-[color:var(--text-primary)]">
                                 {formatDateOnly(entry.nextRunAt)}
                               </span>
-                              <span className="text-xs text-[color:var(--text-secondary)]">
+                              <span className="text-[10px] text-[color:var(--text-secondary)]">
                                 {formatDateTime(entry.nextRunAt)}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-2">
                             <div className="flex flex-col gap-1.5">
-                              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)]/60 px-3 py-1 text-[12px] font-semibold text-[color:var(--text-primary)]">
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)]/60 px-2.5 py-0.5 text-[10px] font-semibold text-[color:var(--text-primary)]">
                                 <span className={`h-2 w-2 rounded-full ${meta.dotClass}`} />
                                 {meta.label}
                               </span>

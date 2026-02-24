@@ -883,6 +883,29 @@ const extractMsrSheet = (
   if (!snapshot.propertyAddress) warnings.push('MSR sheet: property address not found at K2.');
   if (!snapshot.reportDate) warnings.push('MSR sheet: report date not found at A3.');
 
+  // Pricing reference override from MSR summary cells:
+  // - Set Rate ($/sqft): K33
+  // - Sell Rate ($/sqft): K29
+  const setRatePerSqft = coerceNumber(readCellValue(sheet, 'K33'));
+  const sellRatePerSqft = coerceNumber(readCellValue(sheet, 'K29'));
+  if (setRatePerSqft != null || sellRatePerSqft != null) {
+    const pricing = snapshot.pricing ?? {};
+    if (setRatePerSqft != null) {
+      pricing.avgCurrentRentOccupied = setRatePerSqft;
+      pricing.avgCurrentRentPerSqftOccupied = setRatePerSqft;
+      pricing.occupiedActualAvg = setRatePerSqft;
+    }
+    if (sellRatePerSqft != null) {
+      pricing.avgSellRateOccupied = sellRatePerSqft;
+      pricing.avgSellRatePerSqftOccupied = sellRatePerSqft;
+      pricing.occupiedTargetAvg = sellRatePerSqft;
+    }
+    if (setRatePerSqft != null && sellRatePerSqft != null && sellRatePerSqft !== 0) {
+      pricing.spreadPct = (setRatePerSqft - sellRatePerSqft) / sellRatePerSqft;
+    }
+    snapshot.pricing = pricing;
+  }
+
   const netRevenueAnchor = findCellByAnchor(grid, ['net revenue']);
   if (!netRevenueAnchor) {
     warnings.push('MSR sheet: Net Revenue anchor not found.');
@@ -2309,6 +2332,29 @@ export function parseMsrWorkbook(buffer: ArrayBuffer | Buffer): MsrParseResult {
       unitMix.occupiedPctByType = pctByType;
     }
     snapshot.unitMix = unitMix;
+  }
+
+  // Final override after all sheet merges: Set/Sell rate from MSR summary cells.
+  if (msrSheet) {
+    const setRatePerSqft = coerceNumber(readCellValue(msrSheet, 'K33'));
+    const sellRatePerSqft = coerceNumber(readCellValue(msrSheet, 'K29'));
+    if (setRatePerSqft != null || sellRatePerSqft != null) {
+      const pricing = snapshot.pricing ?? {};
+      if (setRatePerSqft != null) {
+        pricing.avgCurrentRentOccupied = setRatePerSqft;
+        pricing.avgCurrentRentPerSqftOccupied = setRatePerSqft;
+        pricing.occupiedActualAvg = setRatePerSqft;
+      }
+      if (sellRatePerSqft != null) {
+        pricing.avgSellRateOccupied = sellRatePerSqft;
+        pricing.avgSellRatePerSqftOccupied = sellRatePerSqft;
+        pricing.occupiedTargetAvg = sellRatePerSqft;
+      }
+      if (setRatePerSqft != null && sellRatePerSqft != null && sellRatePerSqft !== 0) {
+        pricing.spreadPct = (setRatePerSqft - sellRatePerSqft) / sellRatePerSqft;
+      }
+      snapshot.pricing = pricing;
+    }
   }
 
   const sections = buildSectionFlags(snapshot);
