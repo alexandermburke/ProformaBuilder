@@ -33,6 +33,23 @@ const fallbackProperties: PropertyConfig[] = [
 
 const fallbackRunStatuses: Record<string, DailyRunStatus> = {};
 
+const normalizeOptionalNumberArray = (value: unknown): number[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const numbers = value
+    .map((item) => (typeof item === 'number' ? item : Number(item)))
+    .filter((item) => Number.isFinite(item));
+  return numbers.length > 0 ? numbers : undefined;
+};
+
+const normalizeOptionalMonthArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const monthPattern = /^\d{4}-\d{2}$/;
+  const months = value
+    .map((item) => String(item ?? '').trim())
+    .filter((item) => monthPattern.test(item));
+  return months.length > 0 ? months : undefined;
+};
+
 export async function listProperties(): Promise<PropertyConfig[]> {
   if (!adminDb) {
     return fallbackProperties;
@@ -67,6 +84,9 @@ export async function listProperties(): Promise<PropertyConfig[]> {
       ownerEmails: Array.isArray(data.ownerEmails) ? data.ownerEmails : [],
       enabled: data.enabled === undefined ? true : Boolean(data.enabled),
       facilityOpenDate: data.FACILITYOPENDATE ?? data.facilityOpenDate ?? '',
+      momPlaceholderMonths: normalizeOptionalMonthArray(data.momPlaceholderMonths),
+      momPlaceholderGrossAccruedRent: normalizeOptionalNumberArray(data.momPlaceholderGrossAccruedRent),
+      momPlaceholderOccupiedPct: normalizeOptionalNumberArray(data.momPlaceholderOccupiedPct),
       heroImageUrl,
       heroImagePath,
       heroImageUpdatedAt,
@@ -169,6 +189,9 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
       enabled: input.enabled ?? true,
       facilityOpenDate: input.facilityOpenDate ?? '',
+      momPlaceholderMonths: normalizeOptionalMonthArray(input.momPlaceholderMonths) ?? [],
+      momPlaceholderGrossAccruedRent: normalizeOptionalNumberArray(input.momPlaceholderGrossAccruedRent) ?? [],
+      momPlaceholderOccupiedPct: normalizeOptionalNumberArray(input.momPlaceholderOccupiedPct) ?? [],
       heroImageUrl: input.heroImageUrl ?? '',
       heroImagePath: input.heroImagePath ?? '',
       heroImageUpdatedAt: input.heroImageUpdatedAt ?? null,
@@ -258,6 +281,18 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
     enabled: input.enabled ?? true,
     facilityOpenDate: input.facilityOpenDate ?? '',
+    momPlaceholderMonths:
+      normalizeOptionalMonthArray(input.momPlaceholderMonths) ??
+      normalizeOptionalMonthArray(existingData?.momPlaceholderMonths) ??
+      [],
+    momPlaceholderGrossAccruedRent:
+      normalizeOptionalNumberArray(input.momPlaceholderGrossAccruedRent) ??
+      normalizeOptionalNumberArray(existingData?.momPlaceholderGrossAccruedRent) ??
+      [],
+    momPlaceholderOccupiedPct:
+      normalizeOptionalNumberArray(input.momPlaceholderOccupiedPct) ??
+      normalizeOptionalNumberArray(existingData?.momPlaceholderOccupiedPct) ??
+      [],
     heroImageUrl,
     heroImagePath,
     propertyImageData: admin.firestore.FieldValue.delete(),
@@ -282,6 +317,18 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
     ownerEmails: Array.isArray(input.ownerEmails) ? input.ownerEmails : [],
     enabled: input.enabled ?? true,
     facilityOpenDate: input.facilityOpenDate ?? '',
+    momPlaceholderMonths:
+      normalizeOptionalMonthArray(input.momPlaceholderMonths) ??
+      normalizeOptionalMonthArray(existingData?.momPlaceholderMonths) ??
+      [],
+    momPlaceholderGrossAccruedRent:
+      normalizeOptionalNumberArray(input.momPlaceholderGrossAccruedRent) ??
+      normalizeOptionalNumberArray(existingData?.momPlaceholderGrossAccruedRent) ??
+      [],
+    momPlaceholderOccupiedPct:
+      normalizeOptionalNumberArray(input.momPlaceholderOccupiedPct) ??
+      normalizeOptionalNumberArray(existingData?.momPlaceholderOccupiedPct) ??
+      [],
     heroImageUrl,
     heroImagePath,
     heroImageUpdatedAt,

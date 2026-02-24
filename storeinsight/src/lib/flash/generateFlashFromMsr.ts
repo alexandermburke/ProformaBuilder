@@ -8,7 +8,7 @@ import ChartDataLabels from "chartjs-plugin-datalabels";
 import "@/lib/chartFonts";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
-import { buildPlaceholderMoMSeries, getMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
+import { buildPlaceholderMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
 
 export type TokenMap = Record<string, string | number | unknown[]>;
 
@@ -89,13 +89,11 @@ export async function generateFlashFromMsr(
     options.propertyConfig?.id ||
     options.propertyConfig?.propertyCode ||
     options.propertyCode;
-  const momSeries = getMoMSeries(propertyId);
-  const resolvedMoMSeries = momSeries ?? buildPlaceholderMoMSeries();
-  if (!momSeries) {
-    console.warn(
-      `[flash-report] No month-over-month series configured for propertyId "${propertyId}". Using zero-value placeholder series.`,
-    );
-  }
+  const resolvedMoMSeries = buildPlaceholderMoMSeries(12, {
+    months: options.propertyConfig?.momPlaceholderMonths,
+    grossAccruedRent: options.propertyConfig?.momPlaceholderGrossAccruedRent,
+    occupiedPct: options.propertyConfig?.momPlaceholderOccupiedPct,
+  });
 
   const [rentChartJpeg, occupancyChartJpeg] = await Promise.all([
     renderMoMGrossAccruedRentChart(resolvedMoMSeries, propertyId),
@@ -407,18 +405,18 @@ export function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: E
   const mtdVacates = readNumber(msrSheet, "E62", "MTD vacates (MSR!E62)");
   const dailyVacates = readNumber(msrSheet, "D62", "Daily vacates (MSR!D62)");
   const mtdNetRentals = readNumber(msrSheet, "E63", "MTD net rentals (MSR!E63)");
-  const webLeadsMtd = readNumberOrZero(msrSheet, "M47", "Web leads MTD (MSR!M47)");
-  const walkInLeadsMtd = readNumberOrZero(msrSheet, "M48", "Walk-in leads MTD (MSR!M48)");
-  const phoneLeadsMtd = readNumberOrZero(msrSheet, "M49", "Phone leads MTD (MSR!M49)");
-  const otherLeadsMtd = readNumberOrZero(msrSheet, "M50", "Other leads MTD (MSR!M50)");
+  const webLeadsMtd = readNumberOrZero(msrSheet, "M48", "Web leads MTD (MSR!M48)");
+  const walkInLeadsMtd = readNumberOrZero(msrSheet, "M49", "Walk-in leads MTD (MSR!M49)");
+  const phoneLeadsMtd = readNumberOrZero(msrSheet, "M50", "Phone leads MTD (MSR!M50)");
+  const otherLeadsMtd = readNumberOrZero(msrSheet, "M51", "Other leads MTD (MSR!M51)");
   const leadsMtd = webLeadsMtd + walkInLeadsMtd + phoneLeadsMtd + otherLeadsMtd;
   const convRaw = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
   const conv = formatPercent(convRaw);
 
-  const totalRsf = readNumber(msrSheet, "M44", "Total RSF (MSR!M44)");
-  const occRsf = readNumber(msrSheet, "M41", "Occupied RSF (MSR!M41)");
-  const rsfOccPct = formatToTwo(readNumber(msrSheet, "N41", "RSF occupancy % (MSR!N41)"));
-  const occUnits = readNumber(msrSheet, "K41", "Occupied units (MSR!K41)");
+  const totalRsf = readNumber(msrSheet, "M45", "Total RSF (MSR!M45)");
+  const occRsf = readNumber(msrSheet, "M42", "Occupied RSF (MSR!M42)");
+  const rsfOccPct = formatToTwo(readNumber(msrSheet, "N42", "RSF occupancy % (MSR!N42)"));
+  const occUnits = readNumber(msrSheet, "K42", "Occupied units (MSR!K42)");
   const pmOccUnits = occUnits - mtdNetRentals;
   const coverage = formatPercent(readNumber(msrSheet, "N14", "Coverage enrollment % (MSR!N14)"));
 
@@ -443,14 +441,14 @@ export function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: E
     ARAGING_361_PLUS: formatToTwo(readNumber(msrSheet, "L79", "AR Aging 361+ (MSR!L79)")),
   };
 
-  const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
-  const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
+  const projRent = readNumber(msrSheet, "L33", "Projected rent (MSR!L33)");
+  const projRentPerSf = readNumber(msrSheet, "K33", "Projected rent per SF (MSR!K33)");
   const gpr = readNumber(msrSheet, "L27", "Gross potential rent (MSR!L27)");
-  const gprPerSf = readNumber(msrSheet, "K26", "GPR per SF (MSR!K26)");
-  const grossPotRentSf = readNumber(msrSheet, "N26", "Gross potential rent per SF (MSR!N26)");
-  const grossVacantRevenue = readNumber(msrSheet, "I28", "Gross Vacant Revenue (MSR!I28)");
+  const gprPerSf = readNumber(msrSheet, "K27", "GPR per SF (MSR!K27)");
+  const grossPotRentSf = readNumber(msrSheet, "N27", "Gross potential rent per SF (MSR!N27)");
+  const grossVacantRevenue = readNumber(msrSheet, "I29", "Gross Vacant Revenue (MSR!I29)");
   const avgSfVaca = readNumber(msrSheet, "L39", "Average SF Vacant (MSR!L39)");
-  const econOccPct = formatToTwo(readNumber(msrSheet, "J32", "Economic occupancy % (MSR!J32)"));
+  const econOccPct = formatToTwo(readNumber(msrSheet, "J33", "Economic occupancy % (MSR!J33)"));
   const effPotRent = projRent + grossVacantRevenue;
   const effRentSf = totalRsf > 0 ? effPotRent / totalRsf : 0;
 

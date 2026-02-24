@@ -4,7 +4,7 @@ import {
   type HistoricalPlaceholderData,
   type RangeKey,
 } from '@/lib/historical/placeholder';
-import { MOM_SERIES_BY_PROPERTY, type MoMSeries } from '@/lib/flash/momSeries';
+import type { MoMSeries } from '@/lib/flash/momSeries';
 
 export type HistoricalDataByRange = Record<RangeKey, HistoricalPlaceholderData>;
 
@@ -88,7 +88,6 @@ export const getHistoricalTemplatePayload = (): HistoricalDataBundle => ({
     '1Y': getHistoricalPlaceholder('1Y'),
     '2Y': getHistoricalPlaceholder('2Y'),
   },
-  momSeriesByProperty: MOM_SERIES_BY_PROPERTY,
 });
 
 export const parseHistoricalInput = (raw: string): { data?: HistoricalDataBundle; error?: string } => {

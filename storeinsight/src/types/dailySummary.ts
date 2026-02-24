@@ -10,6 +10,9 @@ export type PropertyConfig = {
   ownerEmails: string[];
   enabled: boolean;
   facilityOpenDate?: string;
+  momPlaceholderMonths?: string[];
+  momPlaceholderGrossAccruedRent?: number[];
+  momPlaceholderOccupiedPct?: number[];
   heroImageUrl?: string; // Firebase Storage URL/path
   heroImagePath?: string; // Storage object path
   heroImageUpdatedAt?: string | null;

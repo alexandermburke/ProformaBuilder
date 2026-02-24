@@ -4,117 +4,6 @@ export type MoMSeries = {
   occupiedPct: number[];
 };
 
-const normalizePropertyKey = (value: string): string => value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
-
-export const MOM_SERIES_BY_PROPERTY: Record<string, MoMSeries> = {
- THE_GROVE: {
-  months: [
-    "2026-01",
-    "2025-12",
-    "2025-11",
-    "2025-10",
-    "2025-09",
-    "2025-08",
-    "2025-07",
-    "2025-06",
-    "2025-05",
-    "2025-04",
-    "2025-03",
-    "2025-02",
-  ],
-  grossAccruedRent: [
-    143983.4,
-    141770.0,
-    133329.46,
-    124580.0,
-    123244.0,
-    124752.0,
-    128019.0,
-    123876.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-  ],
-  occupiedPct: [
-  85.3,
-  85.6,
-  81.6,
-  81.0,
-  78.1,
-  73.9,
-  70.7,
-  68.0,
-  63.8,
-  59.8,
-  54.3,
-  49.9,
-],
-},
- PITTMAN: {
-  months: [
-    "2026-01",
-    "2025-12",
-    "2025-11",
-    "2025-10",
-    "2025-09",
-    "2025-08",
-    "2025-07",
-    "2025-06",
-    "2025-05",
-    "2025-04",
-    "2025-03",
-    "2025-02",
-  ],
-  grossAccruedRent: [
-    93099.5,
-    95000.0,
-    93729.94,
-    90673.55,
-    94378.71,
-    96031.2,
-    90231.89,
-    93118.53,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-  ],
-  occupiedPct: [
-    81.8,
-    78.0,
-    78.7,
-    78.5,
-    79.0,
-    80.0,
-    83.7,
-    82.91,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-  ],
-},
-};
-
-const MOM_SERIES_ALIASES: Record<string, keyof typeof MOM_SERIES_BY_PROPERTY> = {
-  L001: "THE_GROVE",
-  PROP_PITTMAN: "PITTMAN",
-  PROP_THE_GROVE: "THE_GROVE",
-  W002: "PITTMAN",
-};
-
-export const getMoMSeries = (propertyId: string): MoMSeries | null => {
-  if (!propertyId) return null;
-  const key = normalizePropertyKey(propertyId);
-  if (MOM_SERIES_BY_PROPERTY[key]) return MOM_SERIES_BY_PROPERTY[key] ?? null;
-  const aliasKey = MOM_SERIES_ALIASES[key];
-  if (aliasKey && MOM_SERIES_BY_PROPERTY[aliasKey]) {
-    return MOM_SERIES_BY_PROPERTY[aliasKey] ?? null;
-  }
-  return null;
-};
-
 const buildPlaceholderMonths = (count = 12, now = new Date()): string[] => {
   const months: string[] = [];
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -127,11 +16,89 @@ const buildPlaceholderMonths = (count = 12, now = new Date()): string[] => {
   return months;
 };
 
-export const buildPlaceholderMoMSeries = (monthCount = 12): MoMSeries => {
-  const months = buildPlaceholderMonths(monthCount);
-  return {
+const monthToIndex = (value: string): number | null => {
+  const match = /^(\d{4})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return null;
+  return year * 12 + (month - 1);
+};
+
+const normalizeMonthOverrides = (months: string[] | undefined, size: number): string[] | null => {
+  if (!Array.isArray(months) || months.length === 0) return null;
+  const normalized = months
+    .map((month) => String(month ?? "").trim())
+    .filter((month) => /^\d{4}-\d{2}$/.test(month));
+  if (normalized.length === 0) return null;
+  if (normalized.length >= size) return normalized.slice(0, size);
+  return normalized.concat(buildPlaceholderMonths(size - normalized.length));
+};
+
+const rollSeriesToCurrentMonth = (
+  months: string[],
+  grossAccruedRent: number[],
+  occupiedPct: number[],
+): { months: string[]; grossAccruedRent: number[]; occupiedPct: number[] } => {
+  if (!months.length) return { months, grossAccruedRent, occupiedPct };
+  const latestTarget = buildPlaceholderMonths(1)[0];
+  const latestIndex = monthToIndex(months[0]);
+  const targetIndex = monthToIndex(latestTarget);
+  if (latestIndex == null || targetIndex == null || latestIndex >= targetIndex) {
+    return { months, grossAccruedRent, occupiedPct };
+  }
+
+  let nextMonths = [...months];
+  let nextGross = [...grossAccruedRent];
+  let nextOccupied = [...occupiedPct];
+
+  while (nextMonths.length > 0) {
+    const currentIndex = monthToIndex(nextMonths[0]);
+    if (currentIndex == null || currentIndex >= targetIndex) break;
+    const [yearStr, monthStr] = nextMonths[0].split("-");
+    const currentYear = Number(yearStr);
+    const currentMonth = Number(monthStr);
+    const nextMonthDate = new Date(Date.UTC(currentYear, currentMonth, 1));
+    const y = nextMonthDate.getUTCFullYear();
+    const m = String(nextMonthDate.getUTCMonth() + 1).padStart(2, "0");
+    nextMonths = [`${y}-${m}`, ...nextMonths].slice(0, months.length);
+    nextGross = [0, ...nextGross].slice(0, grossAccruedRent.length);
+    nextOccupied = [0, ...nextOccupied].slice(0, occupiedPct.length);
+  }
+
+  return { months: nextMonths, grossAccruedRent: nextGross, occupiedPct: nextOccupied };
+};
+
+const normalizeSeriesValues = (values: number[] | undefined, targetLength: number): number[] => {
+  const normalized = Array.isArray(values)
+    ? values
+        .map((value) => (typeof value === "number" ? value : Number(value)))
+        .filter((value) => Number.isFinite(value))
+    : [];
+  if (normalized.length >= targetLength) {
+    return normalized.slice(0, targetLength);
+  }
+  if (normalized.length === 0) {
+    return new Array(targetLength).fill(0);
+  }
+  return normalized.concat(new Array(targetLength - normalized.length).fill(0));
+};
+
+export const buildPlaceholderMoMSeries = (
+  monthCount = 12,
+  overrides?: { months?: string[]; grossAccruedRent?: number[]; occupiedPct?: number[] },
+): MoMSeries => {
+  const hasExplicitMonths = Array.isArray(overrides?.months) && overrides.months.length > 0;
+  const months = normalizeMonthOverrides(overrides?.months, monthCount) ?? buildPlaceholderMonths(monthCount);
+  const size = months.length;
+  const base = {
     months,
-    grossAccruedRent: new Array(months.length).fill(0),
-    occupiedPct: new Array(months.length).fill(0),
+    grossAccruedRent: normalizeSeriesValues(overrides?.grossAccruedRent, size),
+    occupiedPct: normalizeSeriesValues(overrides?.occupiedPct, size),
   };
+  // Respect explicit month configuration from Firebase/UI exactly as entered.
+  if (hasExplicitMonths) {
+    return base;
+  }
+  return rollSeriesToCurrentMonth(base.months, base.grossAccruedRent, base.occupiedPct);
 };

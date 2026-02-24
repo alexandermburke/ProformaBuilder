@@ -23,7 +23,7 @@
     "docxtemplater": "^3.67.1",
     "exceljs": "^4.4.0",
     "firebase": "^12.6.0",
-    "firebase-admin": "^13.5.0",
+    "firebase-admin": "^13.6.1",
     "html-to-image": "^1.11.13",
     "jspdf": "^3.0.3",
     "lucide-react": "^0.552.0",

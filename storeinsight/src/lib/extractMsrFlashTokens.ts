@@ -143,12 +143,12 @@ export async function extractMsrFlashTokens(
   const leadConversion = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
 
   const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
-  const projRentPerSf = readNumber(msrSheet, "K32", "Projected rent per SF (MSR!K32)");
+  const projRentPerSf = readNumber(msrSheet, "K33", "Projected rent per SF (MSR!K33)");
   const grossVacantRevenue = readNumber(msrSheet, "I28", "Gross Vacant Revenue (MSR!I28)");
   const effPotRent = projRent + grossVacantRevenue;
   const avgSfVaca = readNumber(msrSheet, "L39", "Average SF Vacant (MSR!L39)");
   const grossPotRent = readNumber(msrSheet, "L27", "Gross potential rent (MSR!L27)");
-  const grossPotRentRate = readNumber(msrSheet, "N26", "Gross potential rent rate (MSR!N26)");
+  const grossPotRentRate = readNumber(msrSheet, "N27", "Gross potential rent rate (MSR!N27)");
 
   return {
     MTDRENTALS: mtdRentals,

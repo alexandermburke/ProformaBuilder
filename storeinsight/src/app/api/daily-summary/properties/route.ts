@@ -47,6 +47,9 @@ export async function POST(req: NextRequest) {
       heroImagePath: body.heroImagePath,
       heroImageRemove,
       facilityOpenDate: body.facilityOpenDate,
+      momPlaceholderMonths: body.momPlaceholderMonths,
+      momPlaceholderGrossAccruedRent: body.momPlaceholderGrossAccruedRent,
+      momPlaceholderOccupiedPct: body.momPlaceholderOccupiedPct,
     };
     const saved = await upsertProperty(payload);
     console.info("[daily-summary] saved property config", saved);

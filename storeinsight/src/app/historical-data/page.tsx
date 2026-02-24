@@ -6,7 +6,7 @@
 
 import type { JSX } from 'react';
 import { HistoricalDashboardView } from '@/components/historical/HistoricalDashboardView';
-import { getMoMSeries, type MoMSeries } from '@/lib/flash/momSeries';
+import type { MoMSeries } from '@/lib/flash/momSeries';
 import { getPropertyHistoricalFromFirebase } from '@/lib/historical/firebaseStore';
 import type { HistoricalDataByRange } from '@/lib/historical/dataInput';
 import { PROPERTY_OPTIONS } from '@/lib/propertyDirectory';
@@ -36,8 +36,7 @@ export default async function HistoricalDataPage(): Promise<JSX.Element> {
       firebaseAvailabilityByProperty[id] = false;
     }
 
-    const fallbackSeries = getMoMSeries(id);
-    const series = result.data?.momSeries ?? fallbackSeries;
+    const series = result.data?.momSeries;
     if (series) {
       momSeriesByProperty[id] = series;
     }

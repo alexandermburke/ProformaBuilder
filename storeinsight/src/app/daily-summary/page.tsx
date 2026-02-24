@@ -23,6 +23,9 @@ type PropertyFormState = {
   tenantPropertyId: string;
   sendTimeLocal: string;
   ownerEmails: string;
+  momPlaceholderMonths: string;
+  momPlaceholderGrossAccruedRent: string;
+  momPlaceholderOccupiedPct: string;
   enabled: boolean;
   propertyImageData: string;
   heroImagePath?: string;
@@ -38,11 +41,26 @@ const createEmptyForm = (): PropertyFormState => ({
   tenantPropertyId: '',
   sendTimeLocal: DEFAULT_TIME,
   ownerEmails: '',
+  momPlaceholderMonths: '',
+  momPlaceholderGrossAccruedRent: '',
+  momPlaceholderOccupiedPct: '',
   enabled: true,
   propertyImageData: '',
   heroImagePath: '',
   heroImageRemove: false,
 });
+
+const parseNumericCsv = (value: string): number[] =>
+  value
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item));
+
+const parseMonthCsv = (value: string): string[] =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => /^\d{4}-\d{2}$/.test(item));
 
 const statusMeta: Record<FlashStatus, { label: string; tone?: 'success' | 'warning' | 'danger'; dotClass: string }> = {
   success: { label: 'Healthy', tone: 'success', dotClass: 'bg-emerald-400 dark:bg-emerald-300' },
@@ -361,6 +379,9 @@ export default function DailySummaryPage() {
         tenantPropertyId: prop.tenantPropertyId ?? prop.propertyId ?? prop.id,
         sendTimeLocal: prop.sendTimeLocal,
       ownerEmails: prop.ownerEmails.join(', '),
+      momPlaceholderMonths: (prop.momPlaceholderMonths ?? []).join(', '),
+      momPlaceholderGrossAccruedRent: (prop.momPlaceholderGrossAccruedRent ?? []).join(', '),
+      momPlaceholderOccupiedPct: (prop.momPlaceholderOccupiedPct ?? []).join(', '),
       enabled: prop.enabled,
       propertyImageData: prop.propertyImageData ?? prop.heroImageUrl ?? '',
       heroImagePath: prop.heroImagePath ?? '',
@@ -405,6 +426,9 @@ export default function DailySummaryPage() {
           .split(',')
           .map((email) => email.trim())
           .filter(Boolean),
+        momPlaceholderMonths: parseMonthCsv(draft.momPlaceholderMonths),
+        momPlaceholderGrossAccruedRent: parseNumericCsv(draft.momPlaceholderGrossAccruedRent),
+        momPlaceholderOccupiedPct: parseNumericCsv(draft.momPlaceholderOccupiedPct),
         enabled: draft.enabled,
         propertyImageData: draft.propertyImageData || '',
         heroImagePath: draft.heroImagePath,
@@ -444,6 +468,9 @@ export default function DailySummaryPage() {
       tenantPropertyId: prop.tenantPropertyId,
       sendTimeLocal: prop.sendTimeLocal,
       ownerEmails: prop.ownerEmails.join(', '),
+      momPlaceholderMonths: (prop.momPlaceholderMonths ?? []).join(', '),
+      momPlaceholderGrossAccruedRent: (prop.momPlaceholderGrossAccruedRent ?? []).join(', '),
+      momPlaceholderOccupiedPct: (prop.momPlaceholderOccupiedPct ?? []).join(', '),
       enabled: !prop.enabled,
       propertyImageData: prop.propertyImageData ?? prop.heroImageUrl ?? '',
       heroImagePath: prop.heroImagePath ?? '',
@@ -1077,6 +1104,48 @@ export default function DailySummaryPage() {
                     onChange={handleFormChange}
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                     placeholder="owner@example.com, ops@example.com"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    MoM Months (YYYY-MM)
+                  </label>
+                  <input
+                    name="momPlaceholderMonths"
+                    value={formState.momPlaceholderMonths}
+                    onChange={handleFormChange}
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                    placeholder="e.g. 2026-02, 2026-01, 2025-12"
+                  />
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    Optional. If omitted, months auto-generate and auto-roll each new month.
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    MoM Gross Accrued Rent
+                  </label>
+                  <input
+                    name="momPlaceholderGrossAccruedRent"
+                    value={formState.momPlaceholderGrossAccruedRent}
+                    onChange={handleFormChange}
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                    placeholder="e.g. 0, 0, 0, 0, 0, 0"
+                  />
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    Optional comma-separated values used when no hardcoded MoM series exists for this property.
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    MoM Occupancy %
+                  </label>
+                  <input
+                    name="momPlaceholderOccupiedPct"
+                    value={formState.momPlaceholderOccupiedPct}
+                    onChange={handleFormChange}
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                    placeholder="e.g. 0, 0, 0, 0, 0, 0"
                   />
                 </div>
                 <div className="flex flex-col gap-2 rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2">
