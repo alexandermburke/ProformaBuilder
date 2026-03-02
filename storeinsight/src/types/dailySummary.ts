@@ -13,6 +13,8 @@ export type PropertyConfig = {
   momPlaceholderMonths?: string[];
   momPlaceholderGrossAccruedRent?: number[];
   momPlaceholderOccupiedPct?: number[];
+  storeManagedMarkerMonth?: string; // YYYY-MM applied to MoM charts
+  storeManagedMarkerText?: string; // marker label (defaults to "STORE Managed")
   heroImageUrl?: string; // Firebase Storage URL/path
   heroImagePath?: string; // Storage object path
   heroImageUpdatedAt?: string | null;

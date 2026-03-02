@@ -10,6 +10,7 @@ import type { DailyRunStatus, PropertyConfig } from '@/types/dailySummary';
 
 const PROPS_COLLECTION = 'dailySummaryProperties';
 const RUN_STATUS_COLLECTION = 'dailySummaryRunStatus';
+const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 
 const fallbackProperties: PropertyConfig[] = [
   {
@@ -28,6 +29,8 @@ const fallbackProperties: PropertyConfig[] = [
     heroImagePath: '',
     heroImageUpdatedAt: null,
     propertyImageData: '',
+    storeManagedMarkerMonth: '',
+    storeManagedMarkerText: 'STORE Managed',
   },
 ];
 
@@ -43,11 +46,22 @@ const normalizeOptionalNumberArray = (value: unknown): number[] | undefined => {
 
 const normalizeOptionalMonthArray = (value: unknown): string[] | undefined => {
   if (!Array.isArray(value)) return undefined;
-  const monthPattern = /^\d{4}-\d{2}$/;
   const months = value
     .map((item) => String(item ?? '').trim())
-    .filter((item) => monthPattern.test(item));
+    .filter((item) => MONTH_PATTERN.test(item));
   return months.length > 0 ? months : undefined;
+};
+
+const normalizeOptionalMonth = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return MONTH_PATTERN.test(normalized) ? normalized : undefined;
+};
+
+const normalizeOptionalText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
 };
 
 export async function listProperties(): Promise<PropertyConfig[]> {
@@ -87,6 +101,8 @@ export async function listProperties(): Promise<PropertyConfig[]> {
       momPlaceholderMonths: normalizeOptionalMonthArray(data.momPlaceholderMonths),
       momPlaceholderGrossAccruedRent: normalizeOptionalNumberArray(data.momPlaceholderGrossAccruedRent),
       momPlaceholderOccupiedPct: normalizeOptionalNumberArray(data.momPlaceholderOccupiedPct),
+      storeManagedMarkerMonth: normalizeOptionalMonth(data.storeManagedMarkerMonth),
+      storeManagedMarkerText: normalizeOptionalText(data.storeManagedMarkerText),
       heroImageUrl,
       heroImagePath,
       heroImageUpdatedAt,
@@ -192,6 +208,8 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       momPlaceholderMonths: normalizeOptionalMonthArray(input.momPlaceholderMonths) ?? [],
       momPlaceholderGrossAccruedRent: normalizeOptionalNumberArray(input.momPlaceholderGrossAccruedRent) ?? [],
       momPlaceholderOccupiedPct: normalizeOptionalNumberArray(input.momPlaceholderOccupiedPct) ?? [],
+      storeManagedMarkerMonth: normalizeOptionalMonth(input.storeManagedMarkerMonth) ?? '',
+      storeManagedMarkerText: normalizeOptionalText(input.storeManagedMarkerText) ?? 'STORE Managed',
       heroImageUrl: input.heroImageUrl ?? '',
       heroImagePath: input.heroImagePath ?? '',
       heroImageUpdatedAt: input.heroImageUpdatedAt ?? null,
@@ -293,6 +311,14 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       normalizeOptionalNumberArray(input.momPlaceholderOccupiedPct) ??
       normalizeOptionalNumberArray(existingData?.momPlaceholderOccupiedPct) ??
       [],
+    storeManagedMarkerMonth:
+      normalizeOptionalMonth(input.storeManagedMarkerMonth) ??
+      normalizeOptionalMonth(existingData?.storeManagedMarkerMonth) ??
+      '',
+    storeManagedMarkerText:
+      normalizeOptionalText(input.storeManagedMarkerText) ??
+      normalizeOptionalText(existingData?.storeManagedMarkerText) ??
+      'STORE Managed',
     heroImageUrl,
     heroImagePath,
     propertyImageData: admin.firestore.FieldValue.delete(),
@@ -329,6 +355,14 @@ export async function upsertProperty(input: Partial<PropertyConfig>): Promise<Pr
       normalizeOptionalNumberArray(input.momPlaceholderOccupiedPct) ??
       normalizeOptionalNumberArray(existingData?.momPlaceholderOccupiedPct) ??
       [],
+    storeManagedMarkerMonth:
+      normalizeOptionalMonth(input.storeManagedMarkerMonth) ??
+      normalizeOptionalMonth(existingData?.storeManagedMarkerMonth) ??
+      '',
+    storeManagedMarkerText:
+      normalizeOptionalText(input.storeManagedMarkerText) ??
+      normalizeOptionalText(existingData?.storeManagedMarkerText) ??
+      'STORE Managed',
     heroImageUrl,
     heroImagePath,
     heroImageUpdatedAt,

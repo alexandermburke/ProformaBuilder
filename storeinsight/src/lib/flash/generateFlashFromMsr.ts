@@ -11,6 +11,10 @@ import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { buildPlaceholderMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
 
 export type TokenMap = Record<string, string | number | unknown[]>;
+type StoreManagedMarkerConfig = {
+  month: string; // YYYY-MM
+  text: string;
+};
 
 const chartWidth = 1200;
 const chartHeight = 650;
@@ -95,9 +99,10 @@ export async function generateFlashFromMsr(
     occupiedPct: options.propertyConfig?.momPlaceholderOccupiedPct,
   });
 
+  const markerConfig = resolveStoreManagedMarkerConfig(options.propertyConfig, propertyId);
   const [rentChartJpeg, occupancyChartJpeg] = await Promise.all([
-    renderMoMGrossAccruedRentChart(resolvedMoMSeries, propertyId),
-    renderMoMOccupancyChart(resolvedMoMSeries, propertyId),
+    renderMoMGrossAccruedRentChart(resolvedMoMSeries, propertyId, markerConfig),
+    renderMoMOccupancyChart(resolvedMoMSeries, propertyId, markerConfig),
   ]);
 
   const templatePath = options.templatePath ?? DEFAULT_TEMPLATE;
@@ -189,7 +194,11 @@ const computePaddedBounds = (
   return { min, max };
 };
 
-async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: string): Promise<Buffer> {
+async function renderMoMGrossAccruedRentChart(
+  series: MoMSeries,
+  propertyId: string,
+  markerConfig: StoreManagedMarkerConfig | null,
+): Promise<Buffer> {
   const monthsRecent = series.months.slice(0, 7);
   const dataRecent = series.grossAccruedRent.slice(0, 7);
   const monthsAsc = monthsRecent.slice().reverse();
@@ -210,7 +219,7 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
     throw new Error("MoM series length mismatch");
   }
 
-  const storeManagedPlugin = isPittmanProperty(propertyId) ? buildStoreManagedMarkerPlugin() : null;
+  const storeManagedPlugin = markerConfig ? buildStoreManagedMarkerPlugin(formatMonthLabel(markerConfig.month), markerConfig.text) : null;
   const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
     type: "line",
     data: {
@@ -281,7 +290,11 @@ async function renderMoMGrossAccruedRentChart(series: MoMSeries, propertyId: str
   return renderChartBuffer(configuration, "image/jpeg");
 }
 
-async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): Promise<Buffer> {
+async function renderMoMOccupancyChart(
+  series: MoMSeries,
+  propertyId: string,
+  markerConfig: StoreManagedMarkerConfig | null,
+): Promise<Buffer> {
   const monthsRecent = series.months.slice(0, 7);
   const dataRecent = series.occupiedPct.slice(0, 7);
   const monthsAsc = monthsRecent.slice().reverse();
@@ -302,7 +315,7 @@ async function renderMoMOccupancyChart(series: MoMSeries, propertyId: string): P
     throw new Error("MoM series length mismatch");
   }
 
-  const storeManagedPlugin = isPittmanProperty(propertyId) ? buildStoreManagedMarkerPlugin() : null;
+  const storeManagedPlugin = markerConfig ? buildStoreManagedMarkerPlugin(formatMonthLabel(markerConfig.month), markerConfig.text) : null;
   const configuration: ChartConfiguration<"line", Array<number | null>, string> = {
     type: "line",
     data: {
@@ -776,6 +789,23 @@ const isPittmanProperty = (propertyId: string): boolean => {
   const key = normalizePropertyKey(propertyId);
   return key === "PITTMAN" || key === "PROP_PITTMAN";
 };
+const isValidMarkerMonth = (value?: string | null): value is string =>
+  typeof value === "string" && /^\d{4}-\d{2}$/.test(value.trim());
+
+function resolveStoreManagedMarkerConfig(
+  propertyConfig: PropertyConfig | undefined,
+  propertyId: string,
+): StoreManagedMarkerConfig | null {
+  const configuredMonth = propertyConfig?.storeManagedMarkerMonth?.trim();
+  const configuredText = propertyConfig?.storeManagedMarkerText?.trim() || "STORE Managed";
+  if (isValidMarkerMonth(configuredMonth)) {
+    return { month: configuredMonth, text: configuredText };
+  }
+  if (isPittmanProperty(propertyId)) {
+    return { month: "2025-11", text: "STORE Managed" };
+  }
+  return null;
+}
 
 function buildStoreManagedMarkerPlugin(targetLabel = "Nov 25", text = "STORE Managed"): Plugin<"line"> {
   return {

@@ -12,6 +12,13 @@ import type { ChangeEvent, DragEvent } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
 const DATE_MATCH = /\d{4}-\d{2}-\d{2}/;
+const SUBJECT_NAME_SOFT_MAX = 80;
+const SUBJECT_ADDRESS_SOFT_MAX = 140;
+
+type AddressCheckState = {
+  status: 'idle' | 'checking' | 'success' | 'error';
+  message: string;
+};
 
 export default function CompSetsPage() {
   const { theme } = useTheme();
@@ -30,7 +37,12 @@ export default function CompSetsPage() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState('');
+  const [addressCheck, setAddressCheck] = useState<AddressCheckState>({
+    status: 'idle',
+    message: 'Distance ranking uses subject address only. Start typing to verify geocoding.',
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const geocodeRequestRef = useRef(0);
   const autoDetectDateFromFile = useCallback((file: File | null | undefined): string | null => {
     if (!file) return null;
     const match = file.name.match(DATE_MATCH);
@@ -93,6 +105,70 @@ export default function CompSetsPage() {
     return () => window.clearTimeout(id);
   }, [toast]);
 
+  useEffect(() => {
+    const address = subjectAddress.trim();
+    if (!address) {
+      setAddressCheck({
+        status: 'idle',
+        message: 'Distance ranking uses subject address only. Start typing to verify geocoding.',
+      });
+      return;
+    }
+
+    if (address.length < 6) {
+      setAddressCheck({
+        status: 'idle',
+        message: 'Keep typing address details to verify geocoding.',
+      });
+      return;
+    }
+
+    const requestId = ++geocodeRequestRef.current;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      setAddressCheck({ status: 'checking', message: 'Checking address geocode...' });
+      try {
+        const res = await fetch(`/api/comp-sets/geocode?address=${encodeURIComponent(address)}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const data = (await res.json().catch(() => null)) as
+          | { ok?: boolean; status?: string; error?: string }
+          | null;
+        if (requestId !== geocodeRequestRef.current) return;
+        if (!res.ok) {
+          const msg = data?.error || 'Unable to verify address geocode.';
+          setAddressCheck({ status: 'error', message: msg });
+          return;
+        }
+        if (data?.ok) {
+          setAddressCheck({
+            status: 'success',
+            message: 'Address geocode matched. Distance ranking will use this address only.',
+          });
+          return;
+        }
+        const status = data?.status || 'not_found';
+        const msg =
+          status === 'not_found'
+            ? 'Address not found for geocoding. Comp set still generates, but distances may be unavailable.'
+            : 'Address check failed. Comp set still generates, but distances may be unavailable.';
+        setAddressCheck({ status: 'error', message: msg });
+      } catch {
+        if (requestId !== geocodeRequestRef.current) return;
+        setAddressCheck({
+          status: 'error',
+          message: 'Address check failed. Comp set still generates, but distances may be unavailable.',
+        });
+      }
+    }, 450);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [subjectAddress]);
+
   const handleManualCompSet = async () => {
     if (!subjectName.trim()) {
       setToast('Enter the subject property name.');
@@ -141,6 +217,19 @@ export default function CompSetsPage() {
       }
 
       const blob = await res.blob();
+      const subjectGeocodeStatus = (res.headers.get('x-subject-geocode-status') || '').toLowerCase();
+      if (subjectGeocodeStatus === 'matched') {
+        setAddressCheck({
+          status: 'success',
+          message: 'Address geocode matched. Distances were calculated from address only.',
+        });
+      } else if (subjectGeocodeStatus) {
+        setAddressCheck({
+          status: 'error',
+          message:
+            'Address geocode did not match. PPTX generated, but distance ordering may be fallback-only for this run.',
+        });
+      }
       const safeProperty = subjectName.trim().replace(/[^A-Za-z0-9._-]+/g, '_');
       const safeDate = (asOfDate || 'latest').replace(/[^0-9A-Za-z._-]+/g, '_');
       const filename = `CompSet-${safeProperty}-${safeDate}.pptx`;
@@ -213,6 +302,10 @@ export default function CompSetsPage() {
                     placeholder="Subject property name"
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   />
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    {subjectName.length}/{SUBJECT_NAME_SOFT_MAX} characters
+                    {subjectName.length > SUBJECT_NAME_SOFT_MAX ? ' (recommended to shorten)' : ''}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
@@ -225,6 +318,23 @@ export default function CompSetsPage() {
                     placeholder="Street, City, State ZIP"
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`text-xs ${
+                        addressCheck.status === 'success'
+                          ? 'text-emerald-600 dark:text-emerald-300'
+                          : addressCheck.status === 'error'
+                            ? 'text-rose-600 dark:text-rose-300'
+                            : 'text-[color:var(--text-secondary)]'
+                      }`}
+                    >
+                      {addressCheck.message}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    {subjectAddress.length}/{SUBJECT_ADDRESS_SOFT_MAX} characters
+                    {subjectAddress.length > SUBJECT_ADDRESS_SOFT_MAX ? ' (recommended to shorten)' : ''}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">

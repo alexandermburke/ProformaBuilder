@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
       momPlaceholderMonths: body.momPlaceholderMonths,
       momPlaceholderGrossAccruedRent: body.momPlaceholderGrossAccruedRent,
       momPlaceholderOccupiedPct: body.momPlaceholderOccupiedPct,
+      storeManagedMarkerMonth: body.storeManagedMarkerMonth,
+      storeManagedMarkerText: body.storeManagedMarkerText,
     };
     const saved = await upsertProperty(payload);
     console.info("[daily-summary] saved property config", saved);

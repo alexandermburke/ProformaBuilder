@@ -26,6 +26,8 @@ type PropertyFormState = {
   momPlaceholderMonths: string;
   momPlaceholderGrossAccruedRent: string;
   momPlaceholderOccupiedPct: string;
+  storeManagedMarkerMonth: string;
+  storeManagedMarkerText: string;
   enabled: boolean;
   propertyImageData: string;
   heroImagePath?: string;
@@ -44,6 +46,8 @@ const createEmptyForm = (): PropertyFormState => ({
   momPlaceholderMonths: '',
   momPlaceholderGrossAccruedRent: '',
   momPlaceholderOccupiedPct: '',
+  storeManagedMarkerMonth: '',
+  storeManagedMarkerText: 'STORE Managed',
   enabled: true,
   propertyImageData: '',
   heroImagePath: '',
@@ -382,6 +386,8 @@ export default function DailySummaryPage() {
       momPlaceholderMonths: (prop.momPlaceholderMonths ?? []).join(', '),
       momPlaceholderGrossAccruedRent: (prop.momPlaceholderGrossAccruedRent ?? []).join(', '),
       momPlaceholderOccupiedPct: (prop.momPlaceholderOccupiedPct ?? []).join(', '),
+      storeManagedMarkerMonth: prop.storeManagedMarkerMonth ?? '',
+      storeManagedMarkerText: prop.storeManagedMarkerText ?? 'STORE Managed',
       enabled: prop.enabled,
       propertyImageData: prop.propertyImageData ?? prop.heroImageUrl ?? '',
       heroImagePath: prop.heroImagePath ?? '',
@@ -429,6 +435,8 @@ export default function DailySummaryPage() {
         momPlaceholderMonths: parseMonthCsv(draft.momPlaceholderMonths),
         momPlaceholderGrossAccruedRent: parseNumericCsv(draft.momPlaceholderGrossAccruedRent),
         momPlaceholderOccupiedPct: parseNumericCsv(draft.momPlaceholderOccupiedPct),
+        storeManagedMarkerMonth: draft.storeManagedMarkerMonth.trim(),
+        storeManagedMarkerText: draft.storeManagedMarkerText.trim() || 'STORE Managed',
         enabled: draft.enabled,
         propertyImageData: draft.propertyImageData || '',
         heroImagePath: draft.heroImagePath,
@@ -471,6 +479,8 @@ export default function DailySummaryPage() {
       momPlaceholderMonths: (prop.momPlaceholderMonths ?? []).join(', '),
       momPlaceholderGrossAccruedRent: (prop.momPlaceholderGrossAccruedRent ?? []).join(', '),
       momPlaceholderOccupiedPct: (prop.momPlaceholderOccupiedPct ?? []).join(', '),
+      storeManagedMarkerMonth: prop.storeManagedMarkerMonth ?? '',
+      storeManagedMarkerText: prop.storeManagedMarkerText ?? 'STORE Managed',
       enabled: !prop.enabled,
       propertyImageData: prop.propertyImageData ?? prop.heroImageUrl ?? '',
       heroImagePath: prop.heroImagePath ?? '',
@@ -1147,6 +1157,35 @@ export default function DailySummaryPage() {
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                     placeholder="e.g. 0, 0, 0, 0, 0, 0"
                   />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                      STORE Managed marker month
+                    </label>
+                    <input
+                      type="month"
+                      name="storeManagedMarkerMonth"
+                      value={formState.storeManagedMarkerMonth}
+                      onChange={handleFormChange}
+                      className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                    />
+                    <span className="text-[11px] text-[color:var(--text-muted)]">
+                      Select which MoM month gets the marker. Leave blank to hide.
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                      Marker text
+                    </label>
+                    <input
+                      name="storeManagedMarkerText"
+                      value={formState.storeManagedMarkerText}
+                      onChange={handleFormChange}
+                      className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                      placeholder="STORE Managed"
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2 rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2">
                   <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">Parsed recipients</span>

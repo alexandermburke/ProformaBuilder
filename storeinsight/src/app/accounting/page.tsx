@@ -9,7 +9,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { JSX } from 'react';
-import { ClipboardList, FileText, Landmark } from 'lucide-react';
+import { ClipboardList, FileSpreadsheet, FileText, Landmark } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 
 type Tone = 'blue' | 'purple' | 'amber';
@@ -21,7 +21,7 @@ type OptionCard = {
   highlights: string[];
   status: string;
   tone: Tone;
-  icon: 'bank' | 'payables' | 'recon';
+  icon: 'bank' | 'payables' | 'recon' | 'proforma';
   href?: string;
   disabled?: boolean;
 };
@@ -40,6 +40,20 @@ const options: OptionCard[] = [
     tone: 'blue',
     icon: 'bank',
     href: '/accounting/bank-card-import-prep',
+  },
+  {
+    id: 'proforma-data-drop',
+    title: 'Proforma Data Drop',
+    description: 'Upload operator financial package and generate Proforma-ready dataset.',
+    highlights: [
+      'Parse Public-format P&L tabs into vertical monthly rows.',
+      'Apply COA mapping and surface unmapped accounts for review.',
+      'Export clean Data Drop CSV without blocking unmapped rows.',
+    ],
+    status: 'Active',
+    tone: 'blue',
+    icon: 'proforma',
+    href: '/finance/proforma-import',
   },
   {
     id: 'payables-automation',
@@ -73,6 +87,7 @@ const options: OptionCard[] = [
 
 const ICONS = {
   bank: Landmark,
+  proforma: FileSpreadsheet,
   payables: FileText,
   recon: ClipboardList,
 } as const;

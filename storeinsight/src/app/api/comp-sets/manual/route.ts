@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import PizZip from "pizzip";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
+import { geocodeAddress } from "@/lib/compSets/geocode";
 
 export const runtime = "nodejs";
 
 const TEMPLATE_PATH = path.join(process.cwd(), "public", "COMPSETTEMPLATE.pptx");
 const DASH = "-";
 const PROP_NAME_MAX = 10;
-const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
 const SIZE_DEFS = [
   { key: "X25", width: 5, length: 5, area: 25 },
@@ -95,45 +95,6 @@ const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number):
   return R * c;
 };
 
-const geocodeCache = new Map<string, { lat: number; lon: number } | null>();
-
-const geocodeAddress = async (address: string): Promise<{ lat: number; lon: number } | null> => {
-  const trimmed = address.trim();
-  if (!trimmed) return null;
-  const cacheHit = geocodeCache.get(trimmed);
-  if (cacheHit !== undefined) return cacheHit;
-  const url = new URL(NOMINATIM_URL);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("q", trimmed);
-
-  try {
-    const res = await fetch(url.toString(), {
-      headers: {
-        "User-Agent": "storeinsight-comp-sets/1.0",
-      },
-    });
-    if (!res.ok) {
-      geocodeCache.set(trimmed, null);
-      return null;
-    }
-    const data = (await res.json()) as Array<{ lat?: string; lon?: string }>;
-    const first = data?.[0];
-    const lat = first?.lat ? Number(first.lat) : Number.NaN;
-    const lon = first?.lon ? Number(first.lon) : Number.NaN;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      geocodeCache.set(trimmed, null);
-      return null;
-    }
-    const result = { lat, lon };
-    geocodeCache.set(trimmed, result);
-    return result;
-  } catch {
-    geocodeCache.set(trimmed, null);
-    return null;
-  }
-};
-
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const subjectName = String(formData.get("subjectName") ?? "").trim();
@@ -149,6 +110,12 @@ export async function POST(req: NextRequest) {
 
   if (!subjectAddress) {
     return NextResponse.json({ error: "subjectAddress is required" }, { status: 400 });
+  }
+  if (subjectAddress.length > 220) {
+    return NextResponse.json(
+      { error: "Subject address is too long. Use a shorter address format: Street, City, State ZIP." },
+      { status: 400 },
+    );
   }
 
   if (!preparedFor) {
@@ -190,18 +157,22 @@ export async function POST(req: NextRequest) {
   const distanceMap = new Map<string, number | null>();
 
   const monthYear = formatMonthYear(asOfDate);
-  const subjectCoords = subjectAddress ? await geocodeAddress(subjectAddress) : null;
+  // Distance ranking intentionally uses subject address only (never subject name).
+  const subjectGeocode = await geocodeAddress(subjectAddress);
+  const subjectCoords = subjectGeocode.point;
+  let compGeocodedCount = 0;
 
   let sortedComps = orderedComps;
   if (subjectCoords) {
     const withDistance: Array<{ property: CompProperty; distance: number | null; order: number }> = [];
     for (let index = 0; index < orderedComps.length; index += 1) {
       const property = orderedComps[index];
-      const compCoords = await geocodeAddress(formatFullAddress(property));
+      const compCoords = (await geocodeAddress(formatFullAddress(property))).point;
       const distance =
         compCoords
           ? haversineMiles(subjectCoords.lat, subjectCoords.lon, compCoords.lat, compCoords.lon)
           : null;
+      if (compCoords) compGeocodedCount += 1;
       distanceMap.set(property.key, distance);
       withDistance.push({ property, distance, order: index });
     }
@@ -240,11 +211,12 @@ export async function POST(req: NextRequest) {
     let distanceMiles: number | null =
       cachedDistance === undefined ? null : cachedDistance;
     if (cachedDistance === undefined && subjectCoords) {
-      const compCoords = await geocodeAddress(formatFullAddress(property));
+      const compCoords = (await geocodeAddress(formatFullAddress(property))).point;
       distanceMiles =
         compCoords && subjectCoords
           ? haversineMiles(subjectCoords.lat, subjectCoords.lon, compCoords.lat, compCoords.lon)
           : null;
+      if (compCoords) compGeocodedCount += 1;
       distanceMap.set(property.key, distanceMiles);
     }
     tokens[`PP${propNumber}DIST`] = formatMiles(distanceMiles);
@@ -272,13 +244,18 @@ export async function POST(req: NextRequest) {
   const safeAsOfSegment = (asOfDate || "latest").replace(/[^0-9A-Za-z._-]+/g, "_");
   const filename = `CompSet-${safeProperty}-${safeAsOfSegment}.pptx`;
 
-  return new NextResponse(pptxBuffer as unknown as BodyInit, {
+  const response = new NextResponse(pptxBuffer as unknown as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
+  response.headers.set("X-Subject-Geocode-Status", subjectGeocode.status);
+  response.headers.set("X-Distance-Mode", "address-only");
+  response.headers.set("X-Comp-Geocoded-Count", String(compGeocodedCount));
+  response.headers.set("X-Comp-Selected-Count", String(selectedComps.length));
+  return response;
 }
 
 function extractCompSetRows(workbook: XLSX.WorkBook): CompSetRow[] {
@@ -631,11 +608,19 @@ async function renderTokensIntoZip(zip: PizZip, tokens: Record<string, string>):
 }
 
 function replaceTokensInContent(content: string, normalizedTokens: Record<string, string>): string {
+  const escapeXml = (value: string): string =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+
   return content.replace(/{{\s*([^{}]+?)\s*}}/g, (_match, rawKey) => {
     const key = normalizeTokenKey(String(rawKey));
     if (!key) return "";
     const value = normalizedTokens[key];
-    return value ?? "";
+    return escapeXml(value ?? "");
   });
 }
 
