@@ -343,6 +343,9 @@ function buildCompSetWorkbookBuffer(input: {
     Address: row.address,
     City: row.city,
     State: row.state,
+    SqFt: computeUnitSqft(row),
+    "$/sqft online": computePricePerSqft(row.onlinePrice, row),
+    "$/sqft regular": computePricePerSqft(row.regularPrice, row),
     OnlinePrice: row.onlinePrice ?? "",
     RegularPrice: row.regularPrice ?? "",
     Width: row.width ?? "",
@@ -355,6 +358,22 @@ function buildCompSetWorkbookBuffer(input: {
   XLSX.utils.book_append_sheet(workbook, rawSheet, "Raw Data");
 
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+function computeUnitSqft(row: CompSetRow): number | "" {
+  const width = row.width ?? Number.NaN;
+  const length = row.length ?? Number.NaN;
+  if (!Number.isFinite(width) || !Number.isFinite(length)) return "";
+  const area = Math.abs(width * length);
+  if (!Number.isFinite(area) || area <= 0) return "";
+  return area;
+}
+
+function computePricePerSqft(price: number | null, row: CompSetRow): number | "" {
+  if (!Number.isFinite(price ?? Number.NaN) || (price ?? 0) <= 0) return "";
+  const area = computeUnitSqft(row);
+  if (typeof area !== "number" || area <= 0) return "";
+  return (price as number) / area;
 }
 
 function extractCompSetRows(workbook: XLSX.WorkBook): CompSetRow[] {
