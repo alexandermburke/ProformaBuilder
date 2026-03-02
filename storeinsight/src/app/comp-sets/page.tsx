@@ -14,11 +14,13 @@ import { useTheme } from '@/components/ThemeProvider';
 const DATE_MATCH = /\d{4}-\d{2}-\d{2}/;
 const SUBJECT_NAME_SOFT_MAX = 80;
 const SUBJECT_ADDRESS_SOFT_MAX = 140;
+const PREPARED_FOR_MAX = 80;
 
 type AddressCheckState = {
   status: 'idle' | 'checking' | 'success' | 'error';
   message: string;
 };
+type OutputFormat = 'pptx' | 'xlsx';
 
 export default function CompSetsPage() {
   const { theme } = useTheme();
@@ -37,6 +39,7 @@ export default function CompSetsPage() {
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState('');
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>('pptx');
   const [addressCheck, setAddressCheck] = useState<AddressCheckState>({
     status: 'idle',
     message: 'Distance ranking uses subject address only. Start typing to verify geocoding.',
@@ -200,6 +203,7 @@ export default function CompSetsPage() {
       form.append('subjectAddress', subjectAddress.trim());
       form.append('preparedFor', preparedFor.trim());
       form.append('asOfDate', asOfDate);
+      form.append('outputFormat', outputFormat);
       form.append('file', uploadFile);
       if (manualNotes.trim()) {
         form.append('notes', manualNotes.trim());
@@ -232,7 +236,8 @@ export default function CompSetsPage() {
       }
       const safeProperty = subjectName.trim().replace(/[^A-Za-z0-9._-]+/g, '_');
       const safeDate = (asOfDate || 'latest').replace(/[^0-9A-Za-z._-]+/g, '_');
-      const filename = `CompSet-${safeProperty}-${safeDate}.pptx`;
+      const extension = outputFormat === 'xlsx' ? 'xlsx' : 'pptx';
+      const filename = `CompSet-${safeProperty}-${safeDate}.${extension}`;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -242,10 +247,10 @@ export default function CompSetsPage() {
       link.remove();
       URL.revokeObjectURL(url);
 
-      setManualMessage('Comp set PPTX generated.');
+      setManualMessage('Comp set file generated.');
     } catch (err) {
       console.error('[comp-sets/manual] generation failed', err);
-      setToast('Unable to generate comp set PPTX.');
+      setToast('Unable to generate comp set file.');
     } finally {
       setManualSubmitting(false);
     }
@@ -285,7 +290,7 @@ export default function CompSetsPage() {
             <div className="mb-4 space-y-1">
               <h2 className="text-lg font-semibold">Manual Comp Set Report</h2>
               <p className="text-sm text-[color:var(--text-secondary)]">
-                Upload the latest comp set workbook and download a presentation-ready PPTX.
+                Upload the latest comp set workbook and generate either a PowerPoint or Excel output.
               </p>
             </div>
 
@@ -345,8 +350,12 @@ export default function CompSetsPage() {
                     value={preparedFor}
                     onChange={(e) => setPreparedFor(e.target.value)}
                     placeholder="Client or owner"
+                    maxLength={PREPARED_FOR_MAX}
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   />
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    {preparedFor.length}/{PREPARED_FOR_MAX} characters
+                  </span>
                 </div>
               </div>
 
@@ -360,6 +369,19 @@ export default function CompSetsPage() {
                   value={asOfDate}
                   onChange={(e) => setAsOfDate(e.target.value)}
                 />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Output format
+                </label>
+                <select
+                  value={outputFormat}
+                  onChange={(e) => setOutputFormat((e.target.value === 'xlsx' ? 'xlsx' : 'pptx') as OutputFormat)}
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                >
+                  <option value="pptx">PowerPoint (.pptx)</option>
+                  <option value="xlsx">Excel Spreadsheet (.xlsx)</option>
+                </select>
               </div>
 
               <div className="flex flex-col gap-2">
@@ -424,7 +446,7 @@ export default function CompSetsPage() {
                 data-variant="primary"
                 onClick={handleManualCompSet}
               >
-                {manualSubmitting ? 'Generating...' : 'Generate Comp Set PPTX'}
+                {manualSubmitting ? 'Generating...' : 'Generate Comp Set'}
               </button>
               {manualSubmitting && (
                 <div className="relative h-2 w-full overflow-hidden rounded-full bg-[color:var(--surface-subtle)]">

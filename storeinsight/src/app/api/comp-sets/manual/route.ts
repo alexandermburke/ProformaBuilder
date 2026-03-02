@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 const TEMPLATE_PATH = path.join(process.cwd(), "public", "COMPSETTEMPLATE.pptx");
 const DASH = "-";
 const PROP_NAME_MAX = 10;
+const PREPARED_FOR_MAX = 80;
 
 const SIZE_DEFS = [
   { key: "X25", width: 5, length: 5, area: 25 },
@@ -71,6 +72,8 @@ type CompProperty = {
   rows: CompSetRow[];
 };
 
+type OutputFormat = "pptx" | "xlsx";
+
 const truncateNameToken = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) return trimmed;
@@ -102,6 +105,8 @@ export async function POST(req: NextRequest) {
   const preparedFor = String(formData.get("preparedFor") ?? "").trim();
   const propertyId = String(formData.get("propertyId") ?? "").trim();
   const asOfDate = String(formData.get("asOfDate") ?? "").trim();
+  const outputFormatRaw = String(formData.get("outputFormat") ?? "pptx").trim().toLowerCase();
+  const outputFormat: OutputFormat = outputFormatRaw === "xlsx" ? "xlsx" : "pptx";
   const file = formData.get("file");
 
   if (!subjectName) {
@@ -120,6 +125,9 @@ export async function POST(req: NextRequest) {
 
   if (!preparedFor) {
     return NextResponse.json({ error: "preparedFor is required" }, { status: 400 });
+  }
+  if (preparedFor.length > PREPARED_FOR_MAX) {
+    return NextResponse.json({ error: `preparedFor must be ${PREPARED_FOR_MAX} characters or fewer.` }, { status: 400 });
   }
 
   if (!asOfDate) {
@@ -242,7 +250,35 @@ export async function POST(req: NextRequest) {
 
   const safeProperty = (subjectName || propertyId || "CompSet").replace(/[^A-Za-z0-9._-]+/g, "_");
   const safeAsOfSegment = (asOfDate || "latest").replace(/[^0-9A-Za-z._-]+/g, "_");
-  const filename = `CompSet-${safeProperty}-${safeAsOfSegment}.pptx`;
+  const fileBaseName = `CompSet-${safeProperty}-${safeAsOfSegment}`;
+
+  if (outputFormat === "xlsx") {
+    const xlsxBuffer = buildCompSetWorkbookBuffer({
+      rows,
+      selectedComps,
+      distanceMap,
+      subjectName,
+      subjectAddress,
+      preparedFor,
+      asOfDate,
+      monthYear,
+      marketRates,
+    });
+    const response = new NextResponse(xlsxBuffer as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${fileBaseName}.xlsx"`,
+      },
+    });
+    response.headers.set("X-Subject-Geocode-Status", subjectGeocode.status);
+    response.headers.set("X-Distance-Mode", "address-only");
+    response.headers.set("X-Comp-Geocoded-Count", String(compGeocodedCount));
+    response.headers.set("X-Comp-Selected-Count", String(selectedComps.length));
+    return response;
+  }
+
+  const filename = `${fileBaseName}.pptx`;
 
   const response = new NextResponse(pptxBuffer as unknown as BodyInit, {
     status: 200,
@@ -256,6 +292,69 @@ export async function POST(req: NextRequest) {
   response.headers.set("X-Comp-Geocoded-Count", String(compGeocodedCount));
   response.headers.set("X-Comp-Selected-Count", String(selectedComps.length));
   return response;
+}
+
+function buildCompSetWorkbookBuffer(input: {
+  rows: CompSetRow[];
+  selectedComps: CompProperty[];
+  distanceMap: Map<string, number | null>;
+  subjectName: string;
+  subjectAddress: string;
+  preparedFor: string;
+  asOfDate: string;
+  monthYear: string;
+  marketRates: { overall: number | null; climate: number | null; firstFloor: number | null };
+}): Buffer {
+  const workbook = XLSX.utils.book_new();
+
+  const metadata = [
+    { Field: "Subject Property", Value: input.subjectName },
+    { Field: "Subject Address", Value: input.subjectAddress },
+    { Field: "Prepared For", Value: input.preparedFor },
+    { Field: "As Of Date", Value: input.asOfDate },
+    { Field: "Month Year", Value: input.monthYear || "" },
+    { Field: "Market Rate - Overall", Value: input.marketRates.overall ?? "" },
+    { Field: "Market Rate - Climate", Value: input.marketRates.climate ?? "" },
+    { Field: "Market Rate - First Floor", Value: input.marketRates.firstFloor ?? "" },
+  ];
+  const metadataSheet = XLSX.utils.json_to_sheet(metadata);
+  XLSX.utils.book_append_sheet(workbook, metadataSheet, "Summary");
+
+  const compsRows = input.selectedComps.map((property) => {
+    const pricing = computePropertyPricing(property.rows);
+    return {
+      Property: property.name,
+      Address: formatFullAddress(property),
+      DistanceMiles: input.distanceMap.get(property.key) ?? "",
+      PricingFilter: pricing.label,
+      X25: pricing.bySize.X25 ?? "",
+      X50: pricing.bySize.X50 ?? "",
+      X100: pricing.bySize.X100 ?? "",
+      X150: pricing.bySize.X150 ?? "",
+      X200: pricing.bySize.X200 ?? "",
+      XAVG: pricing.average ?? "",
+    };
+  });
+  const compsSheet = XLSX.utils.json_to_sheet(compsRows);
+  XLSX.utils.book_append_sheet(workbook, compsSheet, "Selected Comps");
+
+  const rawRows = input.rows.map((row) => ({
+    StoreName: row.storeName,
+    Address: row.address,
+    City: row.city,
+    State: row.state,
+    OnlinePrice: row.onlinePrice ?? "",
+    RegularPrice: row.regularPrice ?? "",
+    Width: row.width ?? "",
+    Length: row.length ?? "",
+    ClimateControlled: row.cc ? "Yes" : "No",
+    Floor: row.floor ?? "",
+    Description: row.description,
+  }));
+  const rawSheet = XLSX.utils.json_to_sheet(rawRows);
+  XLSX.utils.book_append_sheet(workbook, rawSheet, "Raw Data");
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 function extractCompSetRows(workbook: XLSX.WorkBook): CompSetRow[] {
