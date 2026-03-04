@@ -7,6 +7,7 @@ import type { ParseResult, ParsedRow } from "@/lib/accounting/bankCardImportPrep
 import { applyRules, buildRules, parseCodedWorkbook } from "@/lib/accounting/bankCardImportPrep/rulesEngine/learnRules";
 import { validateRows, type ValidatedRow } from "@/lib/accounting/bankCardImportPrep/validate";
 import { buildWorkbook } from "@/lib/accounting/bankCardImportPrep/buildWorkbook";
+import { applyAmazonOrderMapping, parseAmazonOrders } from "@/lib/accounting/bankCardImportPrep/amazonOrderMapping";
 import { createJob, getJob, updateJob, SOURCE_KEYS, type SourceKey, type SourceSummary } from "../jobStore";
 
 export const runtime = "nodejs";
@@ -34,6 +35,7 @@ type UploadPayload = {
   reference?: Buffer | null;
   exceptions?: Buffer | null;
   codedTemplateFile?: Buffer | null;
+  amazonOrders?: Buffer | null;
   filenames: Record<string, string>;
   defaultProperty: string;
   cashAccount?: string;
@@ -49,6 +51,7 @@ const OPTIONAL_FILES = {
   reference: ["csv", "xlsx"],
   exceptions: ["csv"],
   codedTemplateFile: ["xlsx"],
+  amazonOrders: ["csv", "xlsx"],
 } as const;
 
 function getExtension(name: string | undefined): string {
@@ -205,6 +208,9 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
     if (payload.exceptions) {
       append([`[exceptions] received (${payload.filenames.exceptions || "exceptions"})`]);
     }
+    if (payload.amazonOrders) {
+      append([`[amazon-map] received (${payload.filenames.amazonOrders || "amazon-orders"})`]);
+    }
 
     const bankNormalized = normalizeSource(bankResult.rows, "");
     const cardNormalized = normalizeSource(cardResult.rows, "");
@@ -304,6 +310,14 @@ async function runJob(jobId: string, payload: UploadPayload): Promise<void> {
       card: applySourceReference(tenantApplied.card, "card"),
       otherBank: applySourceReference(tenantApplied.otherBank, "otherBank"),
     };
+
+    if (payload.amazonOrders) {
+      const parsedAmazonOrders = parseAmazonOrders(payload.amazonOrders);
+      append(parsedAmazonOrders.logs, parsedAmazonOrders.warnings);
+      const amazonMap = applyAmazonOrderMapping(referencedRows.bank, parsedAmazonOrders.rows);
+      referencedRows.bank = amazonMap.rows;
+      append(amazonMap.logs, [], "Apply Amazon order mapping", 73);
+    }
 
     const totalExact =
       ruleApplied.bank.exactMatches + ruleApplied.card.exactMatches + ruleApplied.otherBank.exactMatches;
@@ -534,6 +548,7 @@ export async function POST(req: NextRequest) {
     reference: (form.get("reference") as File) ?? null,
     exceptions: (form.get("exceptions") as File) ?? null,
     codedTemplateFile: (form.get("codedTemplateFile") as File) ?? null,
+    amazonOrders: (form.get("amazonOrders") as File) ?? null,
   };
 
   for (const key of Object.keys(REQUIRED_FILES)) {
@@ -562,6 +577,7 @@ export async function POST(req: NextRequest) {
     reference: await readBlob(files.reference),
     exceptions: await readBlob(files.exceptions),
     codedTemplateFile: await readBlob(files.codedTemplateFile),
+    amazonOrders: await readBlob(files.amazonOrders),
     filenames: {
       bank: files.bank?.name ?? "",
       card: files.card?.name ?? "",
@@ -569,6 +585,7 @@ export async function POST(req: NextRequest) {
       reference: files.reference?.name ?? "",
       exceptions: files.exceptions?.name ?? "",
       template: files.codedTemplateFile?.name ?? "",
+      amazonOrders: files.amazonOrders?.name ?? "",
     },
     defaultProperty,
     cashAccount,

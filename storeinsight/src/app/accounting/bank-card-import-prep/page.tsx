@@ -5,7 +5,7 @@ import { Copy, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 
-type UploadKey = "bank" | "card" | "otherBank" | "reference" | "exceptions" | "template";
+type UploadKey = "bank" | "card" | "otherBank" | "reference" | "exceptions" | "template" | "amazonOrders";
 type SourceKey = "bank" | "card" | "otherBank";
 
 type UploadCard = {
@@ -75,6 +75,15 @@ const uploadCards: UploadCard[] = [
     accept: ["xlsx"],
     examples: ["2025 1130 Bank Deposit Template.xlsx"],
   },
+  {
+    key: "amazonOrders",
+    title: "Amazon order mapping report",
+    detail: "Amazon order export used to replace Amazon withdrawal notes with item titles by amount.",
+    fileTypes: "CSV / XLSX",
+    required: false,
+    accept: ["csv", "xlsx"],
+    examples: ["orders_from...csv"],
+  },
 ];
 
 const REQUIRED_KEYS: UploadKey[] = ["bank"];
@@ -86,6 +95,7 @@ const ACCEPT_MAP: Record<UploadKey, string[]> = {
   reference: ["csv", "xlsx"],
   exceptions: ["csv"],
   template: ["xlsx"],
+  amazonOrders: ["csv", "xlsx"],
 };
 
 const SOURCE_KEYS: SourceKey[] = ["bank", "card", "otherBank"];
@@ -136,6 +146,7 @@ const emptyUploads = (): Record<UploadKey, { file: File | null; error: string | 
   reference: { file: null, error: null },
   exceptions: { file: null, error: null },
   template: { file: null, error: null },
+  amazonOrders: { file: null, error: null },
 });
 
 const emptySourceSummary = (key: SourceKey): SourceSummary => ({
@@ -568,7 +579,12 @@ export default function BankCardImportPrepPage() {
     (Object.keys(uploads) as UploadKey[]).forEach((key) => {
       const file = uploads[key].file;
       if (file) {
-        const formKey = key === "template" ? "codedTemplateFile" : key;
+        const formKey =
+          key === "template"
+            ? "codedTemplateFile"
+            : key === "amazonOrders"
+              ? "amazonOrders"
+              : key;
         formData.append(formKey, file);
       }
     });
@@ -1137,6 +1153,7 @@ export default function BankCardImportPrepPage() {
                   <option value="">Select a property</option>
                   <option value="4250 East Camelback Road">4250 East Camelback Road</option>
                   <option value="555 Pittman Road">555 Pittman Road</option>
+                   <option value="1351 Baseline Road">1351 Baseline Road</option>
                 </select>
                 <p className="text-xs text-[color:var(--text-secondary)]">
                   Used when Property_Name is missing in the export. Re-process to apply changes.
