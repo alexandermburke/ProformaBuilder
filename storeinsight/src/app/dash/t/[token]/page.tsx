@@ -1,5 +1,6 @@
-﻿import type { JSX } from 'react';
+import type { JSX } from 'react';
 import { TokenDashboardView, type MsrSnapshot } from '@/components/historical/TokenDashboardView';
+import { syncLatestMsrSnapshotForProperty } from '@/lib/historical/syncLatestMsrSnapshot';
 import { getPropertyOption } from '@/lib/propertyDirectory';
 import { validateShareToken } from '@/lib/shareLinks';
 import { firestore } from '@/server/firebaseAdmin';
@@ -159,6 +160,12 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
     });
   }
 
+  try {
+    await syncLatestMsrSnapshotForProperty(propertyId);
+  } catch (err) {
+    console.warn('[dash/t] unable to sync latest MSR snapshot', { propertyId }, err);
+  }
+
   let docData: Record<string, unknown> | null = null;
   try {
     const docSnapshot = await firestore.collection(COLLECTION).doc(propertyId).get();
@@ -188,3 +195,6 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
 
   return <TokenDashboardView propertyId={propertyId} propertyName={propertyName} snapshots={snapshots} />;
 }
+
+
+

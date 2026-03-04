@@ -149,7 +149,7 @@ type RangeKey = '3M' | '6M';
 
 type SectionKey = 'overview' | 'collections' | 'pricing' | 'drilldowns' | 'accounting';
 
-type DrilldownTab = 'demand' | 'concessions' | 'autopay';
+type OverviewWidgetKey = 'occupancy' | 'netRevenue' | 'expenses' | 'noi';
 
 type SnapshotEntry = {
   snapshot: MsrSnapshot;
@@ -171,28 +171,29 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
 const SECTION_TABS: Array<{ id: SectionKey; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'collections', label: 'Delinquency' },
-  { id: 'pricing', label: 'Revenue' },
+  { id: 'pricing', label: 'Pricing & Revenue' },
   { id: 'drilldowns', label: 'Operations' },
-  { id: 'accounting', label: 'Financial' },
+  { id: 'accounting', label: 'Financials' },
 ];
 
 const SECTION_MOBILE_LABELS: Record<SectionKey, string> = {
   overview: 'Summary',
   collections: 'AR',
-  pricing: 'Pricing',
+  pricing: 'Revenue',
   drilldowns: 'Ops',
   accounting: 'Finance',
 };
 
-
-const DRILLDOWN_TABS: Array<{ id: DrilldownTab; label: string; mobileLabel: string }> = [
-  { id: 'demand', label: 'Demand Funnel', mobileLabel: 'Demand' },
-  { id: 'concessions', label: 'Allowances', mobileLabel: 'Concess' },
-  { id: 'autopay', label: 'Autopay & Coverage', mobileLabel: 'Autopay' },
+const OVERVIEW_WIDGET_OPTIONS: Array<{ id: OverviewWidgetKey; label: string }> = [
+  { id: 'occupancy', label: 'Occupancy' },
+  { id: 'netRevenue', label: 'Net Revenue' },
+  { id: 'expenses', label: 'Expenses' },
+  { id: 'noi', label: 'NOI' },
 ];
 
 const UNIT_MIX_COLORS = ['#3B82F6', '#22D3EE', '#F97316', '#A78BFA', '#F472B6', '#FACC15'];
 const SECTION_STORAGE_KEY = 'token-dashboard:section';
+const OVERVIEW_WIDGETS_STORAGE_KEY = 'token-dashboard:overview-widgets';
 
 const CHART_WIDTH = 620;
 const CHART_HEIGHT = 240;
@@ -535,6 +536,9 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   const hasLimitedRange = isPittmanProperty(propertyId);
   const [range, setRange] = useState<RangeKey>(hasLimitedRange ? '3M' : '6M');
   const [section, setSection] = useState<SectionKey>('overview');
+  const [overviewWidgets, setOverviewWidgets] = useState<OverviewWidgetKey[]>(
+    OVERVIEW_WIDGET_OPTIONS.map((option) => option.id),
+  );
   const hideHeaderDetailsOnMobile = section !== 'overview';
   const currentYear = new Date().getFullYear();
 
@@ -711,6 +715,40 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
     }
   }, [section]);
 
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(OVERVIEW_WIDGETS_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) return;
+      const allowed = new Set(OVERVIEW_WIDGET_OPTIONS.map((option) => option.id));
+      const next = parsed.filter((value): value is OverviewWidgetKey => allowed.has(value as OverviewWidgetKey));
+      if (next.length) setOverviewWidgets(next);
+    } catch {
+      // ignore local storage errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(OVERVIEW_WIDGETS_STORAGE_KEY, JSON.stringify(overviewWidgets));
+    } catch {
+      // ignore local storage errors
+    }
+  }, [overviewWidgets]);
+
+  const isOverviewVisible = (key: OverviewWidgetKey): boolean => overviewWidgets.includes(key);
+
+  const toggleOverviewWidget = (key: OverviewWidgetKey): void => {
+    setOverviewWidgets((current) => {
+      if (current.includes(key)) {
+        if (current.length <= 1) return current;
+        return current.filter((value) => value !== key);
+      }
+      return [...current, key];
+    });
+  };
+
 
   return (
     <div className="token-dashboard-print relative min-h-screen w-full overflow-visible text-[color:var(--text-primary)]">
@@ -776,6 +814,9 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                 <span className="ios-badge text-[10px]">Investor dashboard</span>
                 <span className="ios-pill text-[10px]" data-tone="neutral">
                   Beta testing
+                </span>
+                <span className="ios-pill text-[10px]" data-tone="neutral">
+                  As of {latestDateLabel ?? 'N/A'}
                 </span>
               </div>
               <div className="space-y-2">
@@ -907,77 +948,115 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
                   subtitle={`Historical snapshots for occupancy, expenses, net revenue, and NOI (${range}).`}
                 />
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <ChartCard
-                    key={`overview-occupancy-core-${range}`}
-                    title="Occupancy (RSF)"
-                    subtitle="Monthly trend"
-                    info="RSF occupancy percent parsed from the Occupancy tab; falls back to the MSR Space Occupancy block when present."
-                    emptyMessage={occupancyCoreEmpty}
-                  >
-                    <MemoLineChartWithMonths
-                      series={occupancyCoreSeries}
-                      color="rgba(37,99,235,0.9)"
-                      label="Occupancy (RSF)"
-                      formatValue={formatPercentPoint}
-                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                      emphasizeTrend
-                    />
-                  </ChartCard>
-                  <ChartCard
-                    key={`overview-net-revenue-core-${range}`}
-                    title="Net Revenue"
-                    subtitle="Monthly trend"
-                    info="Parsed from the MSR 'Net Revenue' block (month-to-date) and stored per snapshot."
-                    emptyMessage={netRevenueCoreEmpty}
-                  >
-                    <div className="text-xs text-[color:var(--text-muted)]">
-                      Current month is in progress; revenue will continue to increase throughout the month.
-                    </div>
-                    <MemoLineChartWithMonths
-                      series={netRevenueCoreSeries}
-                      color="rgba(14,165,233,0.9)"
-                      label="Net revenue (MTD)"
-                      formatValue={formatCurrencyPoint}
-                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                      emphasizeTrend
-                    />
-                  </ChartCard>
-
-                  <ChartCard
-                    key={`overview-expenses-core-${range}`}
-                    title="Expenses"
-                    subtitle="Historical Data Only"
-                    info="Expense totals are not present in the MSR; this uses stored snapshot financials when available."
-                    emptyMessage={expensesCoreEmpty}
-                  >
-                    <MemoLineChartWithMonths
-                      series={expensesCoreSeries}
-                      color="rgba(248,113,113,0.86)"
-                      label="Operating expenses"
-                      formatValue={formatCurrencyPoint}
-                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                      emphasizeTrend
-                    />
-                  </ChartCard>
-
-                  <ChartCard
-                    key={`overview-noi-core-${range}`}
-                    title="NOI"
-                    subtitle="Historical Data Only"
-                    info="NOI is sourced from stored snapshot financials when available; otherwise derived as Net Revenue minus Expenses."
-                    emptyMessage={noiCoreEmpty}
-                  >
-                    <MemoLineChartWithMonths
-                      series={noiCoreSeries}
-                      color="rgba(16,185,129,0.9)"
-                      label="Net operating income"
-                      formatValue={formatCurrencyPoint}
-                      labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                      emphasizeTrend
-                    />
-                  </ChartCard>
+                <div className="ios-list-card flex flex-wrap items-center gap-2 px-3 py-2 text-[11px]">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
+                    Visible graphs
+                  </span>
+                  {OVERVIEW_WIDGET_OPTIONS.map((option) => {
+                    const active = isOverviewVisible(option.id);
+                    return (
+                      <button
+                        key={`overview-graph-${option.id}`}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleOverviewWidget(option.id)}
+                        className={[
+                          'rounded-full border px-2.5 py-1 transition-colors',
+                          active
+                            ? 'border-[color:var(--accent-soft)] bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)]'
+                            : 'border-[color:var(--border-soft)] text-[color:var(--text-secondary)]',
+                        ].join(' ')}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {isOverviewVisible('occupancy') ? (
+                    <ChartCard
+                      key={`overview-occupancy-core-${range}`}
+                      title="Occupancy (RSF)"
+                      subtitle="Monthly trend"
+                      info="RSF occupancy percent parsed from the Occupancy tab; falls back to the MSR Space Occupancy block when present."
+                      emptyMessage={occupancyCoreEmpty}
+                    >
+                      <MemoLineChartWithMonths
+                        series={occupancyCoreSeries}
+                        color="rgba(37,99,235,0.9)"
+                        label="Occupancy (RSF)"
+                        formatValue={formatPercentPoint}
+                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                        emphasizeTrend
+                      />
+                    </ChartCard>
+                  ) : null}
+                  {isOverviewVisible('netRevenue') ? (
+                    <ChartCard
+                      key={`overview-net-revenue-core-${range}`}
+                      title="Net Revenue"
+                      subtitle="Monthly trend"
+                      info="Parsed from the MSR 'Net Revenue' block (month-to-date) and stored per snapshot."
+                      emptyMessage={netRevenueCoreEmpty}
+                    >
+                      <div className="text-xs text-[color:var(--text-muted)]">
+                        Current month is in progress; revenue will continue to increase throughout the month.
+                      </div>
+                      <MemoLineChartWithMonths
+                        series={netRevenueCoreSeries}
+                        color="rgba(14,165,233,0.9)"
+                        label="Net revenue (MTD)"
+                        formatValue={formatCurrencyPoint}
+                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                        emphasizeTrend
+                      />
+                    </ChartCard>
+                  ) : null}
+
+                  {isOverviewVisible('expenses') ? (
+                    <ChartCard
+                      key={`overview-expenses-core-${range}`}
+                      title="Expenses"
+                      subtitle="Historical Data Only"
+                      info="Expense totals are not present in the MSR; this uses stored snapshot financials when available."
+                      emptyMessage={expensesCoreEmpty}
+                    >
+                      <MemoLineChartWithMonths
+                        series={expensesCoreSeries}
+                        color="rgba(248,113,113,0.86)"
+                        label="Operating expenses"
+                        formatValue={formatCurrencyPoint}
+                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                        emphasizeTrend
+                      />
+                    </ChartCard>
+                  ) : null}
+
+                  {isOverviewVisible('noi') ? (
+                    <ChartCard
+                      key={`overview-noi-core-${range}`}
+                      title="NOI"
+                      subtitle="Historical Data Only"
+                      info="NOI is sourced from stored snapshot financials when available; otherwise derived as Net Revenue minus Expenses."
+                      emptyMessage={noiCoreEmpty}
+                    >
+                      <MemoLineChartWithMonths
+                        series={noiCoreSeries}
+                        color="rgba(16,185,129,0.9)"
+                        label="Net operating income"
+                        formatValue={formatCurrencyPoint}
+                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                        emphasizeTrend
+                      />
+                    </ChartCard>
+                  ) : null}
+                </div>
+                {overviewWidgets.length === 0 ? (
+                  <div className="ios-list-card border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 text-sm text-[color:var(--text-secondary)] shadow-inner">
+                    Choose at least one graph to display.
+                  </div>
+                ) : null}
               </section>
             </LazyBlock>
 
@@ -1002,6 +1081,14 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
             latestSnapshot={latestSnapshot}
             seriesEntries={seriesEntries}
             rangeKey={range}
+            isDark={isDark}
+          />
+        ) : null}
+
+        {section === 'accounting' ? (
+          <MemoFinancialsSection
+            latestSnapshot={latestSnapshot}
+            seriesEntries={seriesEntries}
             isDark={isDark}
           />
         ) : null}
@@ -1285,7 +1372,7 @@ function OccupancyUnitMixSection({
           </div>
 
           <div className="relative mt-4 rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
-            <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[linear-gradient(135deg,rgba(16,185,129,0.16),transparent_55%)]" />
+            <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[linear-gradient(135deg,rgba(37,99,235,0.16),transparent_55%)]" />
             {occupancyTrendUp ? (
               <div className="pointer-events-none absolute right-4 top-4 text-[10px] font-semibold text-[color:var(--text-secondary)]">
                 <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--surface-subtle)] px-2 py-1 shadow-inner">
@@ -1379,7 +1466,7 @@ function OccupancyUnitMixSection({
                       textAnchor="start"
                       fill="rgba(71,85,105,0.9)"
                     >
-                      {formatCurrency(tick)}
+                      {formatMaybeCurrencyPerSqft(tick)}
                     </text>
                   );
                 })}
@@ -1486,7 +1573,7 @@ function OccupancyUnitMixSection({
                         textAnchor="middle"
                         fill="rgba(14,165,233,0.95)"
                       >
-                        {formatCurrency(point.value)}
+                        {formatMaybeCurrencyPerSqft(point.value)}
                       </text>
                     </g>
                   );
@@ -1529,7 +1616,7 @@ function OccupancyUnitMixSection({
                     <span>
                       Sell rate:{' '}
                       {sellChartValues[hoverIndex] != null
-                        ? formatCurrency(sellChartValues[hoverIndex] ?? 0)
+                        ? formatMaybeCurrencyPerSqft(sellChartValues[hoverIndex] ?? 0)
                         : 'N/A'}
                     </span>
                   </div>
@@ -1569,7 +1656,7 @@ function OccupancyUnitMixSection({
                   Latest sell rate
                 </div>
                 <div className="text-lg font-semibold text-[color:var(--text-primary)]">
-                  {formatMaybeCurrency(latestSellRatePoint)}
+                  {formatMaybeCurrencyPerSqft(latestSellRatePoint)}
                 </div>
               </div>
             </div>
@@ -1843,12 +1930,14 @@ function PricingSection({
   const needsTrendHint = trendSnapshotCount < 2;
 
   const pricing = latestSnapshot?.pricing;
-  const currentRent = pricing?.avgCurrentRentPerSqftOccupied ?? pricing?.avgCurrentRentOccupied;
+  const revenue = latestSnapshot?.revenue;
+  const setRate = pricing?.avgCurrentRentPerSqftOccupied ?? pricing?.avgCurrentRentOccupied;
   const sellRate = pricing?.avgSellRatePerSqftOccupied ?? pricing?.avgSellRateOccupied;
   const spreadPct =
-    isFiniteNumber(currentRent) && isFiniteNumber(sellRate) && sellRate !== 0
-      ? ((currentRent - sellRate) / sellRate) * 100
+    isFiniteNumber(setRate) && isFiniteNumber(sellRate) && sellRate !== 0
+      ? ((setRate - sellRate) / sellRate) * 100
       : null;
+  const occupiedRateVariancePct = revenue?.occupiedRateVariancePct ?? pricing?.occupiedRateVariancePct;
   const rentChangeCount = pricing?.rentChangeCountMtd ?? pricing?.rentChangeCount;
   const avgRentChangePct = pricing?.avgRentChangePct;
   const staleRentCount = pricing?.noRentChange12MoCount;
@@ -1989,16 +2078,16 @@ function PricingSection({
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-        <SectionHeader title="Revenue Quality" subtitle="Rates and pricing data updated daily." />
+        <SectionHeader title="Pricing & Revenue" subtitle="Rates and revenue statistics updated daily." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard
-          title="Projected Rate vs Sell Rate"
-          subtitle="Target (Proj) vs actual (Sell) rates"
-          info="Set rate = MSR!K33 and sell rate = MSR!K29 from the uploaded MSR; values shown as $/sqft."
+          title="Set Rate vs Sell Rate"
+          subtitle="Set and sell rates ($/sqft)"
+          info="Set rate = MSR!K27 and sell rate = MSR!N27 from the uploaded MSR; values shown as $/sqft."
         >
             <KpiRow
               items={[
-                { label: 'Proj rate ($/sqft)', value: formatMaybeCurrencyPerSqft(currentRent) },
+                { label: 'Set rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
                 { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
                 { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
               ]}
@@ -2136,17 +2225,33 @@ function PricingSection({
         </ChartCard>
 
         <ChartCard
-          title="Rate Gap"
+          title="Revenue Statistics (MSR)"
+          subtitle="Current snapshot"
+          info="Uses the MSR Revenue Statistics block terms for gross potential revenue, economic occupancy, and occupied rate variance."
+        >
+          <KpiRow
+            items={[
+              { label: 'Gross potential revenue', value: formatMaybeCurrency(revenue?.grossPotentialRevenue) },
+              { label: 'Economic occupancy', value: formatMaybePercent(revenue?.economicOccupancy, 1) },
+              { label: 'Occupied rate variance', value: formatMaybePercent(occupiedRateVariancePct, 1) },
+              { label: 'Net revenue (MTD)', value: formatMaybeCurrency(revenue?.netRevenueMtd) },
+            ]}
+            columns={2}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Rent Analysis"
           subtitle="Set rate vs sell rate delta"
-          info="Computed from MSR Rent Analysis: avg current rent occupied minus avg sell rate occupied."
+          info="Computed from the MSR Rent Analysis block: set rate minus sell rate."
         >
           <div className="ios-list-card space-y-2 p-4 text-sm">
             <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Set - Sell</div>
             <div className="text-lg font-semibold text-[color:var(--text-primary)]">
               {isFiniteNumber(spreadPct)
                 ? formatMaybePercent(spreadPct, 1)
-                : isFiniteNumber(currentRent) && isFiniteNumber(sellRate)
-                  ? formatMaybeCurrency(currentRent - sellRate)
+                : isFiniteNumber(setRate) && isFiniteNumber(sellRate)
+                  ? formatMaybeCurrency(setRate - sellRate)
                   : 'N/A'}
             </div>
           </div>
@@ -2467,8 +2572,6 @@ function OperationalSection({
   rangeKey: RangeKey;
   isDark: boolean;
 }): JSX.Element {
-  const [activeTab, setActiveTab] = useState<DrilldownTab>('demand');
-
   const channelData = latestSnapshot?.leads?.byChannelMtd ?? {};
   const channelTotals = {
     web: isFiniteNumber(channelData.web) ? channelData.web : null,
@@ -2502,6 +2605,7 @@ function OperationalSection({
   const formatCurrencyPoint = (value: number) => formatCompactCurrency(value);
   const formatPercentPoint = (value: number) => formatPercent(value, 1);
   const formatNumberPoint = (value: number) => formatNumber(value);
+  const formatSignedPoint = (value: number) => formatSignedNumber(value);
 
   const concessionsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
   const creditsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.creditsAdjustmentsMtd);
@@ -2521,51 +2625,59 @@ function OperationalSection({
   const coverageIsPct = seriesEntries.some((entry) => isFiniteNumber(entry.snapshot.coverage?.enrolledPct));
   const autopayEmpty = getSeriesEmptyMessage(autopaySeries.map((point) => point.value), seriesEntries.length);
   const coverageEmpty = getSeriesEmptyMessage(coverageSeries.map((point) => point.value), seriesEntries.length);
+  const staleRentSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.noRentChange12MoCount);
+  const staleRentEmpty = getSeriesEmptyMessage(staleRentSeries.map((point) => point.value), seriesEntries.length);
+
+  const moveInsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd);
+  const moveOutsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd);
+  const netRentalsSeries = seriesEntries
+    .map((entry) => {
+      const rentals = entry.snapshot.rentals;
+      const netValue =
+        isFiniteNumber(rentals?.netMtd)
+          ? rentals?.netMtd
+          : isFiniteNumber(rentals?.moveInsMtd) && isFiniteNumber(rentals?.moveOutsMtd)
+            ? Number(rentals?.moveInsMtd ?? 0) - Number(rentals?.moveOutsMtd ?? 0)
+            : null;
+      return {
+        monthIso: entry.monthIso,
+        value: isFiniteNumber(netValue) ? netValue : null,
+      };
+    })
+    .filter((entry): entry is SeriesPoint => Boolean(entry.monthIso) && isFiniteNumber(entry.value));
+  const moveInsEmpty = getSeriesEmptyMessage(moveInsSeries.map((point) => point.value), seriesEntries.length);
+  const moveOutsEmpty = getSeriesEmptyMessage(moveOutsSeries.map((point) => point.value), seriesEntries.length);
+  const netRentalsEmpty = getSeriesEmptyMessage(netRentalsSeries.map((point) => point.value), seriesEntries.length);
+
+  const latestMoveIns = latestSnapshot?.rentals?.moveInsMtd;
+  const latestMoveOuts = latestSnapshot?.rentals?.moveOutsMtd;
+  const latestNetRentals =
+    isFiniteNumber(latestSnapshot?.rentals?.netMtd)
+      ? latestSnapshot?.rentals?.netMtd
+      : isFiniteNumber(latestMoveIns) && isFiniteNumber(latestMoveOuts)
+        ? Number(latestMoveIns ?? 0) - Number(latestMoveOuts ?? 0)
+        : null;
+  const staleRentCount = latestSnapshot?.pricing?.noRentChange12MoCount;
 
   return (
     <LazyBlock minHeight={520}>
       <section className="space-y-6">
-         <OccupancyUnitMixSection
+        <OccupancyUnitMixSection
           latestSnapshot={latestSnapshot}
           seriesEntries={seriesEntries}
           rangeKey={rangeKey}
         />
 
-        <div className="ios-card ios-animate-up space-y-6 p-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
-            {DRILLDOWN_TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={[
-                  'rounded-full px-3 py-1 transition-colors',
-                  activeTab === tab.id
-                    ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
-                    : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
-                ].join(' ')}
-                aria-pressed={activeTab === tab.id}
-                aria-label={tab.label}
-              >
-                <span className="text-[10px] sm:hidden">{tab.mobileLabel}</span>
-                <span className="hidden sm:inline">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-          <span className="text-xs text-[color:var(--text-muted)]">Range: {rangeKey}</span>
-        </div>
-
-        {activeTab === 'demand' ? (
-          <div className="space-y-6">
+        <div className="space-y-6">
+          <section className="ios-card ios-animate-up space-y-6 p-6">
+            <SectionHeader title="Demand Funnel" subtitle={`Lead volume and conversion (${rangeKey}).`} />
             <KpiRow
               items={[
                 { label: 'Total leads (MTD)', value: formatMaybeNumber(leadsTotal) },
                 { label: 'Move-ins (MTD)', value: formatMaybeNumber(moveInsMtd) },
                 { label: 'Conversion %', value: formatMaybePercent(conversionPct, 1) },
-                { label: 'Median days', value: 'N/A' },
               ]}
-              columns={4}
+              columns={3}
             />
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -2651,11 +2763,10 @@ function OperationalSection({
                 />
               </ChartCard>
             </div>
-          </div>
-        ) : null}
+          </section>
 
-        {activeTab === 'concessions' ? (
-          <div className="space-y-6">
+          <section className="ios-card ios-animate-up space-y-6 p-6">
+            <SectionHeader title="Allowances" subtitle={`Concessions and leakage trends (${rangeKey}).`} />
             <KpiRow
               items={[
                 {
@@ -2721,16 +2832,15 @@ function OperationalSection({
                 />
               </ChartCard>
             </div>
-          </div>
-        ) : null}
+          </section>
 
-        {activeTab === 'autopay' ? (
-          <div className="space-y-6">
+          <section className="ios-card ios-animate-up space-y-6 p-6">
+            <SectionHeader title="Performance Indicators" subtitle={`Insurance/TPP and retention indicators (${rangeKey}).`} />
             <KpiRow
               items={[
                 { label: 'Autopay adoption', value: formatMaybePercent(latestSnapshot?.autopay?.autopayPct, 1) },
                 {
-                  label: 'TPP enrolled',
+                  label: 'TPP enrolled (insurance)',
                   value: isFiniteNumber(latestSnapshot?.coverage?.enrolledCount)
                     ? formatMaybeNumber(latestSnapshot?.coverage?.enrolledCount)
                     : formatMaybePercent(latestSnapshot?.coverage?.enrolledPct, 1),
@@ -2739,11 +2849,23 @@ function OperationalSection({
                   label: 'TPP premium (MTD)',
                   value: formatMaybeCurrency(latestSnapshot?.coverage?.premiumMtd),
                 },
+                {
+                  label: 'No rent change (12 mo)',
+                  value: formatMaybeNumber(staleRentCount),
+                },
+                {
+                  label: 'Avg length of stay (agg.)',
+                  value: 'N/A',
+                },
+                {
+                  label: 'Lifetime value (agg.)',
+                  value: 'N/A',
+                },
               ]}
               columns={3}
             />
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <ChartCard
                 key={`autopay-adoption-${rangeKey}`}
                 title="Autopay adoption"
@@ -2769,14 +2891,189 @@ function OperationalSection({
                 <MemoLineChartWithMonths
                   series={coverageSeries}
                   color="rgba(14,165,233,0.85)"
-                  label="Coverage enrollment"
+                  label="TPP enrollment"
                   formatValue={coverageIsPct ? formatPercentPoint : formatNumberPoint}
                   labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
                 />
               </ChartCard>
+              <ChartCard
+                key={`stale-rent-12mo-${rangeKey}`}
+                title="No rent change (last 12 months)"
+                subtitle="Monthly trend"
+                info="Parsed from the MSR No Rent Change Last 12 Months sheet."
+                emptyMessage={staleRentEmpty}
+              >
+                <MemoLineChartWithMonths
+                  series={staleRentSeries}
+                  color="rgba(129,140,248,0.85)"
+                  label="No rent change count"
+                  formatValue={formatNumberPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                />
+              </ChartCard>
             </div>
-          </div>
-        ) : null}
+          </section>
+
+          <section className="ios-card ios-animate-up space-y-6 p-6">
+            <SectionHeader title="Rental Statistics" subtitle={`Move-in, move-out, net, and transfer activity (${rangeKey}).`} />
+            <KpiRow
+              items={[
+                { label: 'Move-ins (MTD)', value: formatMaybeNumber(latestMoveIns) },
+                { label: 'Move-outs (MTD)', value: formatMaybeNumber(latestMoveOuts) },
+                { label: 'Net rentals (MTD)', value: formatSignedNumber(latestNetRentals) },
+                { label: 'Transfers (MTD)', value: 'N/A' },
+              ]}
+              columns={4}
+            />
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <ChartCard
+                key={`rental-moveins-${rangeKey}`}
+                title="Move-ins"
+                subtitle="Monthly trend"
+                emptyMessage={moveInsEmpty}
+              >
+                <MemoLineChartWithMonths
+                  series={moveInsSeries}
+                  color="rgba(37,99,235,0.85)"
+                  label="Move-ins"
+                  formatValue={formatNumberPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                />
+              </ChartCard>
+              <ChartCard
+                key={`rental-moveouts-${rangeKey}`}
+                title="Move-outs"
+                subtitle="Monthly trend"
+                emptyMessage={moveOutsEmpty}
+              >
+                <MemoLineChartWithMonths
+                  series={moveOutsSeries}
+                  color="rgba(248,113,113,0.82)"
+                  label="Move-outs"
+                  formatValue={formatNumberPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                />
+              </ChartCard>
+              <ChartCard
+                key={`rental-net-${rangeKey}`}
+                title="Net rentals"
+                subtitle="Monthly trend"
+                emptyMessage={netRentalsEmpty}
+              >
+                <MemoLineChartWithMonths
+                  series={netRentalsSeries}
+                  color="rgba(16,185,129,0.9)"
+                  label="Net rentals"
+                  formatValue={formatSignedPoint}
+                  labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+                />
+              </ChartCard>
+            </div>
+          </section>
+        </div>
+      </section>
+    </LazyBlock>
+  );
+}
+
+function FinancialsSection({
+  latestSnapshot,
+  seriesEntries,
+  isDark,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+  isDark: boolean;
+}): JSX.Element {
+  const netRevenueSeries = buildSeries(seriesEntries, (snapshot) => snapshot.revenue?.netRevenueMtd);
+  const expensesSeries = buildSeries(seriesEntries, (snapshot) =>
+    snapshot.financials?.totalOperatingExpenseMtd ??
+    snapshot.financials?.totalOperatingExpense ??
+    snapshot.financials?.expensesMtd ??
+    snapshot.financials?.expenses ??
+    snapshot.revenue?.totalOperatingExpenseMtd ??
+    snapshot.revenue?.totalOperatingExpense,
+  );
+  const noiSeries = buildSeries(seriesEntries, (snapshot) =>
+    snapshot.financials?.noiMtd ??
+    snapshot.financials?.noi ??
+    snapshot.financials?.netOperatingIncomeMtd ??
+    snapshot.financials?.netOperatingIncome ??
+    snapshot.revenue?.noiMtd ??
+    snapshot.revenue?.noi ??
+    snapshot.revenue?.netOperatingIncomeMtd ??
+    snapshot.revenue?.netOperatingIncome,
+  );
+
+  const netRevenueEmpty = getSeriesEmptyMessage(netRevenueSeries.map((point) => point.value), seriesEntries.length);
+  const expensesEmpty = getSeriesEmptyMessage(expensesSeries.map((point) => point.value), seriesEntries.length);
+  const noiEmpty = getSeriesEmptyMessage(noiSeries.map((point) => point.value), seriesEntries.length);
+
+  const latestNetRevenue = latestSnapshot?.revenue?.netRevenueMtd;
+  const latestExpenses =
+    latestSnapshot?.financials?.totalOperatingExpenseMtd ??
+    latestSnapshot?.financials?.totalOperatingExpense ??
+    latestSnapshot?.financials?.expensesMtd ??
+    latestSnapshot?.financials?.expenses ??
+    latestSnapshot?.revenue?.totalOperatingExpenseMtd ??
+    latestSnapshot?.revenue?.totalOperatingExpense;
+  const latestNoi =
+    latestSnapshot?.financials?.noiMtd ??
+    latestSnapshot?.financials?.noi ??
+    latestSnapshot?.financials?.netOperatingIncomeMtd ??
+    latestSnapshot?.financials?.netOperatingIncome ??
+    latestSnapshot?.revenue?.noiMtd ??
+    latestSnapshot?.revenue?.noi ??
+    latestSnapshot?.revenue?.netOperatingIncomeMtd ??
+    latestSnapshot?.revenue?.netOperatingIncome;
+  const marginPct =
+    isFiniteNumber(latestNoi) && isFiniteNumber(latestNetRevenue) && latestNetRevenue !== 0
+      ? (latestNoi / latestNetRevenue) * 100
+      : null;
+
+  return (
+    <LazyBlock minHeight={420}>
+      <section className="ios-card ios-animate-up space-y-6 p-6">
+        <SectionHeader title="Financials" subtitle="Accounting data from historical snapshots." />
+        <KpiRow
+          items={[
+            { label: 'Net revenue (MTD)', value: formatMaybeCurrency(latestNetRevenue) },
+            { label: 'Expenses (MTD)', value: formatMaybeCurrency(latestExpenses) },
+            { label: 'NOI (MTD)', value: formatMaybeCurrency(latestNoi) },
+            { label: 'NOI margin', value: formatMaybePercent(marginPct, 1) },
+          ]}
+          columns={4}
+        />
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <ChartCard title="Net revenue" subtitle="Monthly trend" emptyMessage={netRevenueEmpty}>
+            <MemoLineChartWithMonths
+              series={netRevenueSeries}
+              color="rgba(14,165,233,0.9)"
+              label="Net revenue (MTD)"
+              formatValue={formatCompactCurrency}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+            />
+          </ChartCard>
+          <ChartCard title="Expenses" subtitle="Monthly trend" emptyMessage={expensesEmpty}>
+            <MemoLineChartWithMonths
+              series={expensesSeries}
+              color="rgba(248,113,113,0.86)"
+              label="Expenses (MTD)"
+              formatValue={formatCompactCurrency}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+            />
+          </ChartCard>
+          <ChartCard title="NOI" subtitle="Monthly trend" emptyMessage={noiEmpty}>
+            <MemoLineChartWithMonths
+              series={noiSeries}
+              color="rgba(16,185,129,0.9)"
+              label="NOI (MTD)"
+              formatValue={formatCompactCurrency}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+            />
+          </ChartCard>
         </div>
       </section>
     </LazyBlock>
@@ -2808,7 +3105,7 @@ function LineChartWithMonths({
   return (
     <div className="relative rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
       {emphasizeTrend ? (
-        <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[linear-gradient(135deg,rgba(16,185,129,0.18),transparent_55%)]" />
+        <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[linear-gradient(135deg,rgba(37,99,235,0.18),transparent_55%)]" />
       ) : null}
       {emphasizeTrend && trendUp ? (
         <div className="pointer-events-none absolute right-4 top-4 text-[10px] font-semibold text-[color:var(--text-secondary)]">
@@ -2862,7 +3159,7 @@ function LineChartWithMonths({
             cy={lastPoint.y}
             r={6}
             fill="none"
-            stroke="rgba(16,185,129,0.85)"
+            stroke="rgba(37,99,235,0.85)"
             strokeWidth={2}
           />
         ) : null}
@@ -2903,3 +3200,4 @@ const MemoLineChartWithMonths = memo(LineChartWithMonths);
 const MemoCollectionsSection = memo(CollectionsSection);
 const MemoPricingSection = memo(PricingSection);
 const MemoOperationalSection = memo(OperationalSection);
+const MemoFinancialsSection = memo(FinancialsSection);

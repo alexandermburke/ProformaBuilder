@@ -883,11 +883,11 @@ const extractMsrSheet = (
   if (!snapshot.propertyAddress) warnings.push('MSR sheet: property address not found at K2.');
   if (!snapshot.reportDate) warnings.push('MSR sheet: report date not found at A3.');
 
-  // Pricing reference override from MSR summary cells:
-  // - Set Rate ($/sqft): K33
-  // - Sell Rate ($/sqft): K29
-  const setRatePerSqft = coerceNumber(readCellValue(sheet, 'K33'));
-  const sellRatePerSqft = coerceNumber(readCellValue(sheet, 'K29'));
+  // Pricing reference override from MSR Revenue Statistics cells:
+  // - Set Rate ($/sqft): K27
+  // - Sell Rate ($/sqft): N27
+  const setRatePerSqft = coerceNumber(readCellValue(sheet, 'K27'));
+  const sellRatePerSqft = coerceNumber(readCellValue(sheet, 'N27'));
   if (setRatePerSqft != null || sellRatePerSqft != null) {
     const pricing = snapshot.pricing ?? {};
     if (setRatePerSqft != null) {
@@ -2334,10 +2334,10 @@ export function parseMsrWorkbook(buffer: ArrayBuffer | Buffer): MsrParseResult {
     snapshot.unitMix = unitMix;
   }
 
-  // Final override after all sheet merges: Set/Sell rate from MSR summary cells.
+  // Final override after all sheet merges: Set/Sell rate from MSR Revenue Statistics cells.
   if (msrSheet) {
-    const setRatePerSqft = coerceNumber(readCellValue(msrSheet, 'K33'));
-    const sellRatePerSqft = coerceNumber(readCellValue(msrSheet, 'K29'));
+    const setRatePerSqft = coerceNumber(readCellValue(msrSheet, 'K27'));
+    const sellRatePerSqft = coerceNumber(readCellValue(msrSheet, 'N27'));
     if (setRatePerSqft != null || sellRatePerSqft != null) {
       const pricing = snapshot.pricing ?? {};
       if (setRatePerSqft != null) {
