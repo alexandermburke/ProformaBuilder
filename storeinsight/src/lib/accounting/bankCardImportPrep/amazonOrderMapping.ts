@@ -4,16 +4,19 @@ import type { NormalizedRow } from "./normalize";
 const AMAZON_WITHDRAWAL_PATTERN = /\bamazon\b/i;
 const WITHDRAWAL_PATTERN = /\bwithdr(?:awal)?\b/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_DATE_DIFF_DAYS = 7;
+const WITHDRAWAL_PREFIX = "Amazon Withdrawal - ";
 
-export type AmazonOrderRow = {
-  title: string;
+export type AmazonOrderGroup = {
+  orderId: string;
   amountCents: number;
-  orderDate: Date | null;
+  orderDate: Date;
+  titles: string[];
   used: boolean;
 };
 
 export type AmazonOrderParseResult = {
-  rows: AmazonOrderRow[];
+  rows: AmazonOrderGroup[];
   logs: string[];
   warnings: string[];
 };
@@ -64,6 +67,15 @@ function asTrimmedString(value: unknown): string | null {
   return str || null;
 }
 
+function getField(raw: Record<string, unknown>, field: string): unknown {
+  const wanted = field.trim().toLowerCase().replace(/\s+/g, " ");
+  for (const [key, value] of Object.entries(raw)) {
+    const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, " ");
+    if (normalizedKey === wanted) return value;
+  }
+  return undefined;
+}
+
 function isAmazonWithdrawalRow(row: NormalizedRow): boolean {
   if (row.source !== "bank") return false;
   const note = [row.notes, row.detailNotes, row.rawNotes, row.rawDetailNotes].filter(Boolean).join(" ");
@@ -77,10 +89,32 @@ function dateDistanceDays(a: Date | null, b: Date | null): number {
   return Math.abs(aUtc - bUtc) / DAY_MS;
 }
 
+function summarizeTitles(titles: string[]): string[] {
+  const counts = new Map<string, number>();
+  titles.forEach((title) => {
+    const current = counts.get(title) ?? 0;
+    counts.set(title, current + 1);
+  });
+  return Array.from(counts.entries()).map(([title, count]) => (count > 1 ? `${title} (x${count})` : title));
+}
+
+function formatMappedNotes(titles: string[]): string {
+  const summary = summarizeTitles(titles);
+  return `${WITHDRAWAL_PREFIX}${summary.join("; ")}`;
+}
+
+type ParsedAmazonLine = {
+  orderId: string | null;
+  title: string;
+  orderDate: Date;
+  itemAmountCents: number | null;
+  fallbackAmountCents: number | null;
+};
+
 export function parseAmazonOrders(buffer: Buffer): AmazonOrderParseResult {
   const logs: string[] = [];
   const warnings: string[] = [];
-  const parsedRows: AmazonOrderRow[] = [];
+  const parsedLines: ParsedAmazonLine[] = [];
 
   try {
     const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
@@ -95,20 +129,30 @@ export function parseAmazonOrders(buffer: Buffer): AmazonOrderParseResult {
     logs.push(`[amazon-map] parsed ${jsonRows.length} raw rows from "${sheetName}"`);
 
     jsonRows.forEach((raw) => {
-      const title = asTrimmedString(raw.Title ?? raw.title);
-      const amount =
-        asNumber(raw["Item Net Total"]) ??
-        asNumber(raw["Payment Amount"]) ??
-        asNumber(raw["Order Net Total"]) ??
-        asNumber(raw["Total Amount"]);
-      const orderDate = asDate(raw["Order Date"] ?? raw["Payment Date"] ?? raw.Date);
-      const amountCents = amountToCents(amount);
-      if (!title || amountCents == null || amountCents <= 0) return;
-      parsedRows.push({
+      const title = asTrimmedString(getField(raw, "Title"));
+      const orderId = asTrimmedString(getField(raw, "Order ID"));
+      const itemAmount = asNumber(getField(raw, "Item Net Total"));
+      const fallbackAmount =
+        asNumber(getField(raw, "Item Net Total")) ??
+        asNumber(getField(raw, "Payment Amount")) ??
+        asNumber(getField(raw, "Order Net Total")) ??
+        asNumber(getField(raw, "Total Amount"));
+      const orderDate =
+        asDate(getField(raw, "Order Date")) ??
+        asDate(getField(raw, "Payment Date")) ??
+        asDate(getField(raw, "Date"));
+      const itemAmountCents = amountToCents(itemAmount);
+      const fallbackAmountCents = amountToCents(fallbackAmount);
+      if (!title || !orderDate) return;
+      if ((!itemAmountCents || itemAmountCents <= 0) && (!fallbackAmountCents || fallbackAmountCents <= 0)) {
+        return;
+      }
+      parsedLines.push({
+        orderId,
         title,
-        amountCents,
         orderDate,
-        used: false,
+        itemAmountCents,
+        fallbackAmountCents,
       });
     });
   } catch (err) {
@@ -116,22 +160,96 @@ export function parseAmazonOrders(buffer: Buffer): AmazonOrderParseResult {
     return { rows: [], logs, warnings };
   }
 
+  if (parsedLines.length === 0) {
+    warnings.push("[amazon-map] no order rows with Title, amount, and date were detected.");
+    return { rows: [], logs, warnings };
+  }
+
+  const grouped = new Map<
+    string,
+    {
+      orderId: string;
+      orderDate: Date;
+      titles: string[];
+      itemAmountCentsSum: number;
+      fallbackAmountCents: number | null;
+      hasItemAmount: boolean;
+    }
+  >();
+  const standaloneGroups: AmazonOrderGroup[] = [];
+
+  parsedLines.forEach((line, idx) => {
+    if (!line.orderId) {
+      const amountCents = line.itemAmountCents ?? line.fallbackAmountCents;
+      if (!amountCents || amountCents <= 0) return;
+      standaloneGroups.push({
+        orderId: `row-${idx + 1}`,
+        amountCents,
+        orderDate: line.orderDate,
+        titles: [line.title],
+        used: false,
+      });
+      return;
+    }
+
+    const existing = grouped.get(line.orderId);
+    if (!existing) {
+      grouped.set(line.orderId, {
+        orderId: line.orderId,
+        orderDate: line.orderDate,
+        titles: [line.title],
+        itemAmountCentsSum: line.itemAmountCents ?? 0,
+        fallbackAmountCents: line.fallbackAmountCents ?? null,
+        hasItemAmount: line.itemAmountCents != null,
+      });
+      return;
+    }
+
+    existing.titles.push(line.title);
+    if (line.orderDate.getTime() < existing.orderDate.getTime()) {
+      existing.orderDate = line.orderDate;
+    }
+    if (line.itemAmountCents != null) {
+      existing.itemAmountCentsSum += line.itemAmountCents;
+      existing.hasItemAmount = true;
+    } else if (existing.fallbackAmountCents == null && line.fallbackAmountCents != null) {
+      existing.fallbackAmountCents = line.fallbackAmountCents;
+    }
+  });
+
+  const groupedOrders: AmazonOrderGroup[] = [];
+  grouped.forEach((entry) => {
+    const amountCents = entry.hasItemAmount ? entry.itemAmountCentsSum : entry.fallbackAmountCents;
+    if (!amountCents || amountCents <= 0) return;
+    groupedOrders.push({
+      orderId: entry.orderId,
+      amountCents,
+      orderDate: entry.orderDate,
+      titles: entry.titles,
+      used: false,
+    });
+  });
+
+  const parsedRows = [...groupedOrders, ...standaloneGroups];
   if (parsedRows.length === 0) {
-    warnings.push("[amazon-map] no order rows with both Title and amount were detected.");
+    warnings.push("[amazon-map] no grouped orders with usable amount/date were detected.");
   } else {
-    logs.push(`[amazon-map] usable rows: ${parsedRows.length}`);
+    const multiItemOrders = groupedOrders.filter((row) => row.titles.length > 1).length;
+    logs.push(`[amazon-map] usable grouped orders: ${parsedRows.length}`);
+    logs.push(`[amazon-map] multi-item orders: ${multiItemOrders}`);
   }
 
   return { rows: parsedRows, logs, warnings };
 }
 
-export function applyAmazonOrderMapping(rows: NormalizedRow[], orderRows: AmazonOrderRow[]): AmazonOrderApplyResult {
+export function applyAmazonOrderMapping(rows: NormalizedRow[], orderRows: AmazonOrderGroup[]): AmazonOrderApplyResult {
   if (!orderRows.length) {
     return { rows, matched: 0, unmatched: 0, logs: ["[amazon-map] skipped (no usable amazon order rows)"] };
   }
 
   let matched = 0;
   let unmatched = 0;
+  let multiItemMatches = 0;
   const updatedRows = rows.map((row) => {
     if (!isAmazonWithdrawalRow(row)) return row;
     const amountCents = amountToCents(row.debit ?? null);
@@ -140,7 +258,17 @@ export function applyAmazonOrderMapping(rows: NormalizedRow[], orderRows: Amazon
       return row;
     }
 
-    const candidates = orderRows.filter((candidate) => !candidate.used && candidate.amountCents === amountCents);
+    if (!row.journalDate) {
+      unmatched += 1;
+      return row;
+    }
+
+    const candidates = orderRows.filter(
+      (candidate) =>
+        !candidate.used &&
+        candidate.amountCents === amountCents &&
+        dateDistanceDays(row.journalDate, candidate.orderDate) <= MAX_DATE_DIFF_DAYS,
+    );
     if (candidates.length === 0) {
       unmatched += 1;
       return row;
@@ -150,22 +278,28 @@ export function applyAmazonOrderMapping(rows: NormalizedRow[], orderRows: Amazon
       const distanceA = dateDistanceDays(row.journalDate, a.orderDate);
       const distanceB = dateDistanceDays(row.journalDate, b.orderDate);
       if (distanceA !== distanceB) return distanceA - distanceB;
-      const timeA = a.orderDate?.getTime() ?? Number.POSITIVE_INFINITY;
-      const timeB = b.orderDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      if (a.titles.length !== b.titles.length) return b.titles.length - a.titles.length;
+      const timeA = a.orderDate.getTime();
+      const timeB = b.orderDate.getTime();
       return timeA - timeB;
     });
 
     const best = candidates[0];
     best.used = true;
     matched += 1;
+    if (best.titles.length > 1) multiItemMatches += 1;
+    const combinedNotes = formatMappedNotes(best.titles);
 
     return {
       ...row,
-      notes: best.title,
-      detailNotes: best.title,
+      detailNotes: combinedNotes,
     };
   });
 
-  const logs = [`[amazon-map] matched ${matched} Amazon withdrawal rows by amount`, `[amazon-map] unmatched candidate rows: ${unmatched}`];
+  const logs = [
+    `[amazon-map] matched ${matched} Amazon withdrawal rows by grouped order amount + date (<= ${MAX_DATE_DIFF_DAYS} days)`,
+    `[amazon-map] multi-item withdrawal matches: ${multiItemMatches}`,
+    `[amazon-map] unmatched candidate rows: ${unmatched}`,
+  ];
   return { rows: updatedRows, matched, unmatched, logs };
 }
