@@ -1156,7 +1156,10 @@ function OccupancyUnitMixSection({
 
   const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
   const occupancyTrendHint = seriesEntries.length < 2 ? 'Need 2+ months for trend' : null;
-  const sellRateSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.avgSellRateOccupied);
+  const sellRateSeries = buildSeries(
+    seriesEntries,
+    (snapshot) => snapshot.pricing?.avgCurrentRentPerSqftOccupied ?? snapshot.pricing?.avgCurrentRentOccupied,
+  );
 
   const chartMonths = useMemo(() => seriesEntries.map((entry) => entry.monthIso ?? ''), [seriesEntries]);
   const occupancyChartValues = useMemo(
@@ -1931,8 +1934,8 @@ function PricingSection({
 
   const pricing = latestSnapshot?.pricing;
   const revenue = latestSnapshot?.revenue;
-  const setRate = pricing?.avgCurrentRentPerSqftOccupied ?? pricing?.avgCurrentRentOccupied;
-  const sellRate = pricing?.avgSellRatePerSqftOccupied ?? pricing?.avgSellRateOccupied;
+  const setRate = pricing?.avgSellRatePerSqftOccupied ?? pricing?.avgSellRateOccupied;
+  const sellRate = pricing?.avgCurrentRentPerSqftOccupied ?? pricing?.avgCurrentRentOccupied;
   const spreadPct =
     isFiniteNumber(setRate) && isFiniteNumber(sellRate) && sellRate !== 0
       ? ((setRate - sellRate) / sellRate) * 100
@@ -2046,8 +2049,8 @@ function PricingSection({
   const rateSeries = seriesEntries
     .map((entry) => ({
       monthIso: entry.monthIso,
-      current: entry.snapshot.pricing?.avgCurrentRentPerSqftOccupied ?? entry.snapshot.pricing?.avgCurrentRentOccupied,
-      sell: entry.snapshot.pricing?.avgSellRatePerSqftOccupied ?? entry.snapshot.pricing?.avgSellRateOccupied,
+      current: entry.snapshot.pricing?.avgSellRatePerSqftOccupied ?? entry.snapshot.pricing?.avgSellRateOccupied,
+      sell: entry.snapshot.pricing?.avgCurrentRentPerSqftOccupied ?? entry.snapshot.pricing?.avgCurrentRentOccupied,
     }))
     .filter((entry): entry is { monthIso: string; current: number; sell: number } => {
       return Boolean(entry.monthIso) && isFiniteNumber(entry.current) && isFiniteNumber(entry.sell);
@@ -2083,7 +2086,7 @@ function PricingSection({
         <ChartCard
           title="Set Rate vs Sell Rate"
           subtitle="Set and sell rates ($/sqft)"
-          info="Set rate = MSR!K27 and sell rate = MSR!N27 from the uploaded MSR; values shown as $/sqft."
+          info="Set rate = MSR!N27 and sell rate = MSR!K27 from the uploaded MSR; values shown as $/sqft."
         >
             <KpiRow
               items={[
