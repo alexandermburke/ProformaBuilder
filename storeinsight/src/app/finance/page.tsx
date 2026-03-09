@@ -8,8 +8,8 @@ import type { JSX } from 'react';
 import WorkflowHubPage from '@/components/WorkflowHubPage';
 import { getWorkflowCategory } from '@/lib/workflowDirectory';
 
-export default function AutomatedAccountingPage(): JSX.Element {
-  const category = getWorkflowCategory('accounting');
+export default function FinanceDirectoryPage(): JSX.Element {
+  const category = getWorkflowCategory('finance');
 
   return (
     <WorkflowHubPage

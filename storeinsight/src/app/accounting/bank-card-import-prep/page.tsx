@@ -64,11 +64,11 @@ const uploadCards: UploadCard[] = [
     fileTypes: "CSV",
     required: false,
     accept: ["csv"],
-    examples: ["(Optional) Prior-period Exceptions Log.csv"],
+    examples: ["Prior-period Exceptions Log.csv"],
   },
   {
     key: "template",
-    title: "Coded Template Output (optional)",
+    title: "Coded Template Output",
     detail: "Prior exported Bank Deposit Template used for mapping GL + references.",
     fileTypes: "XLSX",
     required: false,

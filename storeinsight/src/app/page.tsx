@@ -8,99 +8,19 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
+import WorkflowIcon from '@/components/WorkflowIcon';
+import { workflowCategories, type WorkflowCard, type WorkflowTone } from '@/lib/workflowDirectory';
 
-type FeatureTone = 'blue' | 'purple' | 'green' | 'amber';
-type FeatureIconKey = 'document' | 'layers' | 'globe' | 'target';
-
-type Feature = {
-  title: string;
-  description: string;
-  href: string;
-  status: string;
-  tone: FeatureTone;
-  icon: FeatureIconKey;
-  highlights: string[];
-  disabled?: boolean;
-};
-
-const features: Feature[] = [
-  {
-    title: 'Daily Summary Report',
-    description: 'Automate daily flash reports for STORE properties.',
-    href: '/daily-summary',
-    status: 'Active',
-    tone: 'purple',
-    icon: 'document',
-    highlights: [
-      'Pull daily metrics from Tenant management summary exports',
-      'Fill Excel flash templates with rentals, vacates, and occupancy',
-      'Schedule automatic email delivery to property owners',
-    ],
-  },
-  {
-    title: 'Accounting',
-    description: 'Standardize bank and credit card spreadsheets for efficient, accurate Yardi imports.',
-    href: '/accounting',
-    status: 'WIP',
-    tone: 'blue',
-    icon: 'layers',
-    highlights: [
-      'Upload, map fields, validate, and export',
-      'Normalize dates, descriptions, payees, and amounts',
-      'Yardi-ready outputs with clear exceptions and audit logs',
-    ],
-
-    disabled: false,
-  },
-  {
-    title: 'Owner Reports',
-    description: 'Build owner report packages with STORE portfolio and market data.',
-    href: '/owner-reports',
-    status: 'Active',
-    tone: 'green',
-    icon: 'globe',
-    highlights: [
-      'Blend STORE portfolio results with market benchmarks',
-      'Assemble owner decks with structured commentary sections',
-      'Queue recurring owner report deliveries around asset manager cycles',
-    ],
-  },
-  {
-    title: 'Historical Data',
-    description: 'Review facility history and performance drilldowns.',
-    href: '/historical-data',
-    status: 'Active',
-    tone: 'amber',
-    icon: 'layers',
-    highlights: [
-      'Collections and AR aging trends with graphs',
-      'Pricing quality, variance, and rent cadence',
-      'Demand, autopay, and inventory drilldowns',
-    ],
-  },
-  {
-    title: 'Comp Sets',
-    description: 'Benchmark STORE assets against competitor pricing.',
-    href: '/comp-sets',
-    status: 'Planned',
-    tone: 'blue',
-    icon: 'target',
-    highlights: [
-      'Import rate shops, rent rolls, and competitor snapshots',
-      'Normalize premiums, concessions, and occupancy deltas',
-      'Export comp set notes for underwriting decks',
-    ],
-  },
-];
+type DirectoryCard = WorkflowCard & { href: string };
 
 const HERO_STATS = [
   {
-    label: 'Active workspaces',
+    label: 'Top-level sections',
     value: '3',
-    detail: 'Owner, Accounting, Proforma',
+    detail: 'Accounting, Finance, Other',
   },
   {
     label: 'Automations live',
@@ -131,97 +51,19 @@ const MONTH_LABELS = [
   'Dec',
 ];
 
-const iconToneLight: Record<FeatureTone, string> = {
+const iconToneLight: Record<WorkflowTone, string> = {
   blue: 'bg-[rgba(37,99,235,0.12)] text-[#1D4ED8]',
   purple: 'bg-[rgba(168,85,247,0.12)] text-[#7C3AED]',
   green: 'bg-[rgba(34,197,94,0.12)] text-[#047857]',
   amber: 'bg-[rgba(245,158,11,0.12)] text-[#B45309]',
 };
 
-const iconToneDark: Record<FeatureTone, string> = {
+const iconToneDark: Record<WorkflowTone, string> = {
   blue: 'bg-[rgba(59,130,246,0.22)] text-[#93C5FD]',
   purple: 'bg-[rgba(168,85,247,0.24)] text-[#C4B5FD]',
   green: 'bg-[rgba(34,197,94,0.22)] text-[#BBF7D0]',
   amber: 'bg-[rgba(245,158,11,0.25)] text-[#FDE68A]',
 };
-
-function FeatureIcon({ name, tone }: { name: FeatureIconKey; tone: FeatureTone }): JSX.Element {
-  switch (name) {
-    case 'document':
-      return (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-7 w-7 text-current"
-          data-tone={tone}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M7 3.5h7l4.5 4.5V20a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5Z" />
-          <path d="M14 3.5V9h5" />
-          <path d="M9 14h6" />
-          <path d="M9 18h6" />
-        </svg>
-      );
-    case 'layers':
-      return (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-7 w-7 text-current"
-          data-tone={tone}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 4 4 8l8 4 8-4-8-4Z" />
-          <path d="m4 12 8 4 8-4" />
-          <path d="m4 16 8 4 8-4" />
-        </svg>
-      );
-    case 'target':
-      return (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-7 w-7 text-current"
-          data-tone={tone}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="8" />
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 2v3" />
-          <path d="M12 19v3" />
-          <path d="M2 12h3" />
-          <path d="M19 12h3" />
-        </svg>
-      );
-    case 'globe':
-    default:
-      return (
-        <svg
-          viewBox="0 0 24 24"
-          className="h-7 w-7 text-current"
-          data-tone={tone}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.6}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="8" />
-          <path d="M4 12h16" />
-          <path d="M12 4a12 12 0 0 1 3.5 8A12 12 0 0 1 12 20a12 12 0 0 1-3.5-8A12 12 0 0 1 12 4Z" />
-        </svg>
-      );
-  }
-}
 
 function getOrdinalSuffix(day: number): string {
   const remainder = day % 100;
@@ -248,14 +90,21 @@ export default function DirectoryPage(): JSX.Element {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
-  const carouselRef = useRef<HTMLDivElement | null>(null);
-  const carouselPaused = useRef(false);
+  const directoryCards: DirectoryCard[] = workflowCategories.map((category) => ({
+    id: category.key,
+    title: category.title,
+    description: category.summaryDescription,
+    href: category.href,
+    status: `${category.features.length} ${category.features.length === 1 ? 'workflow' : 'workflows'}`,
+    tone: category.summaryTone,
+    icon: category.summaryIcon,
+    highlights: category.summaryHighlights,
+  }));
   const [flashDevMode, setFlashDevMode] = useState(false);
   const [devModeLoading, setDevModeLoading] = useState(true);
   const [devModeSaving, setDevModeSaving] = useState(false);
   const [devModeError, setDevModeError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [modalFeature, setModalFeature] = useState<string | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -364,14 +213,6 @@ export default function DirectoryPage(): JSX.Element {
   const openSettings = () => setIsSettingsOpen(true);
   const closeSettings = () => setIsSettingsOpen(false);
 
-  const handleUnavailable = (featureTitle: string) => {
-    setModalFeature(featureTitle);
-  };
-
-  const closeModal = () => {
-    setModalFeature(null);
-  };
-
   const toggleButtonClass = (active: boolean): string =>
     [
       'relative inline-flex h-8 w-16 shrink-0 items-center rounded-full border border-[rgba(148,163,255,0.28)] p-1 transition-all duration-500',
@@ -393,164 +234,6 @@ export default function DirectoryPage(): JSX.Element {
   const heroStats = HERO_STATS.map((stat) =>
     stat.label === 'Last update' ? { ...stat, value: formatHeroDate(new Date()) } : stat,
   );
-  const carouselItems = features.length > 1 ? [...features, ...features] : features;
-
-  useEffect(() => {
-    const container = carouselRef.current;
-    if (!container || features.length < 2) return;
-
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const shouldAnimate = !prefersReducedMotion.matches;
-
-    let rafId = 0;
-    let lastTime = 0;
-    const speed = 0.04;
-    let resumeTimer = 0;
-    let dragPointerId: number | null = null;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let dragStartScroll = 0;
-    let isDragging = false;
-    let dragMoved = false;
-    const dragThreshold = 6;
-
-    const scheduleResume = () => {
-      if (resumeTimer) window.clearTimeout(resumeTimer);
-      resumeTimer = window.setTimeout(() => {
-        carouselPaused.current = false;
-        lastTime = 0;
-      }, 1200);
-    };
-
-    const pause = () => {
-      carouselPaused.current = true;
-      if (resumeTimer) window.clearTimeout(resumeTimer);
-    };
-
-    const resume = () => {
-      if (isDragging) return;
-      scheduleResume();
-    };
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.button && event.button !== 0) return;
-      pause();
-      dragPointerId = event.pointerId;
-      dragStartX = event.clientX;
-      dragStartY = event.clientY;
-      dragStartScroll = container.scrollLeft;
-      isDragging = false;
-      dragMoved = false;
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      if (dragPointerId !== event.pointerId) return;
-      const deltaX = event.clientX - dragStartX;
-      const deltaY = event.clientY - dragStartY;
-
-      if (!isDragging) {
-        if (Math.hypot(deltaX, deltaY) < dragThreshold) return;
-        if (Math.abs(deltaY) > Math.abs(deltaX)) {
-          dragPointerId = null;
-          resume();
-          return;
-        }
-        isDragging = true;
-        dragMoved = true;
-        container.classList.add('is-dragging');
-        try {
-          container.setPointerCapture(event.pointerId);
-        } catch {
-          // ignore capture errors
-        }
-      }
-
-      if (isDragging) {
-        container.scrollLeft = dragStartScroll - deltaX;
-        lastTime = 0;
-        event.preventDefault();
-      }
-    };
-
-    const endDrag = () => {
-      if (isDragging && dragPointerId !== null) {
-        try {
-          container.releasePointerCapture(dragPointerId);
-        } catch {
-          // ignore capture errors
-        }
-      }
-      isDragging = false;
-      dragPointerId = null;
-      container.classList.remove('is-dragging');
-      resume();
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      pause();
-      const dominantDelta = Math.abs(event.deltaY) > Math.abs(event.deltaX);
-      if (dominantDelta) {
-        container.scrollLeft += event.deltaY;
-        event.preventDefault();
-      } else {
-        container.scrollLeft += event.deltaX;
-      }
-      scheduleResume();
-    };
-
-    const onClickCapture = (event: MouseEvent) => {
-      if (!dragMoved) return;
-      event.preventDefault();
-      event.stopPropagation();
-      dragMoved = false;
-    };
-
-    container.addEventListener('pointerdown', onPointerDown);
-    container.addEventListener('pointermove', onPointerMove);
-    container.addEventListener('pointerup', endDrag);
-    container.addEventListener('pointercancel', endDrag);
-    container.addEventListener('focusin', pause);
-    container.addEventListener('focusout', resume);
-    container.addEventListener('wheel', onWheel, { passive: false });
-    container.addEventListener('click', onClickCapture, true);
-
-    if (shouldAnimate) {
-      carouselPaused.current = false;
-      lastTime = 0;
-
-      const step = (timestamp: number) => {
-        if (!lastTime) lastTime = timestamp;
-        const delta = timestamp - lastTime;
-        lastTime = timestamp;
-
-        if (!carouselPaused.current) {
-          container.scrollLeft += delta * speed;
-          const resetAt = container.scrollWidth / 2;
-          if (container.scrollLeft >= resetAt) {
-            container.scrollLeft -= resetAt;
-          }
-        }
-
-        rafId = window.requestAnimationFrame(step);
-      };
-
-      container.scrollLeft = 0;
-      rafId = window.requestAnimationFrame(step);
-    }
-
-    return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      if (resumeTimer) window.clearTimeout(resumeTimer);
-      container.removeEventListener('pointerdown', onPointerDown);
-      container.removeEventListener('pointermove', onPointerMove);
-      container.removeEventListener('pointerup', endDrag);
-      container.removeEventListener('pointercancel', endDrag);
-      container.removeEventListener('focusin', pause);
-      container.removeEventListener('focusout', resume);
-      container.removeEventListener('wheel', onWheel);
-      container.removeEventListener('click', onClickCapture, true);
-    };
-  }, []);
 
   return (
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
@@ -564,11 +247,11 @@ export default function DirectoryPage(): JSX.Element {
           <div className="grid gap-6 md:flex md:items-end md:justify-between">
             <div className="max-w-3xl space-y-4">
               <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
-                Workspace directory for STORE Management.
+                Workflow directory for STORE Management.
               </h1>
               <p className="text-base leading-relaxed text-[color:var(--text-secondary)] sm:text-lg">
-                Access the active workspaces used for underwriting, summaries, and owner reporting. Select a workspace
-                to open the tool you desire to use.
+                Start from accounting, finance, or other supporting tools. Each section opens its own view with the
+                workflows that belong there.
               </p>
               <div className="grid gap-4 pt-2 text-sm sm:grid-cols-3">
                 {heroStats.map((stat) => (
@@ -588,46 +271,41 @@ export default function DirectoryPage(): JSX.Element {
           </div>
         </header>
 
-        <section className="feature-carousel feature-carousel--scroll gap-6" ref={carouselRef}>
-          {carouselItems.map((feature, index) => {
-            const slotIndex = index % features.length;
-            const delayClass = slotIndex === 1 ? 'ios-animate-delay-sm' : slotIndex === 2 ? 'ios-animate-delay-md' : '';
+        <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {directoryCards.map((card, index) => {
+            const delayClass = index === 1 ? 'ios-animate-delay-sm' : index === 2 ? 'ios-animate-delay-md' : '';
             const cardClass = [
-              'group ios-card ios-animate-up feature-card feature-carousel__card',
+              'group ios-card ios-animate-up feature-card',
               delayClass,
               'relative overflow-hidden flex h-full flex-col gap-6 p-8 transition-all duration-500',
             ]
               .filter(Boolean)
               .join(' ');
-            const isDuplicate = index >= features.length;
-            const sharedContent = (
-              <>
+
+            return (
+              <Link key={card.id} href={card.href} className={cardClass} data-tone={card.tone}>
                 <span
                   aria-hidden
                   className="pointer-events-none absolute inset-px rounded-[26px] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_70%)] opacity-0 transition duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.2),transparent_75%)]"
                 />
                 <div className="relative z-10 flex flex-col gap-6">
-                  <span className="ios-pill text-[11px]" data-tone={feature.tone}>
-                    {feature.status}
+                  <span className="ios-pill text-[11px]" data-tone={card.tone}>
+                    {card.status}
                   </span>
                   <div className="flex items-center gap-4">
                     <div
-                      className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/40 shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${iconTone[feature.tone]} dark:border-white/15 dark:bg-white/10`}
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/40 shadow-[0_14px_32px_rgba(15,23,42,0.12)] backdrop-blur-sm ${iconTone[card.tone]} dark:border-white/15 dark:bg-white/10`}
                       aria-hidden
                     >
-                      <FeatureIcon name={feature.icon} tone={feature.tone} />
+                      <WorkflowIcon name={card.icon} tone={card.tone} />
                     </div>
                     <div className="space-y-1">
-                      <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">
-                        {feature.title}
-                      </h2>
-                      <p className="text-sm text-[color:var(--text-secondary)]">
-                        {feature.description}
-                      </p>
+                      <h2 className="text-lg font-semibold text-[color:var(--text-primary)]">{card.title}</h2>
+                      <p className="text-sm text-[color:var(--text-secondary)]">{card.description}</p>
                     </div>
                   </div>
                   <ul className="space-y-2 text-sm text-[color:var(--text-muted)]">
-                    {feature.highlights.map((highlight) => (
+                    {card.highlights.map((highlight) => (
                       <li key={highlight} className="flex items-start gap-2 text-left">
                         <span className="mt-1 inline-flex h-1.5 w-1.5 flex-none rounded-full bg-[rgba(37,99,235,0.7)]" />
                         <span className="flex-1 leading-snug">{highlight}</span>
@@ -635,7 +313,7 @@ export default function DirectoryPage(): JSX.Element {
                     ))}
                   </ul>
                   <span className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--accent-strong)]">
-                    {feature.disabled ? 'Request access' : 'Enter workspace'}
+                    Open section
                     <svg
                       aria-hidden
                       viewBox="0 0 24 24"
@@ -648,35 +326,6 @@ export default function DirectoryPage(): JSX.Element {
                     </svg>
                   </span>
                 </div>
-              </>
-            );
-
-            if (feature.disabled) {
-              return (
-                <button
-                  key={`${feature.title}-${index}`}
-                  type="button"
-                  onClick={() => handleUnavailable(feature.title)}
-                  className={cardClass}
-                  data-tone={feature.tone}
-                  tabIndex={isDuplicate ? -1 : undefined}
-                  aria-hidden={isDuplicate}
-                >
-                  {sharedContent}
-                </button>
-              );
-            }
-
-            return (
-              <Link
-                key={`${feature.title}-${index}`}
-                href={feature.href}
-                className={cardClass}
-                data-tone={feature.tone}
-                tabIndex={isDuplicate ? -1 : undefined}
-                aria-hidden={isDuplicate}
-              >
-                {sharedContent}
               </Link>
             );
           })}
@@ -730,24 +379,6 @@ export default function DirectoryPage(): JSX.Element {
           </div>
         </footer>
       </div>
-
-      {modalFeature ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[color:var(--overlay)]/65 px-4 py-10 backdrop-blur-sm">
-          <div className="ios-card ios-animate-up w-full max-w-sm space-y-4 p-6">
-            <h3 className="text-lg font-semibold text-[color:var(--text-primary)]">Not yet available</h3>
-            <p className="text-sm text-[color:var(--text-secondary)]">
-              {modalFeature} is currently in development within the STORE Internal platform.
-            </p>
-            <button
-              type="button"
-              onClick={closeModal}
-              className="ios-button w-full justify-center px-5 py-2 text-sm"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       {isSettingsOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm">
