@@ -1499,7 +1499,7 @@ export function TokenDashboardView({
               <section className="space-y-4">
                 <SectionHeader
                   title="Core Financial Trends"
-                  subtitle={`Historical snapshots for the selected owner-view graphs (${range}).`}
+                  subtitle={`Historical snapshots for the selected owner-view graphs.`}
                   actions={
                     <button
                       ref={overviewCustomizeButtonRef}
@@ -1946,9 +1946,6 @@ function OccupancyUnitMixSection({
             RSF occupancy, sell rate, and latest unit mix.
           </div>
         </div>
-        <span className="ios-pill text-[10px]" data-tone="neutral">
-          Range {rangeKey}
-        </span>
       </div>
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
