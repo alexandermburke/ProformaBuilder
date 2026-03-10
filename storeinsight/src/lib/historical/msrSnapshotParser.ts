@@ -36,6 +36,16 @@ export type MsrSnapshotPayload = {
     occupiedRateVarianceAmount?: number;
     occupiedRateVariancePct?: number;
   };
+  financials?: {
+    expenses?: number;
+    expensesMtd?: number;
+    totalOperatingExpense?: number;
+    totalOperatingExpenseMtd?: number;
+    noi?: number;
+    noiMtd?: number;
+    netOperatingIncome?: number;
+    netOperatingIncomeMtd?: number;
+  };
   rentals?: {
     moveInsMtd?: number;
     moveOutsMtd?: number;

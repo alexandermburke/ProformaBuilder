@@ -16,24 +16,6 @@ import { workflowCategories, type WorkflowCard, type WorkflowTone } from '@/lib/
 
 type DirectoryCard = WorkflowCard & { href: string };
 
-const HERO_STATS = [
-  {
-    label: 'Top-level sections',
-    value: '3',
-    detail: 'Accounting, Finance, Other',
-  },
-  {
-    label: 'Automations live',
-    value: '42',
-    detail: 'Token + validation routines',
-  },
-  {
-    label: 'Last update',
-    value: 'Jan, 2nd',
-    detail: 'Audit surface refresh',
-  },
-];
-
 const PLATFORM_VERSION = '0.8.8';
 const NEXT_VERSION = '15.5.7';
 const MONTH_LABELS = [
@@ -231,21 +213,24 @@ export default function DirectoryPage(): JSX.Element {
     ? 'bg-[radial-gradient(circle_at_85%_80%,rgba(56,189,248,0.18),transparent_60%)]'
     : 'bg-[radial-gradient(circle_at_82%_85%,rgba(125,211,252,0.16),transparent_62%)]';
   const iconTone = isDark ? iconToneDark : iconToneLight;
-  const heroStats = HERO_STATS.map((stat) =>
-    stat.label === 'Last update' ? { ...stat, value: formatHeroDate(new Date()) } : stat,
+  const totalWorkflowCount = workflowCategories.reduce((sum, category) => sum + category.features.length, 0);
+  const activeWorkflowCount = workflowCategories.reduce(
+    (sum, category) => sum + category.features.filter((feature) => !feature.disabled).length,
+    0,
   );
+  const heroLastUpdated = formatHeroDate(new Date());
 
   return (
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-20">
-        <header className="ios-card ios-animate-up grid gap-8 p-10">
-          <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
-            STORE Internal platform
-          </span>
-          <div className="grid gap-6 md:flex md:items-end md:justify-between">
-            <div className="max-w-3xl space-y-4">
+        <header className="ios-card ios-animate-up grid gap-8 p-8 lg:p-10">
+          <div className="max-w-4xl space-y-6">
+            <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
+              STORE Internal platform
+            </span>
+            <div className="space-y-4">
               <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
                 Workflow directory for STORE Management.
               </h1>
@@ -253,19 +238,38 @@ export default function DirectoryPage(): JSX.Element {
                 Start from accounting, finance, or other supporting tools. Each section opens its own view with the
                 workflows that belong there.
               </p>
-              <div className="grid gap-4 pt-2 text-sm sm:grid-cols-3">
-                {heroStats.map((stat) => (
-                  <div key={stat.label} className="stat-card hero-stat rounded-2xl p-4">
-                    <p className="hero-stat__label">{stat.label}</p>
-                    <p
-                      className="hero-stat__value"
-                      suppressHydrationWarning={stat.label === 'Last update'}
-                    >
-                      {stat.value}
-                    </p>
-                    <p className="hero-stat__detail">{stat.detail}</p>
-                  </div>
-                ))}
+            </div>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <div className="ios-pill px-3 py-2 text-[11px]" data-tone="blue">
+                {workflowCategories.length} sections
+              </div>
+              <div className="ios-pill px-3 py-2 text-[11px]" data-tone="green">
+                {activeWorkflowCount} active workflows
+              </div>
+              <div className="ios-pill px-3 py-2 text-[11px]" data-tone="amber">
+                {totalWorkflowCount} workflows mapped
+              </div>
+              <div className="ios-pill px-3 py-2 text-[11px]" data-tone="neutral" suppressHydrationWarning>
+                Updated {heroLastUpdated}
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="ios-list-card space-y-2 p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+                  What This Covers
+                </div>
+                <p className="text-sm leading-6 text-[color:var(--text-secondary)]">
+                  Accounting handles prep and reconciliation work, finance handles planning and reporting, and other
+                  covers the supporting tools used around both.
+                </p>
+              </div>
+              <div className="ios-list-card space-y-2 p-5">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--text-muted)]">
+                  How To Use It
+                </div>
+                <p className="text-sm leading-6 text-[color:var(--text-secondary)]">
+                  Pick a section first, then open the workflow inside that hub that matches the task you need to run.
+                </p>
               </div>
             </div>
           </div>
@@ -283,7 +287,7 @@ export default function DirectoryPage(): JSX.Element {
               .join(' ');
 
             return (
-              <Link key={card.id} href={card.href} className={cardClass} data-tone={card.tone}>
+              <Link key={card.id} href={card.href} className={cardClass}>
                 <span
                   aria-hidden
                   className="pointer-events-none absolute inset-px rounded-[26px] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_70%)] opacity-0 transition duration-500 group-hover:opacity-100 dark:bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.2),transparent_75%)]"

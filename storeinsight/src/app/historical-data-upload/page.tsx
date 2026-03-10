@@ -173,6 +173,42 @@ type MsrPreviewResponse = {
   msrTableDiagnostics?: MsrTableDiagnostics | null;
 };
 
+type BudgetFinancialPreviewSnapshot = {
+  propertyName?: string;
+  reportMonthIso?: string;
+  monthIso?: string;
+  financials?: {
+    expenses?: number;
+    expensesMtd?: number;
+    totalOperatingExpense?: number;
+    totalOperatingExpenseMtd?: number;
+    noi?: number;
+    noiMtd?: number;
+    netOperatingIncome?: number;
+    netOperatingIncomeMtd?: number;
+  };
+};
+
+type BudgetFinancialPreviewSource = {
+  token: string;
+  cell?: string | null;
+  sheet?: string | null;
+  fallback?: boolean;
+};
+
+type BudgetFinancialPreviewResponse = {
+  snapshot: BudgetFinancialPreviewSnapshot;
+  warnings: string[];
+  sourceSheet?: string | null;
+  sources?: {
+    expenses?: BudgetFinancialPreviewSource;
+    noi?: BudgetFinancialPreviewSource;
+  } | null;
+  exists: boolean;
+  hasFinancials: boolean;
+  updatedAt?: string | null;
+};
+
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -259,6 +295,18 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const [msrOverwrite, setMsrOverwrite] = useState(false);
   const [msrExisting, setMsrExisting] = useState(false);
   const [msrUpdatedAt, setMsrUpdatedAt] = useState<string | null>(null);
+  const [budgetPropertyId, setBudgetPropertyId] = useState('');
+  const [budgetFile, setBudgetFile] = useState<File | null>(null);
+  const [budgetPreview, setBudgetPreview] = useState<BudgetFinancialPreviewResponse | null>(null);
+  const [budgetWarnings, setBudgetWarnings] = useState<string[]>([]);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [budgetStatus, setBudgetStatus] = useState<string | null>(null);
+  const [budgetParsing, setBudgetParsing] = useState(false);
+  const [budgetUploading, setBudgetUploading] = useState(false);
+  const [budgetOverwrite, setBudgetOverwrite] = useState(false);
+  const [budgetExisting, setBudgetExisting] = useState(false);
+  const [budgetFinancialsExisting, setBudgetFinancialsExisting] = useState(false);
+  const [budgetUpdatedAt, setBudgetUpdatedAt] = useState<string | null>(null);
 
   const templateString = useMemo(() => JSON.stringify(getHistoricalTemplatePayload(), null, 2), []);
 
@@ -269,9 +317,11 @@ export default function HistoricalDataUploadPage(): JSX.Element {
     ? 'bg-[radial-gradient(circle_at_85%_85%,rgba(56,189,248,0.22),transparent_65%)]'
     : 'bg-[radial-gradient(circle_at_82%_88%,rgba(125,211,252,0.16),transparent_62%)]';
   const msrSnapshot = msrPreview?.snapshot;
+  const budgetSnapshot = budgetPreview?.snapshot;
   const occupancyDiagnostics = msrPreview?.occupancyDiagnostics ?? null;
   const msrDataSources = msrPreview?.dataSources ?? null;
   const msrTableDiagnostics = msrPreview?.msrTableDiagnostics ?? null;
+  const budgetSources = budgetPreview?.sources ?? null;
   const occupancyHeaderRow =
     occupancyDiagnostics?.headerRowIndex != null ? occupancyDiagnostics.headerRowIndex + 1 : null;
   const occupancySummarySourceLabel =
@@ -447,6 +497,102 @@ export default function HistoricalDataUploadPage(): JSX.Element {
       setMsrError('Upload failed.');
     } finally {
       setMsrUploading(false);
+    }
+  };
+
+  const handleBudgetParse = async () => {
+    setBudgetError(null);
+    setBudgetStatus(null);
+    setBudgetWarnings([]);
+    setBudgetPreview(null);
+    setBudgetExisting(false);
+    setBudgetFinancialsExisting(false);
+    setBudgetOverwrite(false);
+    setBudgetUpdatedAt(null);
+
+    if (!budgetPropertyId.trim()) {
+      setBudgetError('Property ID is required.');
+      return;
+    }
+    if (!budgetFile) {
+      setBudgetError('Upload a .xlsx file first.');
+      return;
+    }
+
+    setBudgetParsing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', budgetFile);
+      formData.append('propertyId', budgetPropertyId.trim());
+      const response = await fetch('/api/firebase/property-historical/budget-financials/preview', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setBudgetError(data?.message ?? 'Parse failed.');
+        return;
+      }
+      setBudgetPreview(data as BudgetFinancialPreviewResponse);
+      setBudgetWarnings(Array.isArray(data?.warnings) ? data.warnings : []);
+      setBudgetExisting(Boolean(data?.exists));
+      setBudgetFinancialsExisting(Boolean(data?.hasFinancials));
+      setBudgetUpdatedAt(data?.updatedAt ?? null);
+      setBudgetStatus('Parsed budget workbook. Review financial preview before upload.');
+    } catch {
+      setBudgetError('Parse failed.');
+    } finally {
+      setBudgetParsing(false);
+    }
+  };
+
+  const handleBudgetUpload = async () => {
+    setBudgetError(null);
+    setBudgetStatus(null);
+
+    if (!budgetPropertyId.trim()) {
+      setBudgetError('Property ID is required.');
+      return;
+    }
+    if (!budgetPreview?.snapshot) {
+      setBudgetError('Parse the workbook first.');
+      return;
+    }
+    if (budgetExisting && budgetFinancialsExisting && !budgetOverwrite) {
+      setBudgetError('Financials already exist for this month. Enable overwrite to continue.');
+      return;
+    }
+
+    setBudgetUploading(true);
+    try {
+      const response = await fetch('/api/firebase/property-historical/budget-financials/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propertyId: budgetPropertyId.trim(),
+          snapshot: budgetPreview.snapshot,
+          overwrite: budgetOverwrite,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setBudgetError(data?.message ?? 'Upload failed.');
+        return;
+      }
+      setBudgetStatus(
+        data?.created
+          ? 'Financial snapshot created in Firebase.'
+          : data?.overwritten
+            ? 'Financial snapshot overwritten in Firebase.'
+            : 'Financials merged into the existing snapshot.',
+      );
+      setBudgetUpdatedAt(data?.updatedAt ?? null);
+      setBudgetExisting(true);
+      setBudgetFinancialsExisting(true);
+    } catch {
+      setBudgetError('Upload failed.');
+    } finally {
+      setBudgetUploading(false);
     }
   };
 
@@ -932,6 +1078,181 @@ export default function HistoricalDataUploadPage(): JSX.Element {
           <div className="space-y-1 text-[11px]">
             {msrError ? <p className="text-red-500">Error: {msrError}</p> : null}
             {msrStatus ? <p className="text-[color:var(--text-secondary)]">{msrStatus}</p> : null}
+          </div>
+        </section>
+
+        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="green">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">
+                Upload Budget Comparison Spreadsheet (.xlsx)
+              </div>
+              <p className="max-w-2xl text-xs text-[color:var(--text-secondary)]">
+                Parse the budget comparison workbook and preview the monthly Expenses and NOI values before upload.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBudgetParse}
+                className="ios-button px-4 py-2 text-xs"
+                data-variant="secondary"
+                disabled={budgetParsing}
+              >
+                {budgetParsing ? 'Parsing...' : 'Parse & Preview'}
+              </button>
+              <button
+                type="button"
+                onClick={handleBudgetUpload}
+                className="ios-button px-4 py-2 text-xs"
+                disabled={budgetUploading || !budgetPreview}
+              >
+                {budgetUploading ? 'Uploading...' : 'Upload to Firebase'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+              placeholder="propertyId for budget upload"
+              value={budgetPropertyId}
+              onChange={(event) => {
+                setBudgetPropertyId(event.target.value);
+                setBudgetPreview(null);
+                setBudgetWarnings([]);
+                setBudgetExisting(false);
+                setBudgetFinancialsExisting(false);
+                setBudgetOverwrite(false);
+                setBudgetStatus(null);
+                setBudgetUpdatedAt(null);
+              }}
+            />
+            <div className="flex items-center justify-between rounded-2xl border border-dashed border-[color:var(--border-soft)] px-4 py-2 text-xs text-[color:var(--text-secondary)]">
+              <span>Budget snapshot updated</span>
+              <span>{budgetUpdatedAt ?? 'n/a'}</span>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="owner-field-input rounded-2xl px-4 py-2 text-sm file:mr-4 file:rounded-full file:border-0 file:bg-[color:var(--surface-muted)] file:px-3 file:py-1 file:text-xs file:text-[color:var(--text-secondary)]"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setBudgetFile(file);
+                setBudgetPreview(null);
+                setBudgetWarnings([]);
+                setBudgetExisting(false);
+                setBudgetFinancialsExisting(false);
+                setBudgetOverwrite(false);
+                setBudgetUpdatedAt(null);
+                if (!budgetPropertyId.trim()) {
+                  const detectedId = detectPropertyIdFromFile(file);
+                  if (detectedId) {
+                    setBudgetPropertyId(detectedId);
+                    setBudgetStatus(`Detected propertyId ${detectedId} from file name.`);
+                  }
+                }
+              }}
+            />
+            <div className="flex items-center justify-between rounded-2xl border border-dashed border-[color:var(--border-soft)] px-4 py-2 text-xs text-[color:var(--text-secondary)]">
+              <span>Selected file</span>
+              <span>{budgetFile?.name ?? 'n/a'}</span>
+            </div>
+          </div>
+
+          {budgetExisting && budgetFinancialsExisting ? (
+            <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={budgetOverwrite}
+                onChange={(event) => setBudgetOverwrite(event.target.checked)}
+              />
+              Overwrite existing financials for {budgetSnapshot?.reportMonthIso ?? 'this month'}
+            </label>
+          ) : null}
+
+          {budgetPreview ? (
+            <div className="ios-list-card space-y-4 p-4 text-xs">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1 text-[color:var(--text-secondary)]">
+                  <div className="text-[color:var(--text-primary)]">Snapshot metadata</div>
+                  <div>Property: {formatPreviewValue(budgetSnapshot?.propertyName)}</div>
+                  <div>Report month: {formatPreviewValue(budgetSnapshot?.reportMonthIso)}</div>
+                  <div>Source sheet: {formatPreviewValue(budgetPreview.sourceSheet)}</div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[color:var(--text-primary)]">Upload target</div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="ios-badge text-[10px]" data-tone={budgetExisting ? 'blue' : 'neutral'}>
+                      Month exists: {budgetExisting ? 'Yes' : 'No'}
+                    </span>
+                    <span
+                      className="ios-badge text-[10px]"
+                      data-tone={budgetFinancialsExisting ? 'amber' : 'green'}
+                    >
+                      Existing financials: {budgetFinancialsExisting ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="ios-list-card space-y-2 p-4 text-[color:var(--text-secondary)]">
+                  <div className="text-[color:var(--text-primary)]">Expenses</div>
+                  <div>
+                    Value:{' '}
+                    {formatPreviewValue(
+                      budgetSnapshot?.financials?.totalOperatingExpenseMtd ?? budgetSnapshot?.financials?.expensesMtd,
+                      'currency',
+                    )}
+                  </div>
+                  <div>Token: {formatPreviewValue(budgetSources?.expenses?.token)}</div>
+                  <div>Source: {formatPreviewValue(budgetSources?.expenses?.sheet)}</div>
+                  <div>Cell: {formatPreviewValue(budgetSources?.expenses?.cell)}</div>
+                </div>
+                <div className="ios-list-card space-y-2 p-4 text-[color:var(--text-secondary)]">
+                  <div className="text-[color:var(--text-primary)]">NOI</div>
+                  <div>
+                    Value:{' '}
+                    {formatPreviewValue(
+                      budgetSnapshot?.financials?.netOperatingIncomeMtd ?? budgetSnapshot?.financials?.noiMtd,
+                      'currency',
+                    )}
+                  </div>
+                  <div>Token: {formatPreviewValue(budgetSources?.noi?.token)}</div>
+                  <div>Source: {formatPreviewValue(budgetSources?.noi?.sheet)}</div>
+                  <div>Cell: {formatPreviewValue(budgetSources?.noi?.cell)}</div>
+                  <div>Fallback: {budgetSources?.noi?.fallback ? 'Using NET INCOME' : 'Direct NOI row'}</div>
+                </div>
+              </div>
+
+              <div className="text-[color:var(--text-secondary)]">
+                {budgetExisting
+                  ? budgetFinancialsExisting
+                    ? 'Upload will replace the existing financials for this month if overwrite is enabled.'
+                    : 'Upload will merge these financials into the existing month snapshot.'
+                  : 'Upload will create a new financials-only snapshot for this month.'}
+              </div>
+            </div>
+          ) : null}
+
+          {budgetWarnings.length ? (
+            <div className="ios-list-card space-y-1 p-4 text-xs">
+              <div className="text-[color:var(--text-primary)]">Warnings</div>
+              {budgetWarnings.map((warning) => (
+                <div key={warning} className="text-[color:var(--text-secondary)]">
+                  - {warning}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="space-y-1 text-[11px]">
+            {budgetError ? <p className="text-red-500">Error: {budgetError}</p> : null}
+            {budgetStatus ? <p className="text-[color:var(--text-secondary)]">{budgetStatus}</p> : null}
           </div>
         </section>
 

@@ -49,6 +49,13 @@ const normalizeSnapshotMonth = (value: unknown): string | null => {
   return null;
 };
 
+const hasFinancialSnapshotData = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value as Record<string, unknown>).some(
+    (entry) => typeof entry === 'number' && Number.isFinite(entry),
+  );
+};
+
 const hasRangeSeries = (rangeData: unknown): boolean => {
   if (!rangeData || typeof rangeData !== 'object') return false;
   const series = (rangeData as { series?: Record<string, unknown> }).series;
@@ -204,6 +211,39 @@ export async function getPropertyMsrSnapshotStatus(
   };
 }
 
+export async function getPropertyBudgetFinancialStatus(
+  propertyId: string,
+  monthIso: string,
+): Promise<{ exists: boolean; hasFinancials: boolean; updatedAt: string | null }> {
+  if (!firestore) {
+    return { exists: false, hasFinancials: false, updatedAt: null };
+  }
+  const normalizedId = propertyId.trim();
+  if (!normalizedId) {
+    return { exists: false, hasFinancials: false, updatedAt: null };
+  }
+  const normalizedMonth = normalizeSnapshotMonth(monthIso);
+  if (!normalizedMonth) {
+    return { exists: false, hasFinancials: false, updatedAt: null };
+  }
+  const snapshot = await firestore.collection(COLLECTION).doc(normalizedId).get();
+  if (!snapshot.exists) {
+    return { exists: false, hasFinancials: false, updatedAt: null };
+  }
+  const doc = snapshot.data() as { snapshots?: unknown[]; updated_at?: unknown };
+  const snapshots = Array.isArray(doc.snapshots) ? doc.snapshots : [];
+  const match = snapshots.find((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const reportMonth = normalizeSnapshotMonth((entry as { reportMonthIso?: unknown }).reportMonthIso);
+    return reportMonth === normalizedMonth;
+  }) as { financials?: unknown } | undefined;
+  return {
+    exists: Boolean(match),
+    hasFinancials: hasFinancialSnapshotData(match?.financials),
+    updatedAt: toIsoString(doc.updated_at),
+  };
+}
+
 export async function saveMsrSnapshotToFirebase(
   propertyId: string,
   snapshot: MsrSnapshotPayload,
@@ -270,5 +310,94 @@ export async function saveMsrSnapshotToFirebase(
   const updatedAt = toIsoString(updatedSnap.data()?.updated_at) ?? new Date().toISOString();
 
   return { updatedAt, overwritten };
+}
+
+export async function saveBudgetFinancialSnapshotToFirebase(
+  propertyId: string,
+  snapshot: MsrSnapshotPayload,
+  options?: { overwrite?: boolean },
+): Promise<{ updatedAt: string | null; overwritten: boolean; created: boolean; merged: boolean }> {
+  if (!firestore) {
+    throw new Error('Firebase is not configured.');
+  }
+  const normalizedId = propertyId.trim();
+  if (!normalizedId) {
+    throw new Error('Property ID is required.');
+  }
+  const reportMonthIso = normalizeSnapshotMonth(snapshot.reportMonthIso);
+  if (!reportMonthIso) {
+    throw new Error('Snapshot reportMonthIso is required.');
+  }
+  if (!hasFinancialSnapshotData(snapshot.financials)) {
+    throw new Error('Snapshot financials are required.');
+  }
+
+  const docRef = firestore.collection(COLLECTION).doc(normalizedId);
+  const existingSnap = await docRef.get();
+  const docData = existingSnap.data() as { snapshots?: unknown[] } | undefined;
+  const snapshots = Array.isArray(docData?.snapshots) ? [...docData.snapshots] : [];
+  const existingIndex = snapshots.findIndex((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const entryMonth = normalizeSnapshotMonth((entry as { reportMonthIso?: unknown }).reportMonthIso);
+    return entryMonth === reportMonthIso;
+  });
+
+  let overwritten = false;
+  let created = false;
+  let merged = false;
+
+  if (existingIndex >= 0) {
+    const existingEntry = snapshots[existingIndex] as Record<string, unknown>;
+    const existingHasFinancials = hasFinancialSnapshotData(existingEntry.financials);
+    if (existingHasFinancials && !options?.overwrite) {
+      throw new Error('Financial snapshot already exists for this month.');
+    }
+    const mergedSnapshotInput: Record<string, unknown> = {
+      ...existingEntry,
+      propertyId: normalizedId,
+      reportMonthIso,
+      monthIso: snapshot.monthIso ?? reportMonthIso,
+      financials: snapshot.financials,
+    };
+    if (snapshot.propertyName !== undefined) {
+      mergedSnapshotInput.propertyName = snapshot.propertyName;
+    }
+    const mergedSnapshot = sanitizeSnapshotValue(mergedSnapshotInput) as MsrSnapshotPayload;
+    snapshots.splice(existingIndex, 1, mergedSnapshot);
+    overwritten = existingHasFinancials;
+    merged = !existingHasFinancials;
+  } else {
+    const sanitizedSnapshot = sanitizeSnapshotValue({
+      ...snapshot,
+      propertyId: normalizedId,
+      reportMonthIso,
+      monthIso: snapshot.monthIso ?? reportMonthIso,
+      financials: snapshot.financials,
+    }) as MsrSnapshotPayload;
+    snapshots.push(sanitizedSnapshot);
+    created = true;
+  }
+
+  snapshots.sort((a, b) => {
+    const aMonth = normalizeSnapshotMonth((a as { reportMonthIso?: unknown }).reportMonthIso) ?? '';
+    const bMonth = normalizeSnapshotMonth((b as { reportMonthIso?: unknown }).reportMonthIso) ?? '';
+    return aMonth.localeCompare(bMonth);
+  });
+
+  await docRef.set(
+    {
+      id: normalizedId,
+      property_id: normalizedId,
+      snapshots,
+      financials_updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  const updatedSnap = await docRef.get();
+  const updatedAt = toIsoString(updatedSnap.data()?.updated_at) ?? new Date().toISOString();
+
+  return { updatedAt, overwritten, created, merged };
 }
 

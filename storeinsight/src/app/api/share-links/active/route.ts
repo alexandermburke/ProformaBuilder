@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { getOverviewWidgetsOrDefault, type OverviewWidgetKey } from '@/lib/overviewWidgets';
 import { firestore } from '@/server/firebaseAdmin';
 
 export const runtime = 'nodejs';
@@ -15,6 +16,7 @@ type ShareLinkRecord = {
   createdAt: string | null;
   lastUsedAt: string | null;
   useCount: number;
+  overviewWidgets: OverviewWidgetKey[];
 };
 
 const toIsoString = (value: unknown): string | null => {
@@ -48,6 +50,7 @@ const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord
   createdAt: toIsoString(data.created_at),
   lastUsedAt: toIsoString(data.last_used_at),
   useCount: Number(data.use_count ?? 0),
+  overviewWidgets: getOverviewWidgetsOrDefault(data.overview_widgets),
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

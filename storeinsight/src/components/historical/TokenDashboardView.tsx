@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import { ChartCard } from './ChartCard';
 import { KpiRow } from './KpiRow';
@@ -16,6 +16,11 @@ import { SimpleTable } from './SimpleTable';
 import { useTheme } from '@/components/ThemeProvider';
 import { buildLinePath, formatShortMonth, getChartPoints } from '@/lib/historical/chartUtils';
 import { formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
+import {
+  OVERVIEW_WIDGET_OPTIONS,
+  getOverviewWidgetsOrDefault,
+  type OverviewWidgetKey,
+} from '@/lib/overviewWidgets';
 
 export type MsrSnapshot = {
   monthIso?: string;
@@ -143,13 +148,13 @@ type TokenDashboardViewProps = {
   propertyId?: string;
   propertyName: string;
   snapshots: MsrSnapshot[];
+  shareToken?: string;
+  initialOverviewWidgets?: OverviewWidgetKey[];
 };
 
 type RangeKey = '3M' | '6M';
 
 type SectionKey = 'overview' | 'collections' | 'pricing' | 'drilldowns' | 'accounting';
-
-type OverviewWidgetKey = 'occupancy' | 'netRevenue' | 'expenses' | 'noi';
 
 type SnapshotEntry = {
   snapshot: MsrSnapshot;
@@ -184,16 +189,8 @@ const SECTION_MOBILE_LABELS: Record<SectionKey, string> = {
   accounting: 'Finance',
 };
 
-const OVERVIEW_WIDGET_OPTIONS: Array<{ id: OverviewWidgetKey; label: string }> = [
-  { id: 'occupancy', label: 'Occupancy' },
-  { id: 'netRevenue', label: 'Net Revenue' },
-  { id: 'expenses', label: 'Expenses' },
-  { id: 'noi', label: 'NOI' },
-];
-
 const UNIT_MIX_COLORS = ['#3B82F6', '#22D3EE', '#F97316', '#A78BFA', '#F472B6', '#FACC15'];
 const SECTION_STORAGE_KEY = 'token-dashboard:section';
-const OVERVIEW_WIDGETS_STORAGE_KEY = 'token-dashboard:overview-widgets';
 
 const CHART_WIDTH = 620;
 const CHART_HEIGHT = 240;
@@ -530,17 +527,33 @@ const isPittmanProperty = (propertyId?: string): boolean => {
   return key === "PITTMAN" || key === "PROP_PITTMAN";
 };
 
-export function TokenDashboardView({ propertyId, propertyName, snapshots }: TokenDashboardViewProps): JSX.Element {
+export function TokenDashboardView({
+  propertyId,
+  propertyName,
+  snapshots,
+  shareToken,
+  initialOverviewWidgets,
+}: TokenDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const hasLimitedRange = isPittmanProperty(propertyId);
+  const initialWidgets = useMemo(
+    () => getOverviewWidgetsOrDefault(initialOverviewWidgets),
+    [initialOverviewWidgets],
+  );
   const [range, setRange] = useState<RangeKey>(hasLimitedRange ? '3M' : '6M');
   const [section, setSection] = useState<SectionKey>('overview');
-  const [overviewWidgets, setOverviewWidgets] = useState<OverviewWidgetKey[]>(
-    OVERVIEW_WIDGET_OPTIONS.map((option) => option.id),
-  );
+  const [overviewWidgets, setOverviewWidgets] = useState<OverviewWidgetKey[]>(initialWidgets);
+  const [overviewDraftWidgets, setOverviewDraftWidgets] = useState<OverviewWidgetKey[]>(initialWidgets);
+  const [isOverviewModalOpen, setIsOverviewModalOpen] = useState(false);
+  const [overviewSaveError, setOverviewSaveError] = useState<string | null>(null);
+  const [overviewSaveStatus, setOverviewSaveStatus] = useState<string | null>(null);
+  const [overviewSaving, setOverviewSaving] = useState(false);
   const hideHeaderDetailsOnMobile = section !== 'overview';
   const currentYear = new Date().getFullYear();
+  const overviewCustomizeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const overviewModalRef = useRef<HTMLDivElement | null>(null);
+  const overviewModalWasOpen = useRef(false);
 
   const normalizedSnapshots = useMemo<SnapshotEntry[]>(
     () =>
@@ -601,6 +614,8 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   const grossPotentialRentValue = latestSnapshot?.revenue?.grossPotentialRevenue;
   const formatCurrencyPoint = (value: number) => formatCompactCurrency(value);
   const formatPercentPoint = (value: number) => formatPercent(value, 1);
+  const formatNumberPoint = (value: number) => formatNumber(value);
+  const formatSignedPoint = (value: number) => formatSignedNumber(value);
 
   const coreTrendRows = useMemo(
     () =>
@@ -674,6 +689,120 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
     noiCoreSeries.map((point) => point.value),
     seriesEntries.length,
   );
+  const totalPastDueSeries = buildSeries(seriesEntries, (snapshot) => snapshot.ar?.totalPastDue);
+  const totalPastDueEmpty = getSeriesEmptyMessage(
+    totalPastDueSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const rateVarianceSeries = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          const raw =
+            entry.snapshot.revenue?.occupiedRateVariancePct ?? entry.snapshot.pricing?.occupiedRateVariancePct ?? null;
+          const pct01 = toPct01(raw);
+          return {
+            monthIso: entry.monthIso,
+            value: isFiniteNumber(pct01) ? pct01 * 100 : null,
+          };
+        })
+        .filter((entry): entry is SeriesPoint => Boolean(entry.monthIso) && isFiniteNumber(entry.value)),
+    [seriesEntries],
+  );
+  const rateVarianceEmpty = getSeriesEmptyMessage(
+    rateVarianceSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const conversionSeries = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          const channelData = entry.snapshot.leads?.byChannelMtd ?? {};
+          const channelValues = [channelData.web, channelData.phone, channelData.walkIn, channelData.other].filter(
+            isFiniteNumber,
+          ) as number[];
+          const totalLeads = isFiniteNumber(entry.snapshot.leads?.totalMtd)
+            ? entry.snapshot.leads?.totalMtd
+            : channelValues.length
+              ? channelValues.reduce((sum, value) => sum + value, 0)
+              : null;
+          const moveIns = entry.snapshot.rentals?.moveInsMtd;
+          if (!entry.monthIso || !isFiniteNumber(totalLeads) || !isFiniteNumber(moveIns) || totalLeads <= 0) {
+            return null;
+          }
+          return { monthIso: entry.monthIso, value: (moveIns / totalLeads) * 100 };
+        })
+        .filter((entry): entry is SeriesPoint => Boolean(entry?.monthIso) && isFiniteNumber(entry?.value)),
+    [seriesEntries],
+  );
+  const conversionEmpty = getSeriesEmptyMessage(
+    conversionSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const leadsSeries = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          const channelData = entry.snapshot.leads?.byChannelMtd ?? {};
+          const channelValues = [channelData.web, channelData.phone, channelData.walkIn, channelData.other].filter(
+            isFiniteNumber,
+          ) as number[];
+          const totalLeads = isFiniteNumber(entry.snapshot.leads?.totalMtd)
+            ? entry.snapshot.leads?.totalMtd
+            : channelValues.length
+              ? channelValues.reduce((sum, value) => sum + value, 0)
+              : null;
+          return entry.monthIso && isFiniteNumber(totalLeads)
+            ? { monthIso: entry.monthIso, value: totalLeads }
+            : null;
+        })
+        .filter((entry): entry is SeriesPoint => Boolean(entry?.monthIso) && isFiniteNumber(entry?.value)),
+    [seriesEntries],
+  );
+  const leadsEmpty = getSeriesEmptyMessage(leadsSeries.map((point) => point.value), seriesEntries.length);
+  const promosDiscountsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
+  const promosDiscountsEmpty = getSeriesEmptyMessage(
+    promosDiscountsSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const autopaySeries = buildSeries(seriesEntries, (snapshot) => snapshot.autopay?.autopayPct);
+  const autopayEmpty = getSeriesEmptyMessage(autopaySeries.map((point) => point.value), seriesEntries.length);
+  const tppEnrollmentSeries = buildSeries(seriesEntries, (snapshot) =>
+    isFiniteNumber(snapshot.coverage?.enrolledPct) ? snapshot.coverage?.enrolledPct : snapshot.coverage?.enrolledCount,
+  );
+  const tppEnrollmentUsesPct = seriesEntries.some((entry) => isFiniteNumber(entry.snapshot.coverage?.enrolledPct));
+  const tppEnrollmentEmpty = getSeriesEmptyMessage(
+    tppEnrollmentSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const moveInsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd);
+  const moveInsEmpty = getSeriesEmptyMessage(moveInsSeries.map((point) => point.value), seriesEntries.length);
+  const moveOutsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd);
+  const moveOutsEmpty = getSeriesEmptyMessage(moveOutsSeries.map((point) => point.value), seriesEntries.length);
+  const netRentalsSeries = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          const rentals = entry.snapshot.rentals;
+          const netValue =
+            isFiniteNumber(rentals?.netMtd)
+              ? rentals.netMtd
+              : isFiniteNumber(rentals?.moveInsMtd) && isFiniteNumber(rentals?.moveOutsMtd)
+                ? Number(rentals.moveInsMtd ?? 0) - Number(rentals.moveOutsMtd ?? 0)
+                : null;
+          return entry.monthIso && isFiniteNumber(netValue)
+            ? { monthIso: entry.monthIso, value: netValue }
+            : null;
+        })
+        .filter((entry): entry is SeriesPoint => Boolean(entry?.monthIso) && isFiniteNumber(entry?.value)),
+    [seriesEntries],
+  );
+  const netRentalsEmpty = getSeriesEmptyMessage(
+    netRentalsSeries.map((point) => point.value),
+    seriesEntries.length,
+  );
+  const staleRentSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.noRentChange12MoCount);
+  const staleRentEmpty = getSeriesEmptyMessage(staleRentSeries.map((point) => point.value), seriesEntries.length);
 
   const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
   const occupancyValues = useMemo(() => occupancySeries.map((point) => point.value), [occupancySeries]);
@@ -716,37 +845,462 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
   }, [section]);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(OVERVIEW_WIDGETS_STORAGE_KEY);
-      if (!stored) return;
-      const parsed = JSON.parse(stored);
-      if (!Array.isArray(parsed)) return;
-      const allowed = new Set(OVERVIEW_WIDGET_OPTIONS.map((option) => option.id));
-      const next = parsed.filter((value): value is OverviewWidgetKey => allowed.has(value as OverviewWidgetKey));
-      if (next.length) setOverviewWidgets(next);
-    } catch {
-      // ignore local storage errors
-    }
-  }, []);
+    setOverviewWidgets(initialWidgets);
+    setOverviewDraftWidgets(initialWidgets);
+  }, [initialWidgets]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(OVERVIEW_WIDGETS_STORAGE_KEY, JSON.stringify(overviewWidgets));
-    } catch {
-      // ignore local storage errors
-    }
-  }, [overviewWidgets]);
-
-  const isOverviewVisible = (key: OverviewWidgetKey): boolean => overviewWidgets.includes(key);
-
-  const toggleOverviewWidget = (key: OverviewWidgetKey): void => {
-    setOverviewWidgets((current) => {
+  const toggleOverviewDraftWidget = (key: OverviewWidgetKey): void => {
+    setOverviewDraftWidgets((current) => {
       if (current.includes(key)) {
-        if (current.length <= 1) return current;
         return current.filter((value) => value !== key);
       }
       return [...current, key];
     });
+  };
+
+  const moveOverviewDraftWidget = useCallback((key: OverviewWidgetKey, direction: -1 | 1): void => {
+    setOverviewDraftWidgets((current) => {
+      const index = current.indexOf(key);
+      if (index < 0) return current;
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      const [item] = next.splice(index, 1);
+      next.splice(nextIndex, 0, item);
+      return next;
+    });
+  }, []);
+
+  const openOverviewModal = useCallback((): void => {
+    setOverviewDraftWidgets(overviewWidgets);
+    setOverviewSaveError(null);
+    setOverviewSaveStatus(null);
+    setIsOverviewModalOpen(true);
+  }, [overviewWidgets]);
+
+  const closeOverviewModal = useCallback((): void => {
+    if (overviewSaving) return;
+    setOverviewDraftWidgets(overviewWidgets);
+    setOverviewSaveError(null);
+    setIsOverviewModalOpen(false);
+  }, [overviewSaving, overviewWidgets]);
+
+  useEffect(() => {
+    if (!isOverviewModalOpen) return;
+    overviewModalWasOpen.current = true;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeOverviewModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const modalNode = overviewModalRef.current;
+      if (!modalNode) return;
+      const focusable = Array.from(
+        modalNode.querySelectorAll<HTMLElement>(
+          'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((node) => !node.hasAttribute('disabled'));
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey) {
+        if (active === first || !modalNode.contains(active)) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    const frame = requestAnimationFrame(() => {
+      const autoFocusTarget =
+        overviewModalRef.current?.querySelector<HTMLElement>('[data-autofocus]') ??
+        overviewModalRef.current?.querySelector<HTMLElement>(
+          'input, button, textarea, select, [tabindex]:not([tabindex="-1"])',
+        );
+      autoFocusTarget?.focus();
+    });
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      cancelAnimationFrame(frame);
+    };
+  }, [closeOverviewModal, isOverviewModalOpen]);
+
+  useEffect(() => {
+    if (!isOverviewModalOpen && overviewModalWasOpen.current) {
+      overviewModalWasOpen.current = false;
+      requestAnimationFrame(() => {
+        overviewCustomizeButtonRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, [isOverviewModalOpen]);
+
+  const handleSaveOverviewWidgets = async (): Promise<void> => {
+    if (!overviewDraftWidgets.length) {
+      setOverviewSaveError('Select at least one graph.');
+      return;
+    }
+
+    if (!shareToken) {
+      setOverviewWidgets(overviewDraftWidgets);
+      setOverviewSaveStatus('Graph preferences updated.');
+      setIsOverviewModalOpen(false);
+      return;
+    }
+
+    setOverviewSaving(true);
+    setOverviewSaveError(null);
+    setOverviewSaveStatus(null);
+
+    try {
+      const res = await fetch('/api/share-links/overview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: shareToken, overviewWidgets: overviewDraftWidgets }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; message?: string; overviewWidgets?: OverviewWidgetKey[] }
+        | null;
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message || 'Unable to save graph preferences.');
+      }
+
+      const nextWidgets = getOverviewWidgetsOrDefault(json.overviewWidgets);
+      setOverviewWidgets(nextWidgets);
+      setOverviewDraftWidgets(nextWidgets);
+      setOverviewSaveStatus('Graph preferences saved.');
+      setIsOverviewModalOpen(false);
+    } catch (error) {
+      setOverviewSaveError(error instanceof Error ? error.message : 'Unable to save graph preferences.');
+    } finally {
+      setOverviewSaving(false);
+    }
+  };
+
+  const overviewWidgetOptionMap = useMemo(
+    () => new Map<OverviewWidgetKey, (typeof OVERVIEW_WIDGET_OPTIONS)[number]>(OVERVIEW_WIDGET_OPTIONS.map((option) => [option.id, option])),
+    [],
+  );
+
+  const visibleOverviewWidgets = useMemo(
+    () =>
+      overviewWidgets
+        .map((widget) => overviewWidgetOptionMap.get(widget) ?? null)
+        .filter((option): option is (typeof OVERVIEW_WIDGET_OPTIONS)[number] => Boolean(option)),
+    [overviewWidgetOptionMap, overviewWidgets],
+  );
+
+  const orderedOverviewWidgetOptions = useMemo(() => {
+    const selected = overviewDraftWidgets
+      .map((widget) => overviewWidgetOptionMap.get(widget) ?? null)
+      .filter((option): option is (typeof OVERVIEW_WIDGET_OPTIONS)[number] => Boolean(option));
+    const selectedIds = new Set(selected.map((option) => option.id));
+    const unselected = OVERVIEW_WIDGET_OPTIONS.filter((option) => !selectedIds.has(option.id));
+    return [...selected, ...unselected];
+  }, [overviewDraftWidgets, overviewWidgetOptionMap]);
+
+  const renderOverviewWidgetCard = (widget: OverviewWidgetKey): JSX.Element | null => {
+    switch (widget) {
+      case 'occupancy':
+        return (
+          <ChartCard
+            key={`overview-occupancy-core-${range}`}
+            title="Occupancy (RSF)"
+            subtitle="Monthly trend"
+            info="RSF occupancy percent parsed from the Occupancy tab; falls back to the MSR Space Occupancy block when present."
+            emptyMessage={occupancyCoreEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={occupancyCoreSeries}
+              color="rgba(37,99,235,0.9)"
+              label="Occupancy (RSF)"
+              formatValue={formatPercentPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'netRevenue':
+        return (
+          <ChartCard
+            key={`overview-net-revenue-core-${range}`}
+            title="Net Revenue"
+            subtitle="Monthly trend"
+            info="Parsed from the MSR 'Net Revenue' block (month-to-date) and stored per snapshot."
+            emptyMessage={netRevenueCoreEmpty}
+          >
+            <div className="text-xs text-[color:var(--text-muted)]">
+              Current month is in progress; revenue will continue to increase throughout the month.
+            </div>
+            <MemoLineChartWithMonths
+              series={netRevenueCoreSeries}
+              color="rgba(14,165,233,0.9)"
+              label="Net revenue (MTD)"
+              formatValue={formatCurrencyPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'expenses':
+        return (
+          <ChartCard
+            key={`overview-expenses-core-${range}`}
+            title="Expenses"
+            subtitle="Monthly Data Only"
+            info="Expense totals are not present in the MSR; this uses stored snapshot financials when available."
+            emptyMessage={expensesCoreEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={expensesCoreSeries}
+              color="rgba(248,113,113,0.86)"
+              label="Operating expenses"
+              formatValue={formatCurrencyPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'noi':
+        return (
+          <ChartCard
+            key={`overview-noi-core-${range}`}
+            title="NOI"
+            subtitle="Monthly Data Only"
+            info="NOI is sourced from stored snapshot financials when available; otherwise derived as Net Revenue minus Expenses."
+            emptyMessage={noiCoreEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={noiCoreSeries}
+              color="rgba(16,185,129,0.9)"
+              label="Net operating income"
+              formatValue={formatCurrencyPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'pastDue':
+        return (
+          <ChartCard
+            key={`overview-past-due-${range}`}
+            title="Total Past Due"
+            subtitle="Monthly trend"
+            info="Total AR past due trend from the delinquency snapshots."
+            emptyMessage={totalPastDueEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={totalPastDueSeries}
+              color="rgba(248,113,113,0.88)"
+              label="Total past due"
+              formatValue={formatCurrencyPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'rateVariance':
+        return (
+          <ChartCard
+            key={`overview-rate-variance-${range}`}
+            title="Occupied Rate Variance"
+            subtitle="Monthly trend"
+            info="Occupied rate variance from pricing/revenue snapshot fields."
+            emptyMessage={rateVarianceEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={rateVarianceSeries}
+              color="rgba(129,140,248,0.9)"
+              label="Occupied rate variance"
+              formatValue={formatPercentPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'conversionRate':
+        return (
+          <ChartCard
+            key={`overview-conversion-rate-${range}`}
+            title="Conversion Rate"
+            subtitle="Move-ins vs leads"
+            info="Computed from move-ins and total leads for each snapshot."
+            emptyMessage={conversionEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={conversionSeries}
+              color="rgba(37,99,235,0.9)"
+              label="Conversion rate"
+              formatValue={formatPercentPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'leads':
+        return (
+          <ChartCard
+            key={`overview-leads-${range}`}
+            title="Leads"
+            subtitle="Monthly trend"
+            info="Total lead volume from the MSR lead snapshot values."
+            emptyMessage={leadsEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={leadsSeries}
+              color="rgba(14,165,233,0.9)"
+              label="Leads"
+              formatValue={formatNumberPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'promosDiscounts':
+        return (
+          <ChartCard
+            key={`overview-promos-discounts-${range}`}
+            title="Promos and Discounts"
+            subtitle="Monthly trend"
+            info="Discounts and promotions trend from the MSR concessions data."
+            emptyMessage={promosDiscountsEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={promosDiscountsSeries}
+              color="rgba(245,158,11,0.88)"
+              label="Promos + discounts"
+              formatValue={formatCurrencyPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'autopay':
+        return (
+          <ChartCard
+            key={`overview-autopay-${range}`}
+            title="Autopay Adoption"
+            subtitle="Monthly trend"
+            info="Autopay participation trend from the MSR Autopay Enrolled sheet."
+            emptyMessage={autopayEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={autopaySeries}
+              color="rgba(37,99,235,0.88)"
+              label="Autopay adoption"
+              formatValue={formatPercentPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'tppEnrollment':
+        return (
+          <ChartCard
+            key={`overview-tpp-enrollment-${range}`}
+            title="TPP Enrollment"
+            subtitle="Monthly trend"
+            info="Coverage/TPP enrollment trend from the MSR coverage section."
+            emptyMessage={tppEnrollmentEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={tppEnrollmentSeries}
+              color="rgba(14,165,233,0.88)"
+              label="TPP enrollment"
+              formatValue={tppEnrollmentUsesPct ? formatPercentPoint : formatNumberPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'moveIns':
+        return (
+          <ChartCard
+            key={`overview-move-ins-${range}`}
+            title="Move-ins"
+            subtitle="Monthly trend"
+            emptyMessage={moveInsEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={moveInsSeries}
+              color="rgba(37,99,235,0.88)"
+              label="Move-ins"
+              formatValue={formatNumberPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'moveOuts':
+        return (
+          <ChartCard
+            key={`overview-move-outs-${range}`}
+            title="Move-outs"
+            subtitle="Monthly trend"
+            emptyMessage={moveOutsEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={moveOutsSeries}
+              color="rgba(248,113,113,0.84)"
+              label="Move-outs"
+              formatValue={formatNumberPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'netRentals':
+        return (
+          <ChartCard
+            key={`overview-net-rentals-${range}`}
+            title="Net Rentals"
+            subtitle="Monthly trend"
+            emptyMessage={netRentalsEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={netRentalsSeries}
+              color="rgba(16,185,129,0.9)"
+              label="Net rentals"
+              formatValue={formatSignedPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      case 'staleRent':
+        return (
+          <ChartCard
+            key={`overview-stale-rent-${range}`}
+            title="No Rent Change (12 Months)"
+            subtitle="Monthly trend"
+            info="Count of occupied units with no rent change in the last 12 months."
+            emptyMessage={staleRentEmpty}
+          >
+            <MemoLineChartWithMonths
+              series={staleRentSeries}
+              color="rgba(129,140,248,0.9)"
+              label="No rent change count"
+              formatValue={formatNumberPoint}
+              labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
+              emphasizeTrend
+            />
+          </ChartCard>
+        );
+      default:
+        return null;
+    }
   };
 
 
@@ -845,21 +1399,21 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                Proj. Rent
-              </div>
-              <div className="text-xl font-semibold text-[color:var(--text-primary)]">
-                {formatMaybeCurrency(projRentValue)}
-              </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy </div>
-            </div>
-            <div className="ios-list-card space-y-1 p-4">
-              <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
                 MTD Net Move-ins
               </div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatSignedNumber(netMoveInsValue)}
               </div>
               <div className="text-xs text-[color:var(--text-secondary)]">Move-ins minus move-outs </div>
+            </div>
+            <div className="ios-list-card space-y-1 p-4">
+              <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                Proj. Rent
+              </div>
+              <div className="text-xl font-semibold text-[color:var(--text-primary)]">
+                {formatMaybeCurrency(projRentValue)}
+              </div>
+              <div className="text-xs text-[color:var(--text-secondary)]">Economic occupancy </div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Gross Potential Rent</div>
@@ -945,116 +1499,31 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
               <section className="space-y-4">
                 <SectionHeader
                   title="Core Financial Trends"
-                  subtitle={`Historical snapshots for occupancy, expenses, net revenue, and NOI (${range}).`}
+                  subtitle={`Historical snapshots for the selected owner-view graphs (${range}).`}
+                  actions={
+                    <button
+                      ref={overviewCustomizeButtonRef}
+                      type="button"
+                      onClick={openOverviewModal}
+                      className="ios-button px-3 py-1.5 text-[11px] font-semibold"
+                      data-variant="secondary"
+                    >
+                      Customize graphs
+                    </button>
+                  }
                 />
 
-                <div className="ios-list-card flex flex-wrap items-center gap-2 px-3 py-2 text-[11px]">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--text-muted)]">
-                    Visible graphs
-                  </span>
-                  {OVERVIEW_WIDGET_OPTIONS.map((option) => {
-                    const active = isOverviewVisible(option.id);
-                    return (
-                      <button
-                        key={`overview-graph-${option.id}`}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => toggleOverviewWidget(option.id)}
-                        className={[
-                          'rounded-full border px-2.5 py-1 transition-colors',
-                          active
-                            ? 'border-[color:var(--accent-soft)] bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)]'
-                            : 'border-[color:var(--border-soft)] text-[color:var(--text-secondary)]',
-                        ].join(' ')}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
                 <div className="grid gap-4 md:grid-cols-2">
-                  {isOverviewVisible('occupancy') ? (
-                    <ChartCard
-                      key={`overview-occupancy-core-${range}`}
-                      title="Occupancy (RSF)"
-                      subtitle="Monthly trend"
-                      info="RSF occupancy percent parsed from the Occupancy tab; falls back to the MSR Space Occupancy block when present."
-                      emptyMessage={occupancyCoreEmpty}
-                    >
-                      <MemoLineChartWithMonths
-                        series={occupancyCoreSeries}
-                        color="rgba(37,99,235,0.9)"
-                        label="Occupancy (RSF)"
-                        formatValue={formatPercentPoint}
-                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                        emphasizeTrend
-                      />
-                    </ChartCard>
-                  ) : null}
-                  {isOverviewVisible('netRevenue') ? (
-                    <ChartCard
-                      key={`overview-net-revenue-core-${range}`}
-                      title="Net Revenue"
-                      subtitle="Monthly trend"
-                      info="Parsed from the MSR 'Net Revenue' block (month-to-date) and stored per snapshot."
-                      emptyMessage={netRevenueCoreEmpty}
-                    >
-                      <div className="text-xs text-[color:var(--text-muted)]">
-                        Current month is in progress; revenue will continue to increase throughout the month.
-                      </div>
-                      <MemoLineChartWithMonths
-                        series={netRevenueCoreSeries}
-                        color="rgba(14,165,233,0.9)"
-                        label="Net revenue (MTD)"
-                        formatValue={formatCurrencyPoint}
-                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                        emphasizeTrend
-                      />
-                    </ChartCard>
-                  ) : null}
-
-                  {isOverviewVisible('expenses') ? (
-                    <ChartCard
-                      key={`overview-expenses-core-${range}`}
-                      title="Expenses"
-                      subtitle="Historical Data Only"
-                      info="Expense totals are not present in the MSR; this uses stored snapshot financials when available."
-                      emptyMessage={expensesCoreEmpty}
-                    >
-                      <MemoLineChartWithMonths
-                        series={expensesCoreSeries}
-                        color="rgba(248,113,113,0.86)"
-                        label="Operating expenses"
-                        formatValue={formatCurrencyPoint}
-                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                        emphasizeTrend
-                      />
-                    </ChartCard>
-                  ) : null}
-
-                  {isOverviewVisible('noi') ? (
-                    <ChartCard
-                      key={`overview-noi-core-${range}`}
-                      title="NOI"
-                      subtitle="Historical Data Only"
-                      info="NOI is sourced from stored snapshot financials when available; otherwise derived as Net Revenue minus Expenses."
-                      emptyMessage={noiCoreEmpty}
-                    >
-                      <MemoLineChartWithMonths
-                        series={noiCoreSeries}
-                        color="rgba(16,185,129,0.9)"
-                        label="Net operating income"
-                        formatValue={formatCurrencyPoint}
-                        labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
-                        emphasizeTrend
-                      />
-                    </ChartCard>
-                  ) : null}
+                  {visibleOverviewWidgets.map((option) => renderOverviewWidgetCard(option.id))}
                 </div>
                 {overviewWidgets.length === 0 ? (
                   <div className="ios-list-card border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 text-sm text-[color:var(--text-secondary)] shadow-inner">
                     Choose at least one graph to display.
+                  </div>
+                ) : null}
+                {overviewSaveStatus ? (
+                  <div className="text-xs text-[color:var(--text-secondary)]" role="status">
+                    {overviewSaveStatus}
                   </div>
                 ) : null}
               </section>
@@ -1112,6 +1581,137 @@ export function TokenDashboardView({ propertyId, propertyName, snapshots }: Toke
           </p>
         </footer>
       </div>
+
+      {isOverviewModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm"
+          role="presentation"
+          onClick={closeOverviewModal}
+        >
+          <div
+            ref={overviewModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="overview-graphs-title"
+            aria-describedby="overview-graphs-description"
+            className="ios-card ios-animate-up flex max-h-[85vh] w-full max-w-lg flex-col space-y-6 overflow-hidden p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1.5">
+                <h3 id="overview-graphs-title" className="text-lg font-semibold text-[color:var(--text-primary)]">
+                  Customize graphs
+                </h3>
+                <p id="overview-graphs-description" className="text-sm text-[color:var(--text-secondary)]">
+                  Choose which overview graphs appear for this dashboard. Your selection will be saved for this shared link.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeOverviewModal}
+                className="ios-icon-button text-[color:var(--text-secondary)]"
+                disabled={overviewSaving}
+              >
+                <span className="sr-only">Close</span>
+                <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
+                  <path
+                    fill="currentColor"
+                    d="m7.05 7.757 4.242 4.243 4.243-4.243 1.414 1.415-4.242 4.243 4.242 4.242-1.414 1.415-4.243-4.243-4.242 4.243-1.414-1.415 4.242-4.242-4.242-4.243z"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="ios-list-card max-h-[52vh] space-y-3 overflow-y-auto p-5 pr-3">
+              {orderedOverviewWidgetOptions.map((option, index) => {
+                const checked = overviewDraftWidgets.includes(option.id);
+                const selectedIndex = checked ? overviewDraftWidgets.indexOf(option.id) : -1;
+                return (
+                  <div
+                    key={`overview-modal-${option.id}`}
+                    className="flex items-center justify-between gap-4 rounded-[16px] border border-[color:var(--border-soft)] bg-[color:var(--surface)]/75 px-4 py-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-[color:var(--text-primary)]">{option.label}</div>
+                      <p className="text-xs text-[color:var(--text-secondary)]">{option.description}</p>
+                      {checked ? (
+                        <p className="text-[11px] font-medium text-[color:var(--accent-strong)]">
+                          Position {selectedIndex + 1} of {overviewDraftWidgets.length}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {checked ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Move ${option.label} up`}
+                            onClick={() => moveOverviewDraftWidget(option.id, -1)}
+                            disabled={selectedIndex <= 0}
+                            className="ios-icon-button h-8 w-8 text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
+                              <path fill="currentColor" d="m12 7.41 4.29 4.3 1.42-1.42L12 4.59l-5.71 5.7 1.42 1.42z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Move ${option.label} down`}
+                            onClick={() => moveOverviewDraftWidget(option.id, 1)}
+                            disabled={selectedIndex === overviewDraftWidgets.length - 1}
+                            className="ios-icon-button h-8 w-8 text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
+                              <path fill="currentColor" d="m12 16.59-4.29-4.3-1.42 1.42L12 19.41l5.71-5.7-1.42-1.42z" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : null}
+                      <input
+                        data-autofocus={index === 0 ? 'true' : undefined}
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleOverviewDraftWidget(option.id)}
+                        className="h-4 w-4 rounded border-[color:var(--border-soft)] text-[color:var(--accent-strong)] focus:ring-[color:var(--focus-ring)]"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {!overviewDraftWidgets.length ? (
+                <p className="text-xs text-red-500">Select at least one graph to save.</p>
+              ) : null}
+              {overviewSaveError ? (
+                <p className="text-xs text-red-500" role="alert">
+                  {overviewSaveError}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeOverviewModal}
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="ghost"
+                disabled={overviewSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSaveOverviewWidgets();
+                }}
+                className="ios-button px-4 py-2 text-sm"
+                disabled={overviewSaving || !overviewDraftWidgets.length}
+              >
+                {overviewSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 sm:hidden">
         <div
@@ -2228,7 +2828,7 @@ function PricingSection({
         </ChartCard>
 
         <ChartCard
-          title="Revenue Statistics (MSR)"
+          title="Revenue Statistics"
           subtitle="Current snapshot"
           info="Uses the MSR Revenue Statistics block terms for gross potential revenue, economic occupancy, and occupied rate variance."
         >

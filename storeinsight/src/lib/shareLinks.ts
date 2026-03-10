@@ -6,6 +6,12 @@
 
 import crypto from 'crypto';
 import admin from 'firebase-admin';
+import {
+  DEFAULT_OVERVIEW_WIDGETS,
+  filterOverviewWidgets,
+  getOverviewWidgetsOrDefault,
+  type OverviewWidgetKey,
+} from '@/lib/overviewWidgets';
 import { firestore } from '@/server/firebaseAdmin';
 
 const COLLECTION = 'dashboard_share_links';
@@ -22,6 +28,7 @@ export type ShareLinkRecord = {
   createdAt: string | null;
   lastUsedAt: string | null;
   useCount: number;
+  overviewWidgets: OverviewWidgetKey[];
 };
 
 const toIsoString = (value: unknown): string | null => {
@@ -55,6 +62,7 @@ const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord
   createdAt: toIsoString(data.created_at),
   lastUsedAt: toIsoString(data.last_used_at),
   useCount: Number(data.use_count ?? 0),
+  overviewWidgets: getOverviewWidgetsOrDefault(data.overview_widgets),
 });
 
 const generateToken = (): string => crypto.randomBytes(32).toString('hex');
@@ -67,6 +75,43 @@ export const extractTokenFromInput = (input: string): string | null => {
   const match = trimmed.match(/\/dash\/t\/([^?#/]+)/i);
   if (match?.[1]) return match[1];
   return trimmed;
+};
+
+const resolveShareLinkByToken = async (
+  token: string,
+): Promise<{
+  status: ShareLinkStatus;
+  record?: ShareLinkRecord;
+  doc?: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>;
+}> => {
+  if (!firestore) {
+    throw new Error('Firebase is not configured.');
+  }
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return { status: 'INVALID' };
+  }
+  const tokenHash = hashToken(normalizedToken);
+  const snapshot = await firestore.collection(COLLECTION).where('token_hash', '==', tokenHash).limit(1).get();
+  if (snapshot.empty) {
+    return { status: 'NOT_FOUND' };
+  }
+
+  const doc = snapshot.docs[0];
+  const data = doc.data();
+  const record = buildRecord(doc.id, data);
+  const expiresAtMs = toMillis(data.expires_at);
+  const revokedAtMs = toMillis(data.revoked_at);
+  const now = Date.now();
+
+  if (revokedAtMs) {
+    return { status: 'REVOKED', record, doc };
+  }
+  if (expiresAtMs && expiresAtMs < now) {
+    return { status: 'EXPIRED', record, doc };
+  }
+
+  return { status: 'VALID', record, doc };
 };
 
 export async function createShareLink(
@@ -96,6 +141,7 @@ export async function createShareLink(
     created_at: admin.firestore.FieldValue.serverTimestamp(),
     last_used_at: null,
     use_count: 0,
+    overview_widgets: DEFAULT_OVERVIEW_WIDGETS,
   });
 
   return {
@@ -109,35 +155,13 @@ export async function validateShareToken(
   token: string,
   options?: { markUsed?: boolean },
 ): Promise<{ status: ShareLinkStatus; record?: ShareLinkRecord }> {
-  if (!firestore) {
-    throw new Error('Firebase is not configured.');
-  }
-  const normalizedToken = token.trim();
-  if (!normalizedToken) {
-    return { status: 'INVALID' };
-  }
-  const tokenHash = hashToken(normalizedToken);
-  const snapshot = await firestore.collection(COLLECTION).where('token_hash', '==', tokenHash).limit(1).get();
-  if (snapshot.empty) {
-    return { status: 'NOT_FOUND' };
-  }
-
-  const doc = snapshot.docs[0];
-  const data = doc.data();
-  const record = buildRecord(doc.id, data);
-  const expiresAtMs = toMillis(data.expires_at);
-  const revokedAtMs = toMillis(data.revoked_at);
-  const now = Date.now();
-
-  if (revokedAtMs) {
-    return { status: 'REVOKED', record };
-  }
-  if (expiresAtMs && expiresAtMs < now) {
-    return { status: 'EXPIRED', record };
+  const resolved = await resolveShareLinkByToken(token);
+  if (resolved.status !== 'VALID' || !resolved.doc || !resolved.record) {
+    return { status: resolved.status, record: resolved.record };
   }
 
   if (options?.markUsed) {
-    await doc.ref.set(
+    await resolved.doc.ref.set(
       {
         last_used_at: admin.firestore.FieldValue.serverTimestamp(),
         use_count: admin.firestore.FieldValue.increment(1),
@@ -146,7 +170,37 @@ export async function validateShareToken(
     );
   }
 
-  return { status: 'VALID', record };
+  return { status: 'VALID', record: resolved.record };
+}
+
+export async function updateShareLinkOverviewWidgets(
+  token: string,
+  overviewWidgets: OverviewWidgetKey[],
+): Promise<{ status: ShareLinkStatus; record?: ShareLinkRecord }> {
+  const nextWidgets = filterOverviewWidgets(overviewWidgets);
+  if (!nextWidgets.length) {
+    return { status: 'INVALID' };
+  }
+
+  const resolved = await resolveShareLinkByToken(token);
+  if (resolved.status !== 'VALID' || !resolved.doc || !resolved.record) {
+    return { status: resolved.status, record: resolved.record };
+  }
+
+  await resolved.doc.ref.set(
+    {
+      overview_widgets: nextWidgets,
+    },
+    { merge: true },
+  );
+
+  return {
+    status: 'VALID',
+    record: {
+      ...resolved.record,
+      overviewWidgets: nextWidgets,
+    },
+  };
 }
 
 export async function revokeShareLink(id: string): Promise<boolean> {

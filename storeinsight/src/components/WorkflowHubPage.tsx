@@ -73,7 +73,7 @@ export default function WorkflowHubPage({
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-16">
-        <header className="ios-card ios-animate-up flex flex-col gap-6 p-10" data-tone={accent}>
+        <header className="ios-card ios-animate-up flex flex-col gap-6 p-10">
           <span className="ios-badge text-[10px]">{badge}</span>
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-4 sm:flex-1">
@@ -152,14 +152,14 @@ export default function WorkflowHubPage({
 
             if (option.disabled || !option.href) {
               return (
-                <div key={option.id} className={cardClass} data-tone={option.tone} aria-disabled="true">
+                <div key={option.id} className={cardClass} aria-disabled="true">
                   {sharedContent}
                 </div>
               );
             }
 
             return (
-              <Link key={option.id} href={option.href} className={cardClass} data-tone={option.tone}>
+              <Link key={option.id} href={option.href} className={cardClass}>
                 {sharedContent}
               </Link>
             );
