@@ -194,6 +194,7 @@ type BudgetFinancialPreviewSource = {
   cell?: string | null;
   sheet?: string | null;
   fallback?: boolean;
+  formula?: string | null;
 };
 
 type BudgetFinancialPreviewResponse = {
@@ -1222,10 +1223,10 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                       'currency',
                     )}
                   </div>
-                  <div>Token: {formatPreviewValue(budgetSources?.noi?.token)}</div>
+                  <div>Method: {formatPreviewValue(budgetSources?.noi?.formula ?? 'Calculated')}</div>
+                  <div>Inputs: {formatPreviewValue(budgetSources?.noi?.token)}</div>
                   <div>Source: {formatPreviewValue(budgetSources?.noi?.sheet)}</div>
-                  <div>Cell: {formatPreviewValue(budgetSources?.noi?.cell)}</div>
-                  <div>Fallback: {budgetSources?.noi?.fallback ? 'Using NET INCOME' : 'Direct NOI row'}</div>
+                  <div>Cell(s): {formatPreviewValue(budgetSources?.noi?.cell)}</div>
                 </div>
               </div>
 

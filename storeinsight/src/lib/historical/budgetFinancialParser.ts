@@ -11,6 +11,7 @@ type BudgetValueSource = {
   cell: string | null;
   sheet: string | null;
   fallback?: boolean;
+  formula?: string;
 };
 
 export type BudgetFinancialParseResult = {
@@ -142,29 +143,29 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
   const extraction = await extractBudgetTableFields(input, undefined);
   const warnings: string[] = [];
 
+  const incomeToken = 'TOTALINCCM';
+  const propertyExpenseToken = 'TOTALPROPCM';
   const expenseToken = 'TOTEXPCM';
+  const incomeValue = extraction.tokens[incomeToken];
+  if (!Number.isFinite(incomeValue)) {
+    throw new Error('Unable to extract TOTAL INCOME from the PTD Actual column.');
+  }
+  const propertyExpenseValue = extraction.tokens[propertyExpenseToken];
+  if (!Number.isFinite(propertyExpenseValue)) {
+    throw new Error('Unable to extract TOTAL PROPERTY EXPENSES from the PTD Actual column.');
+  }
   const expenseValue = extraction.tokens[expenseToken];
   if (!Number.isFinite(expenseValue)) {
     throw new Error('Unable to extract TOTAL EXPENSES from the PTD Actual column.');
   }
 
-  let noiToken = 'NOICM';
-  let noiValue = extraction.tokens[noiToken];
-  let noiFallback = false;
-  if (!Number.isFinite(noiValue)) {
-    noiToken = 'NETINCCM';
-    noiValue = extraction.tokens[noiToken];
-    noiFallback = true;
-    if (Number.isFinite(noiValue)) {
-      warnings.push('NOI was blank in the workbook; using NET INCOME from PTD Actual as the fallback value.');
-    }
-  }
-  if (!Number.isFinite(noiValue)) {
-    throw new Error('Unable to extract NOI or NET INCOME from the PTD Actual column.');
-  }
+  const noiToken = `${incomeToken} - ${propertyExpenseToken}`;
+  const noiValue = Math.round((incomeValue - propertyExpenseValue) * 100) / 100;
+  warnings.push('NOI is calculated from PTD Actual values: Total Income minus Total Property Expenses.');
 
   const expenseDetail = extraction.details[expenseToken];
-  const noiDetail = extraction.details[noiToken];
+  const incomeDetail = extraction.details[incomeToken];
+  const propertyExpenseDetail = extraction.details[propertyExpenseToken];
   const propertyName = parsePropertyName(located.grid);
 
   return {
@@ -193,9 +194,12 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
       },
       noi: {
         token: noiToken,
-        cell: noiDetail?.cell ?? null,
-        sheet: noiDetail?.sheet ?? located.name,
-        fallback: noiFallback,
+        cell:
+          incomeDetail?.cell && propertyExpenseDetail?.cell
+            ? `${incomeDetail.cell} - ${propertyExpenseDetail.cell}`
+            : null,
+        sheet: incomeDetail?.sheet ?? propertyExpenseDetail?.sheet ?? located.name,
+        formula: 'NOI = Total Income - Total Property Expenses',
       },
     },
   };

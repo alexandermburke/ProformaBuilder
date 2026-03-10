@@ -1609,6 +1609,7 @@ const extractDelinquenciesSheet = (grid: Grid, warnings: string[]): Partial<MsrS
 
   let totalPastDue = 0;
   let pastDue61 = 0;
+  const delinquentTenants = new Set<string>();
   const aging = {
     days0to10: 0,
     days11to30: 0,
@@ -1636,22 +1637,23 @@ const extractDelinquenciesSheet = (grid: Grid, warnings: string[]): Partial<MsrS
     const moveInRaw = colMoveIn != null ? row[colMoveIn] : null;
     const moveInDate = coerceDate(moveInRaw);
     if (!tenant && !unit) continue;
+    if (!isFiniteNumber(balance) || balance <= 0) continue;
+    if (!isFiniteNumber(daysLate) || daysLate <= 0) continue;
 
-    const numericBalance = balance ?? 0;
+    const numericBalance = balance;
     totalPastDue += numericBalance;
-    if (daysLate != null) {
-      if (daysLate <= 10) aging.days0to10 += numericBalance;
-      else if (daysLate <= 30) aging.days11to30 += numericBalance;
-      else if (daysLate <= 60) aging.days31to60 += numericBalance;
-      else aging.days61plus += numericBalance;
-      if (daysLate >= 61) pastDue61 += numericBalance;
-    }
+    if (tenantNormalized) delinquentTenants.add(tenantNormalized);
+    if (daysLate <= 10) aging.days0to10 += numericBalance;
+    else if (daysLate <= 30) aging.days11to30 += numericBalance;
+    else if (daysLate <= 60) aging.days31to60 += numericBalance;
+    else aging.days61plus += numericBalance;
+    if (daysLate >= 61) pastDue61 += numericBalance;
 
     rows.push({
       tenant: tenant || undefined,
       unit: unit || undefined,
-      daysLate: daysLate ?? undefined,
-      balance: balance ?? undefined,
+      daysLate,
+      balance,
       startDate: formatIsoDate(moveInDate),
     });
   }
@@ -1662,10 +1664,88 @@ const extractDelinquenciesSheet = (grid: Grid, warnings: string[]): Partial<MsrS
     ar: {
       totalPastDue,
       pastDue61Plus: pastDue61,
-      delinquentTenantCount: rows.length,
+      delinquentTenantCount: delinquentTenants.size,
       agingBuckets: { ...aging },
       aging: { ...aging },
       topDelinquencies: rows.slice(0, 10),
+    },
+  };
+};
+
+const extractPastDueInvoicesSheet = (grid: Grid, warnings: string[]): Partial<MsrSnapshotPayload> => {
+  const headerRow = findHeaderRow(
+    grid,
+    0,
+    25,
+    [
+      ['tenant', 'name'],
+      ['space', 'unit'],
+      ['past due', 'amount'],
+      ['days late', 'days'],
+    ],
+  );
+  if (headerRow == null) {
+    warnings.push('Past Due Invoices sheet: header row not found.');
+    return {};
+  }
+
+  const headers = (grid[headerRow] ?? []).map((cell) => normalizeText(cell));
+  const colTenant = findHeaderIndex(headers, ['tenant name', 'tenant']);
+  const colUnit = findHeaderIndex(headers, ['space name', 'space number', 'space', 'unit']);
+  const colPastDue = findHeaderIndex(headers, ['past due amount', 'past due', 'amount', 'balance']);
+  const colDays = findHeaderIndex(headers, ['days late', 'days']);
+
+  if (colPastDue == null || colDays == null) {
+    warnings.push('Past Due Invoices sheet: required amount/days columns not found.');
+    return {};
+  }
+
+  let totalPastDue = 0;
+  let pastDue61 = 0;
+  const aging = {
+    days0to10: 0,
+    days11to30: 0,
+    days31to60: 0,
+    days61plus: 0,
+  };
+  const delinquentTenants = new Set<string>();
+
+  for (let r = headerRow + 1; r < grid.length; r += 1) {
+    const row = grid[r] ?? [];
+    if (isBlankRow(row)) break;
+
+    const tenant = colTenant != null ? String(row[colTenant] ?? '').trim() : '';
+    const unit = colUnit != null ? String(row[colUnit] ?? '').trim() : '';
+    const firstCell = normalizeText(row[0]);
+    const tenantNormalized = normalizeText(tenant);
+    const unitNormalized = normalizeText(unit);
+    const isTotalRow =
+      firstCell.includes('total') ||
+      tenantNormalized.includes('total') ||
+      unitNormalized.includes('total');
+    if (isTotalRow) continue;
+
+    const pastDue = coerceNumber(row[colPastDue]);
+    const daysLate = coerceNumber(row[colDays]);
+    if (!isFiniteNumber(pastDue) || pastDue <= 0) continue;
+    if (!isFiniteNumber(daysLate) || daysLate <= 0) continue;
+
+    totalPastDue += pastDue;
+    if (tenantNormalized) delinquentTenants.add(tenantNormalized);
+    if (daysLate <= 10) aging.days0to10 += pastDue;
+    else if (daysLate <= 30) aging.days11to30 += pastDue;
+    else if (daysLate <= 60) aging.days31to60 += pastDue;
+    else aging.days61plus += pastDue;
+    if (daysLate >= 61) pastDue61 += pastDue;
+  }
+
+  return {
+    ar: {
+      totalPastDue,
+      pastDue61Plus: pastDue61,
+      delinquentTenantCount: delinquentTenants.size,
+      agingBuckets: { ...aging },
+      aging: { ...aging },
     },
   };
 };
@@ -1750,7 +1830,10 @@ const extractOverlockFromSheet = (
       continue;
     }
     blankSpaceStreak = 0;
-    if (normalizeText(spaceRaw).includes('total')) continue;
+    const rowHasTotalLabel = row
+      .slice(0, Math.max(colBalance, colDays, colSpace) + 1)
+      .some((cell) => normalizeText(cell).includes('total'));
+    if (normalizeText(spaceRaw).includes('total') || rowHasTotalLabel) continue;
     const daysLate = coerceNumber(row[colDays]);
     const balance = coerceNumber(row[colBalance]);
     if (daysLate == null && balance == null) continue;
@@ -2226,6 +2309,16 @@ export function parseMsrWorkbook(buffer: ArrayBuffer | Buffer): MsrParseResult {
     Object.assign(snapshot, mergeSnapshot(snapshot, extractDelinquenciesSheet(sheetToGrid(delinquenciesSheet), warnings)));
   } else {
     warnings.push('Workbook is missing "Delinquencies" worksheet.');
+  }
+
+  const pastDueInvoicesSheet = findSheet(workbook, ['pastdueinvoices', 'past due invoices']);
+  if (pastDueInvoicesSheet) {
+    Object.assign(
+      snapshot,
+      mergeSnapshot(snapshot, extractPastDueInvoicesSheet(sheetToGrid(pastDueInvoicesSheet), warnings)),
+    );
+  } else {
+    warnings.push('Workbook is missing "Past Due Invoices" worksheet.');
   }
 
   if (overlockSheetInfo) {
