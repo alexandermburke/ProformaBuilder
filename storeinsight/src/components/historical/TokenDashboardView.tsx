@@ -1449,7 +1449,7 @@ export function TokenDashboardView({
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
-                Proj. Rent
+                Projected Rent
               </div>
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybeCurrency(projRentValue)}
