@@ -12,13 +12,13 @@ import type { ChangeEvent, DragEvent } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
 const DATE_MATCH = /\d{4}-\d{2}-\d{2}/;
-const SUBJECT_NAME_SOFT_MAX = 80;
-const SUBJECT_ADDRESS_SOFT_MAX = 140;
 const PREPARED_FOR_MAX = 80;
 
 type AddressCheckState = {
   status: 'idle' | 'checking' | 'success' | 'error';
   message: string;
+  lat: number | null;
+  lon: number | null;
 };
 type OutputFormat = 'pptx' | 'xlsx';
 
@@ -43,6 +43,8 @@ export default function CompSetsPage() {
   const [addressCheck, setAddressCheck] = useState<AddressCheckState>({
     status: 'idle',
     message: 'Distance ranking uses subject address only. Start typing to verify geocoding.',
+    lat: null,
+    lon: null,
   });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const geocodeRequestRef = useRef(0);
@@ -114,6 +116,8 @@ export default function CompSetsPage() {
       setAddressCheck({
         status: 'idle',
         message: 'Distance ranking uses subject address only. Start typing to verify geocoding.',
+        lat: null,
+        lon: null,
       });
       return;
     }
@@ -122,6 +126,8 @@ export default function CompSetsPage() {
       setAddressCheck({
         status: 'idle',
         message: 'Keep typing address details to verify geocoding.',
+        lat: null,
+        lon: null,
       });
       return;
     }
@@ -129,25 +135,27 @@ export default function CompSetsPage() {
     const requestId = ++geocodeRequestRef.current;
     const controller = new AbortController();
     const timeoutId = window.setTimeout(async () => {
-      setAddressCheck({ status: 'checking', message: 'Checking address geocode...' });
+      setAddressCheck({ status: 'checking', message: 'Checking address geocode...', lat: null, lon: null });
       try {
         const res = await fetch(`/api/comp-sets/geocode?address=${encodeURIComponent(address)}`, {
           cache: 'no-store',
           signal: controller.signal,
         });
         const data = (await res.json().catch(() => null)) as
-          | { ok?: boolean; status?: string; error?: string }
+          | { ok?: boolean; status?: string; error?: string; lat?: number | null; lon?: number | null }
           | null;
         if (requestId !== geocodeRequestRef.current) return;
         if (!res.ok) {
           const msg = data?.error || 'Unable to verify address geocode.';
-          setAddressCheck({ status: 'error', message: msg });
+          setAddressCheck({ status: 'error', message: msg, lat: null, lon: null });
           return;
         }
         if (data?.ok) {
           setAddressCheck({
             status: 'success',
             message: 'Address geocode matched. Distance ranking will use this address only.',
+            lat: typeof data.lat === 'number' ? data.lat : null,
+            lon: typeof data.lon === 'number' ? data.lon : null,
           });
           return;
         }
@@ -156,12 +164,14 @@ export default function CompSetsPage() {
           status === 'not_found'
             ? 'Address not found for geocoding. Comp set still generates, but distances may be unavailable.'
             : 'Address check failed. Comp set still generates, but distances may be unavailable.';
-        setAddressCheck({ status: 'error', message: msg });
+        setAddressCheck({ status: 'error', message: msg, lat: null, lon: null });
       } catch {
         if (requestId !== geocodeRequestRef.current) return;
         setAddressCheck({
           status: 'error',
           message: 'Address check failed. Comp set still generates, but distances may be unavailable.',
+          lat: null,
+          lon: null,
         });
       }
     }, 450);
@@ -226,12 +236,16 @@ export default function CompSetsPage() {
         setAddressCheck({
           status: 'success',
           message: 'Address geocode matched. Distances were calculated from address only.',
+          lat: addressCheck.lat,
+          lon: addressCheck.lon,
         });
       } else if (subjectGeocodeStatus) {
         setAddressCheck({
           status: 'error',
           message:
             'Address geocode did not match. PPTX generated, but distance ordering may be fallback-only for this run.',
+          lat: null,
+          lon: null,
         });
       }
       const safeProperty = subjectName.trim().replace(/[^A-Za-z0-9._-]+/g, '_');
@@ -262,6 +276,10 @@ export default function CompSetsPage() {
   const overlayBottom = isDark
     ? 'bg-[radial-gradient(circle_at_88%_84%,rgba(56,189,248,0.22),transparent_60%)]'
     : 'bg-[radial-gradient(circle_at_84%_86%,rgba(125,211,252,0.14),transparent_62%)]';
+  const latLongLabel =
+    addressCheck.lat != null && addressCheck.lon != null
+      ? `Lat/Long: ${addressCheck.lat.toFixed(6)}, ${addressCheck.lon.toFixed(6)}`
+      : 'Lat/Long: awaiting verified address';
 
   return (
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
@@ -307,10 +325,6 @@ export default function CompSetsPage() {
                     placeholder="Subject property name"
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   />
-                  <span className="text-[11px] text-[color:var(--text-muted)]">
-                    {subjectName.length}/{SUBJECT_NAME_SOFT_MAX} characters
-                    {subjectName.length > SUBJECT_NAME_SOFT_MAX ? ' (recommended to shorten)' : ''}
-                  </span>
                 </div>
                 <div className="flex flex-col gap-1 md:col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
@@ -336,10 +350,7 @@ export default function CompSetsPage() {
                       {addressCheck.message}
                     </span>
                   </div>
-                  <span className="text-[11px] text-[color:var(--text-muted)]">
-                    {subjectAddress.length}/{SUBJECT_ADDRESS_SOFT_MAX} characters
-                    {subjectAddress.length > SUBJECT_ADDRESS_SOFT_MAX ? ' (recommended to shorten)' : ''}
-                  </span>
+                  <span className="text-[11px] text-[color:var(--text-muted)]">{latLongLabel}</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
@@ -353,9 +364,6 @@ export default function CompSetsPage() {
                     maxLength={PREPARED_FOR_MAX}
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                   />
-                  <span className="text-[11px] text-[color:var(--text-muted)]">
-                    {preparedFor.length}/{PREPARED_FOR_MAX} characters
-                  </span>
                 </div>
               </div>
 

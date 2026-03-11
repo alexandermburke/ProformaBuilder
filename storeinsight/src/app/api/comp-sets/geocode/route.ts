@@ -22,5 +22,7 @@ export async function GET(req: NextRequest) {
     status: result.status,
     distanceMode: "address-only",
     query: result.query,
+    lat: result.point?.lat ?? null,
+    lon: result.point?.lon ?? null,
   });
 }
