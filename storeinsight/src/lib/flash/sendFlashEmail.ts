@@ -140,7 +140,7 @@ const buildAppleEmailHtml = (opts: {
     ? `<a href="${pdfUrl}" class="cta-button cta-primary" style="display: block; width: 100%; box-sizing: border-box; padding: 12px 22px; border-radius: 999px; background: #0a84ff; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a6fde; box-shadow: 0 8px 18px rgba(10,132,255,0.28); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 180px; text-align: center;">View full PDF</a>`
     : "";
   const dashboardButton = dashboardUrl
-    ? `<a href="${dashboardUrl}" class="cta-button cta-secondary" style="display: block; width: 100%; box-sizing: border-box; padding: 12px 22px; border-radius: 999px; background: #ffffff; color: #0a84ff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a84ff; box-shadow: 0 8px 18px rgba(15,23,42,0.08); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 220px; text-align: center;">Historical Dashboard (Test)</a>`
+    ? `<a href="${dashboardUrl}" class="cta-button cta-secondary" style="display: block; width: 100%; box-sizing: border-box; padding: 12px 22px; border-radius: 999px; background: #ffffff; color: #0a84ff; text-decoration: none; font-weight: 700; font-size: 13px; letter-spacing: 0.01em; border: 1px solid #0a84ff; box-shadow: 0 8px 18px rgba(15,23,42,0.08); font-family: 'SF Pro Display','SF Pro Text','Helvetica Neue','Segoe UI',Arial,sans-serif; min-width: 220px; text-align: center;">Historical Dashboard</a>`
     : "";
   const pdfFallback = pdfUrl
     ? ""
@@ -189,7 +189,6 @@ const buildAppleEmailHtml = (opts: {
                 <tr>
                   <td style="padding: 24px 24px 10px 24px;">
                     <div style="font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Daily Flash Report</div>
-                    ${propertyLabel ? `<div style="margin-top: 6px; font-size: 18px; font-weight: 700; color: #0f172a;">${escapeHtml(propertyLabel || "STORE Performance")}</div>` : ""}
                     ${bodySection}
                     ${imageBlock}
                     <div style="height: 1px; background: #e5e7eb; margin: 20px 0 12px 0;"></div>

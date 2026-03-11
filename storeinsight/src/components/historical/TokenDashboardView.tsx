@@ -600,6 +600,19 @@ export function TokenDashboardView({
     () => rangeSnapshots.filter((entry) => entry.monthIso),
     [rangeSnapshots],
   );
+  const laggedFinancialSeriesEntries = useMemo(() => {
+    if (!sortedSnapshots.length) return [];
+    const rangeMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 6;
+    const latest = sortedSnapshots[sortedSnapshots.length - 1];
+    if (latest.monthKey !== null) {
+      const maxKey = latest.monthKey - 1;
+      const minKey = maxKey - (rangeMonths - 1);
+      return sortedSnapshots.filter(
+        (entry) => entry.monthKey !== null && entry.monthKey >= minKey && entry.monthKey <= maxKey && entry.monthIso,
+      );
+    }
+    return sortedSnapshots.slice(-(rangeMonths + 1), -1).filter((entry) => entry.monthIso);
+  }, [sortedSnapshots, range]);
 
   const overlayTop = isDark
     ? 'bg-[radial-gradient(circle_at_18%_10%,rgba(59,130,246,0.28),transparent_60%)]'
@@ -649,6 +662,29 @@ export function TokenDashboardView({
         .filter((row): row is { monthIso: string; occupancy: number | null; netRevenue: number | null; expenses: number | null; noi: number | null } => Boolean(row)),
     [seriesEntries],
   );
+  const laggedFinancialTrendRows = useMemo(
+    () =>
+      laggedFinancialSeriesEntries
+        .map((entry) => {
+          if (!entry.monthIso) return null;
+          const netRevenue = getSnapshotNumber(entry.snapshot, NET_REVENUE_VALUE_PATHS);
+          const expenses = getSnapshotNumber(entry.snapshot, EXPENSES_VALUE_PATHS);
+          const directNoi = getSnapshotNumber(entry.snapshot, NOI_VALUE_PATHS);
+          const noi =
+            isFiniteNumber(directNoi)
+              ? directNoi
+              : isFiniteNumber(netRevenue) && isFiniteNumber(expenses)
+                ? netRevenue - expenses
+                : null;
+          return {
+            monthIso: entry.monthIso,
+            expenses,
+            noi,
+          };
+        })
+        .filter((row): row is { monthIso: string; expenses: number | null; noi: number | null } => Boolean(row)),
+    [laggedFinancialSeriesEntries],
+  );
 
   const occupancyCoreSeries = useMemo(
     () =>
@@ -666,17 +702,17 @@ export function TokenDashboardView({
   );
   const expensesCoreSeries = useMemo(
     () =>
-      coreTrendRows.flatMap((row) =>
+      laggedFinancialTrendRows.flatMap((row) =>
         isFiniteNumber(row.expenses) ? [{ monthIso: row.monthIso, value: row.expenses }] : [],
       ),
-    [coreTrendRows],
+    [laggedFinancialTrendRows],
   );
   const noiCoreSeries = useMemo(
     () =>
-      coreTrendRows.flatMap((row) =>
+      laggedFinancialTrendRows.flatMap((row) =>
         isFiniteNumber(row.noi) ? [{ monthIso: row.monthIso, value: row.noi }] : [],
       ),
-    [coreTrendRows],
+    [laggedFinancialTrendRows],
   );
   const occupancyCoreEmpty = getSeriesEmptyMessage(
     occupancyCoreSeries.map((point) => point.value),
@@ -688,11 +724,11 @@ export function TokenDashboardView({
   );
   const expensesCoreEmpty = getSeriesEmptyMessage(
     expensesCoreSeries.map((point) => point.value),
-    seriesEntries.length,
+    laggedFinancialSeriesEntries.length,
   );
   const noiCoreEmpty = getSeriesEmptyMessage(
     noiCoreSeries.map((point) => point.value),
-    seriesEntries.length,
+    laggedFinancialSeriesEntries.length,
   );
   const totalPastDueSeries = buildSeries(seriesEntries, (snapshot) => snapshot.ar?.totalPastDue);
   const totalPastDueEmpty = getSeriesEmptyMessage(
@@ -1488,11 +1524,14 @@ export function TokenDashboardView({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="ios-button ml-auto px-3 py-1.5 text-[11px] font-semibold"
+                className="ios-button ml-auto inline-flex h-9 w-9 items-center justify-center p-0"
                 data-variant="secondary"
                 aria-label="Print dashboard"
+                title="Print dashboard"
               >
-                Print
+                <span className="text-base leading-none text-[color:var(--text-primary)]" aria-hidden="true">
+                  ⎙
+                </span>
               </button>
             </div>
           </div>
@@ -1564,6 +1603,7 @@ export function TokenDashboardView({
           <MemoFinancialsSection
             latestSnapshot={latestSnapshot}
             seriesEntries={seriesEntries}
+            laggedFinancialSeriesEntries={laggedFinancialSeriesEntries}
             isDark={isDark}
           />
         ) : null}
@@ -3522,22 +3562,40 @@ function OperationalSection({
 function FinancialsSection({
   latestSnapshot,
   seriesEntries,
+  laggedFinancialSeriesEntries,
   isDark,
 }: {
   latestSnapshot: MsrSnapshot | null;
   seriesEntries: SnapshotEntry[];
+  laggedFinancialSeriesEntries: SnapshotEntry[];
   isDark: boolean;
 }): JSX.Element {
   const netRevenueSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS));
-  const expensesSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS));
-  const noiSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NOI_VALUE_PATHS));
+  const expensesSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS));
+  const noiSeries = useMemo(
+    () =>
+      laggedFinancialSeriesEntries.flatMap((entry) => {
+        if (!entry.monthIso) return [];
+        const netRevenue = getSnapshotNumber(entry.snapshot, NET_REVENUE_VALUE_PATHS);
+        const expenses = getSnapshotNumber(entry.snapshot, EXPENSES_VALUE_PATHS);
+        const directNoi = getSnapshotNumber(entry.snapshot, NOI_VALUE_PATHS);
+        const noi =
+          isFiniteNumber(directNoi)
+            ? directNoi
+            : isFiniteNumber(netRevenue) && isFiniteNumber(expenses)
+              ? netRevenue - expenses
+              : null;
+        return isFiniteNumber(noi) ? [{ monthIso: entry.monthIso, value: noi }] : [];
+      }),
+    [laggedFinancialSeriesEntries],
+  );
   const concessionsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
   const creditsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.creditsAdjustmentsMtd);
   const refundsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.refundsWriteoffsMtd);
 
   const netRevenueEmpty = getSeriesEmptyMessage(netRevenueSeries.map((point) => point.value), seriesEntries.length);
-  const expensesEmpty = getSeriesEmptyMessage(expensesSeries.map((point) => point.value), seriesEntries.length);
-  const noiEmpty = getSeriesEmptyMessage(noiSeries.map((point) => point.value), seriesEntries.length);
+  const expensesEmpty = getSeriesEmptyMessage(expensesSeries.map((point) => point.value), laggedFinancialSeriesEntries.length);
+  const noiEmpty = getSeriesEmptyMessage(noiSeries.map((point) => point.value), laggedFinancialSeriesEntries.length);
   const concessionsEmpty = getSeriesEmptyMessage(concessionsSeries.map((point) => point.value), seriesEntries.length);
   const creditsEmpty = getSeriesEmptyMessage(creditsSeries.map((point) => point.value), seriesEntries.length);
   const refundsEmpty = getSeriesEmptyMessage(refundsSeries.map((point) => point.value), seriesEntries.length);
