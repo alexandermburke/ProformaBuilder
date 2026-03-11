@@ -1529,7 +1529,7 @@ export function TokenDashboardView({
                 aria-label="Print dashboard"
                 title="Print dashboard"
               >
-                <span className="text-base leading-none text-[color:var(--text-primary)]" aria-hidden="true">
+                <span className="text-lg leading-none text-[color:var(--text-primary)]" aria-hidden="true">
                   ⎙
                 </span>
               </button>
