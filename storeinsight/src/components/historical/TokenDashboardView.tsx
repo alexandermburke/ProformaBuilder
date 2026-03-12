@@ -9,6 +9,7 @@
 import Link from 'next/link';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, JSX, ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { ChartCard } from './ChartCard';
 import { KpiRow } from './KpiRow';
 import { SectionHeader } from './SectionHeader';
@@ -16,6 +17,7 @@ import { SimpleTable } from './SimpleTable';
 import { useTheme } from '@/components/ThemeProvider';
 import { buildLinePath, formatShortMonth, getChartPoints } from '@/lib/historical/chartUtils';
 import { formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
+import { getPropertyOption } from '@/lib/propertyDirectory';
 import {
   OVERVIEW_WIDGET_OPTIONS,
   getOverviewWidgetsOrDefault,
@@ -419,6 +421,20 @@ const getLatestSeriesValue = (series: SeriesPoint[]): number | null => {
   return latestPoint && isFiniteNumber(latestPoint.value) ? latestPoint.value : null;
 };
 
+const normalizePrintPropertyName = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  let normalized = value.trim();
+  if (!normalized) return null;
+  normalized = normalized.replace(/^owner\s*=\s*/i, '').trim();
+  normalized = normalized.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return normalized || null;
+};
+
+const looksLikeOwnerLabel = (value: string | null | undefined): boolean => {
+  if (!value) return false;
+  return /^owner\s*=/i.test(value.trim()) || /stor ?spaces/i.test(value);
+};
+
 const formatSnapshotDate = (value: unknown): string | null => {
   if (!value) return null;
   if (typeof value === 'string') {
@@ -557,6 +573,7 @@ export function TokenDashboardView({
   const [overviewSaveError, setOverviewSaveError] = useState<string | null>(null);
   const [overviewSaveStatus, setOverviewSaveStatus] = useState<string | null>(null);
   const [overviewSaving, setOverviewSaving] = useState(false);
+  const [isPrintMode, setIsPrintMode] = useState(false);
   const hideHeaderDetailsOnMobile = section !== 'overview';
   const currentYear = new Date().getFullYear();
   const overviewCustomizeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -597,10 +614,20 @@ export function TokenDashboardView({
     ? formatSnapshotDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate)
     : null;
   const printDateLabel = latestDateLabel ?? new Date().toISOString().slice(0, 10);
+  const resolvedPrintPropertyName = useMemo(() => {
+    const snapshotName = normalizePrintPropertyName(latestSnapshot?.propertyName);
+    const propName = normalizePrintPropertyName(propertyName);
+    const directoryName = propertyId ? normalizePrintPropertyName(getPropertyOption(propertyId).label) : null;
+
+    if (snapshotName && !looksLikeOwnerLabel(snapshotName)) return snapshotName;
+    if (propName && !looksLikeOwnerLabel(propName)) return propName;
+    if (directoryName) return directoryName;
+    return snapshotName ?? propName ?? directoryName ?? 'Property';
+  }, [latestSnapshot?.propertyName, propertyId, propertyName]);
   const printDocumentTitle = useMemo(() => {
-    const safePropertyName = propertyName?.trim() || 'Property';
-    return `${safePropertyName} Dashboard ${printDateLabel}`;
-  }, [printDateLabel, propertyName]);
+    const safePropertyName = resolvedPrintPropertyName.replace(/[<>:"/\\|?*]+/g, '').trim() || 'Property';
+    return `${safePropertyName} Historical Data ${printDateLabel}`;
+  }, [printDateLabel, resolvedPrintPropertyName]);
 
   const seriesEntries = useMemo(
     () => rangeSnapshots.filter((entry) => entry.monthIso),
@@ -1531,15 +1558,27 @@ export function TokenDashboardView({
     .filter((card): card is JSX.Element => Boolean(card));
   const handlePrint = useCallback(() => {
     const previousTitle = document.title;
+    let restored = false;
     const restoreTitle = () => {
+      if (restored) return;
+      restored = true;
       document.title = previousTitle;
+      setIsPrintMode(false);
       window.removeEventListener('afterprint', restoreTitle);
+      window.removeEventListener('focus', restoreTitle);
     };
 
+    flushSync(() => {
+      setIsPrintMode(true);
+    });
     document.title = printDocumentTitle;
     window.addEventListener('afterprint', restoreTitle);
-    window.print();
-    window.setTimeout(restoreTitle, 1500);
+    window.addEventListener('focus', restoreTitle);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.print();
+      });
+    });
   }, [printDocumentTitle]);
 
 
@@ -1748,6 +1787,7 @@ export function TokenDashboardView({
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
+      {!isPrintMode ? (
       <div className="token-dashboard-screen token-dashboard-print__content relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
         <header className="ios-card ios-animate-up space-y-4 p-4 sm:space-y-6 sm:p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
@@ -1973,7 +2013,9 @@ export function TokenDashboardView({
           </p>
         </footer>
       </div>
+      ) : null}
 
+      {isPrintMode ? (
       <div className="token-dashboard-print-only">
         <div className="token-dashboard-print-report mx-auto max-w-none">
           <PrintReportHeader
@@ -2006,8 +2048,9 @@ export function TokenDashboardView({
           />
         </div>
       </div>
+      ) : null}
 
-      {isOverviewModalOpen ? (
+      {isOverviewModalOpen && !isPrintMode ? (
         <div
           className="token-dashboard-screen fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm"
           role="presentation"
@@ -2138,6 +2181,7 @@ export function TokenDashboardView({
         </div>
       ) : null}
 
+      {!isPrintMode ? (
       <nav className="token-dashboard-screen fixed bottom-0 left-0 right-0 z-40 sm:hidden">
         <div
           className="mx-auto w-full max-w-[520px] px-4"
@@ -2164,6 +2208,7 @@ export function TokenDashboardView({
           </div>
         </div>
       </nav>
+      ) : null}
     </div>
   );
 }
