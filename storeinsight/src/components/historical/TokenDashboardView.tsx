@@ -3650,7 +3650,6 @@ function FinancialsSection({
         </div>
 
         <section className="ios-card ios-animate-up space-y-6 p-6">
-          <SectionHeader title="Financials" subtitle="Accounting data from historical snapshots." />
           <KpiRow
             items={[
               { label: 'Net revenue ', value: formatMaybeCurrency(latestNetRevenue) },
