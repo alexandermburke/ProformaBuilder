@@ -2428,9 +2428,21 @@ function CollectionsSection({
 
         <KpiRow
           items={[
-            { label: 'Total days past due', value: formatMaybeCurrency(latestAr?.totalPastDue) },
-            { label: '61+ days past due', value: formatMaybeCurrency(latestAr?.pastDue61Plus) },
-            { label: 'Delinquent tenants', value: formatMaybeNumber(latestAr?.delinquentTenantCount) },
+            {
+              label: 'Total past due',
+              value: formatMaybeCurrency(latestAr?.totalPastDue),
+              detail: 'All unpaid delinquent balances',
+            },
+            {
+              label: '61+ days past due',
+              value: formatMaybeCurrency(latestAr?.pastDue61Plus),
+              detail: 'Only the oldest AR bucket',
+            },
+            {
+              label: 'Delinquent tenants',
+              value: formatMaybeNumber(latestAr?.delinquentTenantCount),
+              detail: 'Tenants currently past due',
+            },
           ]}
           columns={3}
         />
@@ -2438,7 +2450,7 @@ function CollectionsSection({
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <ChartCard
           title="AR Aging Trend"
-          subtitle="Days past"
+          subtitle="Past-due dollars by aging bucket"
           info="Parsed from the MSR AR Aging buckets and trended across snapshots."
           emptyMessage={agingEmptyMessage}
           className="md:col-span-2 xl:col-span-2"
@@ -2504,9 +2516,21 @@ function CollectionsSection({
         >
             <KpiRow
               items={[
-                { label: 'Overlocked units', value: formatMaybeNumber(latestAr?.overlockedUnitCount) },
-                { label: 'Total balance', value: formatMaybeCurrency(latestAr?.overlockTotalBalance) },
-                { label: 'Avg days late', value: formatMaybeNumber(latestAr?.overlockAvgDaysLate) },
+                {
+                  label: 'Overlocked units',
+                  value: formatMaybeNumber(latestAr?.overlockedUnitCount),
+                  detail: 'Subset already overlocked',
+                },
+                {
+                  label: 'Total balance',
+                  value: formatMaybeCurrency(latestAr?.overlockTotalBalance),
+                  detail: 'Balance on overlocked units only',
+                },
+                {
+                  label: 'Avg days late',
+                  value: formatMaybeNumber(latestAr?.overlockAvgDaysLate),
+                  detail: 'Average for overlocked units',
+                },
               ]}
               columns={3}
             />
