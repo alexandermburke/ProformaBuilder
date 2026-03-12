@@ -596,6 +596,11 @@ export function TokenDashboardView({
   const latestDateLabel = latestSnapshot
     ? formatSnapshotDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate)
     : null;
+  const printDateLabel = latestDateLabel ?? new Date().toISOString().slice(0, 10);
+  const printDocumentTitle = useMemo(() => {
+    const safePropertyName = propertyName?.trim() || 'Property';
+    return `${safePropertyName} Dashboard ${printDateLabel}`;
+  }, [printDateLabel, propertyName]);
 
   const seriesEntries = useMemo(
     () => rangeSnapshots.filter((entry) => entry.monthIso),
@@ -1524,6 +1529,18 @@ export function TokenDashboardView({
   const printOverviewCards = visibleOverviewWidgets
     .map((option) => renderPrintOverviewWidgetCard(option.id))
     .filter((card): card is JSX.Element => Boolean(card));
+  const handlePrint = useCallback(() => {
+    const previousTitle = document.title;
+    const restoreTitle = () => {
+      document.title = previousTitle;
+      window.removeEventListener('afterprint', restoreTitle);
+    };
+
+    document.title = printDocumentTitle;
+    window.addEventListener('afterprint', restoreTitle);
+    window.print();
+    window.setTimeout(restoreTitle, 1500);
+  }, [printDocumentTitle]);
 
 
   return (
@@ -1577,12 +1594,11 @@ export function TokenDashboardView({
             animation: none !important;
           }
           .token-dashboard-print-report .print-report-page {
-            break-after: page;
-            page-break-after: always;
+            margin-bottom: 0.22in;
           }
-          .token-dashboard-print-report .print-report-page:last-child {
-            break-after: auto;
-            page-break-after: auto;
+          .token-dashboard-print-report .print-report-section--page-break {
+            break-before: page;
+            page-break-before: always;
           }
           .token-dashboard-print-report .print-report-section,
           .token-dashboard-print-report .print-report-card,
@@ -1854,7 +1870,7 @@ export function TokenDashboardView({
               </div>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={handlePrint}
                 className="ios-button ml-auto inline-flex h-9 w-9 items-center justify-center p-0"
                 data-variant="secondary"
                 aria-label="Print dashboard"
@@ -1960,47 +1976,34 @@ export function TokenDashboardView({
 
       <div className="token-dashboard-print-only">
         <div className="token-dashboard-print-report mx-auto max-w-none">
-          <div className="print-report-page">
-            <PrintReportHeader
-              propertyName={propertyName}
-              asOfDate={latestDateLabel ?? 'N/A'}
-              sectionLabel="All sections"
-              rangeLabel={range}
-              items={printSummaryItems}
-            />
-            <PrintReportSection
-              title="Overview"
-              subtitle="Selected owner-view graphs reformatted for paper output."
-            >
-              {printOverviewCards.length ? (
-                <div className="print-report-grid-2">{printOverviewCards}</div>
-              ) : (
-                <PrintBlock title="Overview" subtitle="No printable chart data">
-                  <div className="print-report-note">No overview widgets currently have data for this range.</div>
-                </PrintBlock>
-              )}
-            </PrintReportSection>
-          </div>
+          <PrintReportHeader
+            propertyName={propertyName}
+            asOfDate={latestDateLabel ?? 'N/A'}
+            sectionLabel="Full dashboard"
+            rangeLabel={range}
+            items={printSummaryItems}
+          />
+          <PrintReportSection
+            title="Overview"
+            subtitle="Selected owner-view graphs reformatted for paper output."
+          >
+            {printOverviewCards.length ? (
+              <div className="print-report-grid-2">{printOverviewCards}</div>
+            ) : (
+              <PrintBlock title="Overview" subtitle="No printable chart data">
+                <div className="print-report-note">No overview widgets currently have data for this range.</div>
+              </PrintBlock>
+            )}
+          </PrintReportSection>
 
-          <div className="print-report-page">
-            <PrintCollectionsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          </div>
-
-          <div className="print-report-page">
-            <PrintPricingReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          </div>
-
-          <div className="print-report-page">
-            <PrintOperationsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          </div>
-
-          <div className="print-report-page">
-            <PrintFinancialsReport
-              latestSnapshot={latestSnapshot}
-              seriesEntries={seriesEntries}
-              laggedFinancialSeriesEntries={laggedFinancialSeriesEntries}
-            />
-          </div>
+          <PrintCollectionsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          <PrintPricingReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          <PrintOperationsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          <PrintFinancialsReport
+            latestSnapshot={latestSnapshot}
+            seriesEntries={seriesEntries}
+            laggedFinancialSeriesEntries={laggedFinancialSeriesEntries}
+          />
         </div>
       </div>
 
@@ -4167,14 +4170,16 @@ function PrintReportHeader({
 function PrintReportSection({
   title,
   subtitle,
+  pageBreakBefore = false,
   children,
 }: {
   title: string;
   subtitle?: string;
+  pageBreakBefore?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="print-report-section">
+    <section className={['print-report-section', pageBreakBefore ? 'print-report-section--page-break' : ''].filter(Boolean).join(' ')}>
       <div className="print-report-section-header">
         <div className="print-report-section-title">{title}</div>
         {subtitle ? <div className="print-report-section-subtitle">{subtitle}</div> : null}
@@ -4919,7 +4924,7 @@ function PrintFinancialsReport({
       </div>
 
       {(concessionsSeries.length || creditsSeries.length || refundsSeries.length) ? (
-        <PrintReportSection title="Allowances" subtitle="Concessions and leakage trends.">
+        <PrintReportSection title="Allowances" subtitle="Concessions and leakage trends." pageBreakBefore>
           <PrintMetricGrid
             items={[
               { label: 'Promos', value: formatMaybeCurrency(latestSnapshot?.concessions?.promosDiscountsMtd) },
