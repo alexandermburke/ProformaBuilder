@@ -543,14 +543,6 @@ function LazyBlock({
   );
 }
 
-const normalizePropertyKey = (value: string): string =>
-  value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
-
-const isPittmanProperty = (propertyId?: string): boolean => {
-  const key = normalizePropertyKey(propertyId ?? "");
-  return key === "PITTMAN" || key === "PROP_PITTMAN";
-};
-
 export function TokenDashboardView({
   propertyId,
   propertyName,
@@ -560,12 +552,11 @@ export function TokenDashboardView({
 }: TokenDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const hasLimitedRange = isPittmanProperty(propertyId);
   const initialWidgets = useMemo(
     () => getOverviewWidgetsOrDefault(initialOverviewWidgets),
     [initialOverviewWidgets],
   );
-  const [range, setRange] = useState<RangeKey>(hasLimitedRange ? '3M' : '6M');
+  const [range, setRange] = useState<RangeKey>('6M');
   const [section, setSection] = useState<SectionKey>('overview');
   const [overviewWidgets, setOverviewWidgets] = useState<OverviewWidgetKey[]>(initialWidgets);
   const [overviewDraftWidgets, setOverviewDraftWidgets] = useState<OverviewWidgetKey[]>(initialWidgets);
@@ -890,12 +881,6 @@ export function TokenDashboardView({
       }
     }
   }, [occupancyValues]);
-
-  useEffect(() => {
-    if (hasLimitedRange && range === '6M') {
-      setRange('3M');
-    }
-  }, [hasLimitedRange, range]);
 
   useEffect(() => {
     try {
@@ -1805,11 +1790,6 @@ export function TokenDashboardView({
                 <h1 className="text-xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-2xl lg:text-3xl">
                   {resolvedPrintPropertyName ? `${resolvedPrintPropertyName} performance` : 'Property performance'}
                 </h1>
-                {hasLimitedRange ? (
-                  <p className="text-[11px] text-[color:var(--text-muted)]">
-                    Limited historical data: insufficient information to populate the full dashboard.
-                  </p>
-                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-2" />
@@ -1888,19 +1868,12 @@ export function TokenDashboardView({
                       key={rangeOption.key}
                       type="button"
                       aria-pressed={range === rangeOption.key}
-                      onClick={() => {
-                        if (hasLimitedRange && rangeOption.key === '6M') return;
-                        setRange(rangeOption.key);
-                      }}
-                      disabled={hasLimitedRange && rangeOption.key === '6M'}
+                      onClick={() => setRange(rangeOption.key)}
                       className={[
                         'rounded-full px-3 py-1 transition-colors',
-                        range === rangeOption.key && !(hasLimitedRange && rangeOption.key === '6M')
+                        range === rangeOption.key
                           ? 'bg-[color:var(--accent-soft)] text-[color:var(--accent-strong)] shadow-[0_10px_20px_rgba(37,99,235,0.18)]'
                           : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
-                        hasLimitedRange && rangeOption.key === '6M'
-                          ? 'cursor-not-allowed opacity-50 hover:text-[color:var(--text-secondary)]'
-                          : '',
                       ].join(' ')}
                     >
                       {rangeOption.key}

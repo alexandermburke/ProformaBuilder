@@ -3,6 +3,7 @@ import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
 import type { PropertyConfig } from "@/types/dailySummary";
 import type { TokenMap } from "./generateFlashFromMsr";
+import { DASHBOARD_BETA_INVESTOR_ID, resolveDashboardEmailPropertyId } from "@/lib/flash/dashboardEmailConfig";
 import { createShareLink } from "@/lib/shareLinks";
 
 type MailerConfig = {
@@ -18,8 +19,6 @@ type MailerConfig = {
   retryDelayMs: number;
 };
 
-const DASHBOARD_BETA_PROPERTY_ID = "L001";
-const DASHBOARD_BETA_INVESTOR_ID = "test-investor";
 const DASHBOARD_PUBLIC_ORIGIN = (() => {
   const candidates = [
     process.env.DASHBOARD_PUBLIC_ORIGIN,
@@ -163,7 +162,6 @@ const buildAppleEmailHtml = (opts: {
   const imageBlock = includeImage
     ? `<div style="margin-top: 12px; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb;"><img src="cid:flash-slide" alt="Daily flash slide" style="display: block; width: 100%; height: auto; border: 0;" /></div>`
     : "";
-  const propertyLabel = opts.propertyLabel?.trim();
   return `
     <html>
       <head>
@@ -264,9 +262,9 @@ export async function sendFlashEmail(options: {
       `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
     const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
     let dashboardUrl: string | null = null;
-    const sharePropertyId = (options.property.propertyId || options.property.id || "").trim();
-    const useAppleStyle = sharePropertyId === DASHBOARD_BETA_PROPERTY_ID;
-    if (useAppleStyle) {
+    const sharePropertyId = resolveDashboardEmailPropertyId(options.property.propertyId, options.property.id);
+    const useAppleStyle = Boolean(sharePropertyId);
+    if (sharePropertyId) {
       try {
         // TODO: enforce unique viewer limit (5) when share link system supports it.
         const shareLink = await createShareLink(sharePropertyId, DASHBOARD_BETA_INVESTOR_ID);

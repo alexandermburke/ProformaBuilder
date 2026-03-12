@@ -16,6 +16,7 @@ import "@/lib/chartFonts";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { buildPlaceholderMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
+import { DASHBOARD_BETA_INVESTOR_ID, resolveDashboardEmailPropertyId } from "@/lib/flash/dashboardEmailConfig";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { createShareLink } from "@/lib/shareLinks";
 import { firestore, storage } from "@/server/firebaseAdmin";
@@ -28,8 +29,6 @@ type StoreManagedMarkerConfig = {
   text: string;
 };
 
-const DASHBOARD_BETA_PROPERTY_ID = "L001";
-const DASHBOARD_BETA_INVESTOR_ID = "test-investor";
 const DASHBOARD_PUBLIC_ORIGIN = (() => {
   const candidates = [
     process.env.DASHBOARD_PUBLIC_ORIGIN,
@@ -698,9 +697,9 @@ async function sendFlashReportEmail(
   }
 
   let dashboardUrl: string | null = null;
-  const sharePropertyId = (property.propertyId || property.id || "").trim();
-  const useAppleStyle = sharePropertyId === DASHBOARD_BETA_PROPERTY_ID;
-  if (sharePropertyId === DASHBOARD_BETA_PROPERTY_ID) {
+  const sharePropertyId = resolveDashboardEmailPropertyId(property.propertyId, property.id);
+  const useAppleStyle = Boolean(sharePropertyId);
+  if (sharePropertyId) {
     try {
       // TODO: enforce unique viewer limit (5) when share link system supports it.
       const shareLink = await createShareLink(sharePropertyId, DASHBOARD_BETA_INVESTOR_ID);
