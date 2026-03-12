@@ -30,7 +30,7 @@ const DASHBOARD_PUBLIC_ORIGIN = (() => {
     .map((value) => value.trim())
     .filter(Boolean);
   const safe = candidates.find((value) => !/localhost/i.test(value));
-  return safe || "https://storeinternalplatform.vercel.app";
+  return safe || "https://storeinternalplatform.com";
 })();
 
 const sanitizeFromAddress = (value?: string | null): string | undefined => {
