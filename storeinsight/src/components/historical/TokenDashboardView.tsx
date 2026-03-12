@@ -1803,7 +1803,7 @@ export function TokenDashboardView({
               </div>
               <div className="space-y-2">
                 <h1 className="text-xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-2xl lg:text-3xl">
-                  Property performance
+                  {resolvedPrintPropertyName ? `${resolvedPrintPropertyName} performance` : 'Property performance'}
                 </h1>
                 {hasLimitedRange ? (
                   <p className="text-[11px] text-[color:var(--text-muted)]">
@@ -2019,7 +2019,7 @@ export function TokenDashboardView({
       <div className="token-dashboard-print-only">
         <div className="token-dashboard-print-report mx-auto max-w-none">
           <PrintReportHeader
-            propertyName={propertyName}
+            propertyName={resolvedPrintPropertyName}
             asOfDate={latestDateLabel ?? 'N/A'}
             sectionLabel="Full dashboard"
             rangeLabel={range}
@@ -4200,7 +4200,9 @@ function PrintReportHeader({
   return (
     <div className="print-report-header">
       <div className="print-report-eyebrow">STORE Internal Platform</div>
-      <div className="print-report-title">{propertyName || 'Property performance'}</div>
+      <div className="print-report-title">
+        {propertyName ? `${propertyName} performance` : 'Property performance'}
+      </div>
       <div className="print-report-subtitle">Historical dashboard report formatted for print.</div>
       <div className="print-report-meta">
         <span>As of {asOfDate}</span>
