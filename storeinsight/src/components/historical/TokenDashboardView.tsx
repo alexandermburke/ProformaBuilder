@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, JSX } from 'react';
+import type { CSSProperties, JSX, ReactNode } from 'react';
 import { ChartCard } from './ChartCard';
 import { KpiRow } from './KpiRow';
 import { SectionHeader } from './SectionHeader';
@@ -166,6 +166,12 @@ type SnapshotEntry = {
 type SeriesPoint = {
   monthIso: string;
   value: number;
+};
+
+type PrintMetricItem = {
+  label: string;
+  value: string;
+  detail?: string;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
@@ -393,9 +399,6 @@ const formatMaybeCurrencyPerSqft = (value: number | null | undefined): string =>
       })
     : 'N/A';
 
-const formatMaybeCompactCurrency = (value: number | null | undefined): string =>
-  isFiniteNumber(value) ? formatCompactCurrency(value) : 'N/A';
-
 const formatMaybePercent = (value: number | null | undefined, decimals = 1): string =>
   isFiniteNumber(value) ? formatPercent(value, decimals) : 'N/A';
 
@@ -590,8 +593,6 @@ export function TokenDashboardView({
   }, [sortedSnapshots, range]);
 
   const latestSnapshot = rangeSnapshots[rangeSnapshots.length - 1]?.snapshot ?? sortedSnapshots[sortedSnapshots.length - 1]?.snapshot ?? null;
-  const latestMonthIso = latestSnapshot ? getMonthFromSnapshot(latestSnapshot) : null;
-  const latestMonthLabel = latestMonthIso ? formatMonthLabel(latestMonthIso) : null;
   const latestDateLabel = latestSnapshot
     ? formatSnapshotDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate)
     : null;
@@ -847,7 +848,6 @@ export function TokenDashboardView({
 
   const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
   const occupancyValues = useMemo(() => occupancySeries.map((point) => point.value), [occupancySeries]);
-  const chartMonths = useMemo(() => seriesEntries.map((entry) => entry.monthIso ?? ''), [seriesEntries]);
 
   useEffect(() => {
     const valid = occupancyValues.filter((value) => isFiniteNumber(value));
@@ -1343,15 +1343,203 @@ export function TokenDashboardView({
         return null;
     }
   };
+  const printSummaryItems: PrintMetricItem[] = [
+    { label: 'Occupancy (RSF)', value: formatMaybePercent(occupancyValue), detail: 'Latest snapshot' },
+    { label: 'Net move-ins', value: formatSignedNumber(netMoveInsValue), detail: 'Move-ins minus move-outs' },
+    { label: 'Projected rent', value: formatMaybeCurrency(projRentValue), detail: 'Economic occupancy' },
+    { label: 'Gross potential rent', value: formatMaybeCurrency(grossPotentialRentValue), detail: 'Revenue statistics' },
+  ];
+  const renderPrintOverviewWidgetCard = (widget: OverviewWidgetKey): JSX.Element | null => {
+    switch (widget) {
+      case 'occupancy':
+        return occupancyCoreSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-occupancy-${range}`}
+            title="Occupancy (RSF)"
+            subtitle="Monthly trend"
+            series={occupancyCoreSeries}
+            color="rgba(37,99,235,0.9)"
+            formatValue={formatPercentPoint}
+          />
+        ) : null;
+      case 'netRevenue':
+        return netRevenueCoreSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-net-revenue-${range}`}
+            title="Net revenue"
+            subtitle="Monthly trend"
+            series={netRevenueCoreSeries}
+            color="rgba(14,165,233,0.9)"
+            formatValue={formatCurrencyPoint}
+            note="Current month is in progress; revenue may continue increasing through month-end."
+          />
+        ) : null;
+      case 'expenses':
+        return expensesCoreSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-expenses-${range}`}
+            title="Expenses"
+            subtitle="Data refreshed monthly"
+            series={expensesCoreSeries}
+            color="rgba(248,113,113,0.86)"
+            formatValue={formatCurrencyPoint}
+          />
+        ) : null;
+      case 'noi':
+        return noiCoreSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-noi-${range}`}
+            title="NOI"
+            subtitle="Data refreshed monthly"
+            series={noiCoreSeries}
+            color="rgba(16,185,129,0.9)"
+            formatValue={formatCurrencyPoint}
+          />
+        ) : null;
+      case 'pastDue':
+        return totalPastDueSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-past-due-${range}`}
+            title="Total past due"
+            subtitle="Monthly trend"
+            series={totalPastDueSeries}
+            color="rgba(248,113,113,0.88)"
+            formatValue={formatCurrencyPoint}
+          />
+        ) : null;
+      case 'rateVariance':
+        return rateVarianceSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-rate-variance-${range}`}
+            title="Occupied rate variance"
+            subtitle="Monthly trend"
+            series={rateVarianceSeries}
+            color="rgba(129,140,248,0.9)"
+            formatValue={formatPercentPoint}
+          />
+        ) : null;
+      case 'conversionRate':
+        return conversionSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-conversion-${range}`}
+            title="Conversion rate"
+            subtitle="Move-ins vs leads"
+            series={conversionSeries}
+            color="rgba(37,99,235,0.9)"
+            formatValue={formatPercentPoint}
+          />
+        ) : null;
+      case 'leads':
+        return leadsSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-leads-${range}`}
+            title="Leads"
+            subtitle="Monthly trend"
+            series={leadsSeries}
+            color="rgba(14,165,233,0.9)"
+            formatValue={formatNumberPoint}
+          />
+        ) : null;
+      case 'promosDiscounts':
+        return promosDiscountsSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-promos-${range}`}
+            title="Promos and discounts"
+            subtitle="Monthly trend"
+            series={promosDiscountsSeries}
+            color="rgba(245,158,11,0.88)"
+            formatValue={formatCurrencyPoint}
+          />
+        ) : null;
+      case 'autopay':
+        return autopaySeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-autopay-${range}`}
+            title="Autopay adoption"
+            subtitle="Monthly trend"
+            series={autopaySeries}
+            color="rgba(37,99,235,0.88)"
+            formatValue={formatPercentPoint}
+          />
+        ) : null;
+      case 'tppEnrollment':
+        return tppEnrollmentSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-tpp-${range}`}
+            title="TPP enrollment"
+            subtitle="Monthly trend"
+            series={tppEnrollmentSeries}
+            color="rgba(14,165,233,0.88)"
+            formatValue={tppEnrollmentUsesPct ? formatPercentPoint : formatNumberPoint}
+          />
+        ) : null;
+      case 'moveIns':
+        return moveInsSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-move-ins-${range}`}
+            title="Move-ins"
+            subtitle="Monthly trend"
+            series={moveInsSeries}
+            color="rgba(37,99,235,0.88)"
+            formatValue={formatNumberPoint}
+          />
+        ) : null;
+      case 'moveOuts':
+        return moveOutsSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-move-outs-${range}`}
+            title="Move-outs"
+            subtitle="Monthly trend"
+            series={moveOutsSeries}
+            color="rgba(248,113,113,0.84)"
+            formatValue={formatNumberPoint}
+          />
+        ) : null;
+      case 'netRentals':
+        return netRentalsSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-net-rentals-${range}`}
+            title="Net rentals"
+            subtitle="Monthly trend"
+            series={netRentalsSeries}
+            color="rgba(16,185,129,0.9)"
+            formatValue={formatSignedPoint}
+          />
+        ) : null;
+      case 'staleRent':
+        return staleRentSeries.length ? (
+          <PrintTrendCard
+            key={`print-overview-stale-rent-${range}`}
+            title="No rent change (12 months)"
+            subtitle="Monthly trend"
+            series={staleRentSeries}
+            color="rgba(129,140,248,0.9)"
+            formatValue={formatNumberPoint}
+          />
+        ) : null;
+      default:
+        return null;
+    }
+  };
+  const printOverviewCards = visibleOverviewWidgets
+    .map((option) => renderPrintOverviewWidgetCard(option.id))
+    .filter((card): card is JSX.Element => Boolean(card));
 
 
   return (
     <div className="token-dashboard-print relative min-h-screen w-full overflow-visible text-[color:var(--text-primary)]">
       <style jsx global>{`
+        .token-dashboard-print-only {
+          display: none;
+        }
         .token-dashboard-print .info-tooltip {
           display: none !important;
         }
         @media print {
+          @page {
+            size: landscape;
+            margin: 0.45in;
+          }
           html,
           body {
             background: #ffffff !important;
@@ -1360,48 +1548,191 @@ export function TokenDashboardView({
           }
           .token-dashboard-print {
             overflow: visible !important;
-          }
-          .token-dashboard-print .ios-card,
-          .token-dashboard-print .ios-list-card {
-            box-shadow: none !important;
-            border-color: #e5e7eb !important;
-          }
-          .token-dashboard-print .ios-animate-up {
-            animation: none !important;
-          }
-          .token-dashboard-print header,
-          .token-dashboard-print section,
-          .token-dashboard-print .ios-card {
-            page-break-inside: avoid;
+            background: #ffffff !important;
+            color: #111827 !important;
           }
           .token-dashboard-print > .pointer-events-none,
-          .token-dashboard-print nav,
           .token-dashboard-print button,
           .token-dashboard-print [data-variant],
           .token-dashboard-print .ios-pill {
             display: none !important;
           }
-          .token-dashboard-print__content {
-            max-width: 100% !important;
-            padding: 0 !important;
+          .token-dashboard-screen {
+            display: none !important;
           }
-          .token-dashboard-print .px-6 {
-            padding-left: 0 !important;
-            padding-right: 0 !important;
+          .token-dashboard-print-only {
+            display: block !important;
           }
-          .token-dashboard-print .pt-10 {
-            padding-top: 0 !important;
+          .token-dashboard-print-report {
+            display: block !important;
+            width: 100% !important;
           }
-          .token-dashboard-print .pb-28,
-          .token-dashboard-print .sm\\:pb-10 {
-            padding-bottom: 0 !important;
+          .token-dashboard-print-report,
+          .token-dashboard-print-report * {
+            box-sizing: border-box;
+          }
+          .token-dashboard-print-report .history-chart-line,
+          .token-dashboard-print-report .history-chart-bar,
+          .token-dashboard-print-report .history-donut-ring {
+            animation: none !important;
+          }
+          .token-dashboard-print-report .print-report-page {
+            break-after: page;
+            page-break-after: always;
+          }
+          .token-dashboard-print-report .print-report-page:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+          .token-dashboard-print-report .print-report-section,
+          .token-dashboard-print-report .print-report-card,
+          .token-dashboard-print-report .print-report-table,
+          .token-dashboard-print-report .print-report-kpi-grid > *,
+          .token-dashboard-print-report .print-report-grid-2 > *,
+          .token-dashboard-print-report .print-report-grid-3 > * {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .token-dashboard-print-report .print-report-header {
+            margin-bottom: 0.25in;
+            border: 1px solid #d1d5db;
+            border-radius: 16px;
+            padding: 0.24in;
+            background: #ffffff;
+          }
+          .token-dashboard-print-report .print-report-eyebrow {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #64748b;
+          }
+          .token-dashboard-print-report .print-report-title {
+            margin-top: 0.08in;
+            font-size: 24px;
+            font-weight: 700;
+            color: #111827;
+          }
+          .token-dashboard-print-report .print-report-subtitle {
+            margin-top: 0.04in;
+            font-size: 12px;
+            color: #475569;
+          }
+          .token-dashboard-print-report .print-report-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.12in;
+            margin-top: 0.14in;
+            font-size: 11px;
+            color: #334155;
+          }
+          .token-dashboard-print-report .print-report-meta span {
+            border: 1px solid #dbe3f0;
+            border-radius: 9999px;
+            padding: 0.04in 0.1in;
+            background: #f8fafc;
+          }
+          .token-dashboard-print-report .print-report-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.14in;
+            margin-top: 0.18in;
+          }
+          .token-dashboard-print-report .print-report-kpi {
+            border: 1px solid #dbe3f0;
+            border-radius: 12px;
+            padding: 0.14in;
+            background: #ffffff;
+          }
+          .token-dashboard-print-report .print-report-kpi-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+          }
+          .token-dashboard-print-report .print-report-kpi-value {
+            margin-top: 0.04in;
+            font-size: 20px;
+            font-weight: 700;
+            color: #111827;
+          }
+          .token-dashboard-print-report .print-report-kpi-detail {
+            margin-top: 0.04in;
+            font-size: 10px;
+            color: #475569;
+          }
+          .token-dashboard-print-report .print-report-section {
+            margin-top: 0.22in;
+          }
+          .token-dashboard-print-report .print-report-section-header {
+            margin-bottom: 0.14in;
+          }
+          .token-dashboard-print-report .print-report-section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+          }
+          .token-dashboard-print-report .print-report-section-subtitle {
+            margin-top: 0.03in;
+            font-size: 11px;
+            color: #475569;
+          }
+          .token-dashboard-print-report .print-report-grid-2,
+          .token-dashboard-print-report .print-report-grid-3 {
+            display: grid;
+            gap: 0.16in;
+          }
+          .token-dashboard-print-report .print-report-grid-2 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .token-dashboard-print-report .print-report-grid-3 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+          .token-dashboard-print-report .print-report-card {
+            border: 1px solid #d1d5db;
+            border-radius: 14px;
+            padding: 0.16in;
+            background: #ffffff;
+          }
+          .token-dashboard-print-report .print-report-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #111827;
+          }
+          .token-dashboard-print-report .print-report-card-subtitle {
+            margin-top: 0.03in;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748b;
+          }
+          .token-dashboard-print-report .print-report-note {
+            margin-top: 0.08in;
+            font-size: 10px;
+            color: #475569;
+          }
+          .token-dashboard-print-report .print-report-table table {
+            width: 100%;
+          }
+          .token-dashboard-print-report .print-report-table thead {
+            display: table-header-group;
+          }
+          .token-dashboard-print-report .print-report-table th {
+            background: #f8fafc;
+          }
+          .token-dashboard-print-report .print-report-table th,
+          .token-dashboard-print-report .print-report-table td {
+            padding: 6px 8px;
+            font-size: 10px;
+            border-bottom: 1px solid #e5e7eb;
           }
         }
       `}</style>
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
-      <div className="token-dashboard-print__content relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
+      <div className="token-dashboard-screen token-dashboard-print__content relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
         <header className="ios-card ios-animate-up space-y-4 p-4 sm:space-y-6 sm:p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className={hideHeaderDetailsOnMobile ? 'hidden space-y-3 sm:block' : 'space-y-3'}>
@@ -1585,7 +1916,6 @@ export function TokenDashboardView({
             key={`pricing-${range}`}
             latestSnapshot={latestSnapshot}
             seriesEntries={seriesEntries}
-            rangeKey={range}
             isDark={isDark}
           />
         ) : null}
@@ -1628,9 +1958,55 @@ export function TokenDashboardView({
         </footer>
       </div>
 
+      <div className="token-dashboard-print-only">
+        <div className="token-dashboard-print-report mx-auto max-w-none">
+          <div className="print-report-page">
+            <PrintReportHeader
+              propertyName={propertyName}
+              asOfDate={latestDateLabel ?? 'N/A'}
+              sectionLabel="All sections"
+              rangeLabel={range}
+              items={printSummaryItems}
+            />
+            <PrintReportSection
+              title="Overview"
+              subtitle="Selected owner-view graphs reformatted for paper output."
+            >
+              {printOverviewCards.length ? (
+                <div className="print-report-grid-2">{printOverviewCards}</div>
+              ) : (
+                <PrintBlock title="Overview" subtitle="No printable chart data">
+                  <div className="print-report-note">No overview widgets currently have data for this range.</div>
+                </PrintBlock>
+              )}
+            </PrintReportSection>
+          </div>
+
+          <div className="print-report-page">
+            <PrintCollectionsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          </div>
+
+          <div className="print-report-page">
+            <PrintPricingReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          </div>
+
+          <div className="print-report-page">
+            <PrintOperationsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          </div>
+
+          <div className="print-report-page">
+            <PrintFinancialsReport
+              latestSnapshot={latestSnapshot}
+              seriesEntries={seriesEntries}
+              laggedFinancialSeriesEntries={laggedFinancialSeriesEntries}
+            />
+          </div>
+        </div>
+      </div>
+
       {isOverviewModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm"
+          className="token-dashboard-screen fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm"
           role="presentation"
           onClick={closeOverviewModal}
         >
@@ -1759,7 +2135,7 @@ export function TokenDashboardView({
         </div>
       ) : null}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-40 sm:hidden">
+      <nav className="token-dashboard-screen fixed bottom-0 left-0 right-0 z-40 sm:hidden">
         <div
           className="mx-auto w-full max-w-[520px] px-4"
           style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}
@@ -2590,12 +2966,10 @@ function CollectionsSection({
 function PricingSection({
   latestSnapshot,
   seriesEntries,
-  rangeKey,
   isDark,
 }: {
   latestSnapshot: MsrSnapshot | null;
   seriesEntries: SnapshotEntry[];
-  rangeKey: RangeKey;
   isDark: boolean;
 }): JSX.Element {
   const trendSnapshotCount = seriesEntries.length;
@@ -2746,8 +3120,6 @@ function PricingSection({
     rateMax,
   );
   const rateEmptyMessage = getSeriesEmptyMessage(currentRates, seriesEntries.length);
-  const formatCurrencyPoint = (value: number) => formatCompactCurrency(value);
-  const formatPercentPoint = (value: number) => formatPercent(value, 1);
 
   return (
     <LazyBlock minHeight={520}>
@@ -3761,6 +4133,833 @@ function FinancialsSection({
         </section>
       </div>
     </LazyBlock>
+  );
+}
+
+function PrintReportHeader({
+  propertyName,
+  asOfDate,
+  sectionLabel,
+  rangeLabel,
+  items,
+}: {
+  propertyName: string;
+  asOfDate: string;
+  sectionLabel: string;
+  rangeLabel: string;
+  items: PrintMetricItem[];
+}): JSX.Element {
+  return (
+    <div className="print-report-header">
+      <div className="print-report-eyebrow">STORE Internal Platform</div>
+      <div className="print-report-title">{propertyName || 'Property performance'}</div>
+      <div className="print-report-subtitle">Historical dashboard report formatted for print.</div>
+      <div className="print-report-meta">
+        <span>As of {asOfDate}</span>
+        <span>Section: {sectionLabel}</span>
+        <span>Range: {rangeLabel}</span>
+      </div>
+      <PrintMetricGrid items={items} columns={4} />
+    </div>
+  );
+}
+
+function PrintReportSection({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section className="print-report-section">
+      <div className="print-report-section-header">
+        <div className="print-report-section-title">{title}</div>
+        {subtitle ? <div className="print-report-section-subtitle">{subtitle}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function PrintMetricGrid({
+  items,
+  columns = 4,
+}: {
+  items: PrintMetricItem[];
+  columns?: 2 | 3 | 4;
+}): JSX.Element {
+  const columnClass =
+    columns === 4 ? 'print-report-kpi-grid' : columns === 3 ? 'print-report-grid-3' : 'print-report-grid-2';
+
+  return (
+    <div className={columnClass}>
+      {items.map((item) => (
+        <div key={`${item.label}-${item.value}`} className="print-report-kpi">
+          <div className="print-report-kpi-label">{item.label}</div>
+          <div className="print-report-kpi-value">{item.value}</div>
+          {item.detail ? <div className="print-report-kpi-detail">{item.detail}</div> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PrintBlock({
+  title,
+  subtitle,
+  note,
+  children,
+  className,
+}: {
+  title: string;
+  subtitle?: string;
+  note?: string;
+  children: ReactNode;
+  className?: string;
+}): JSX.Element {
+  return (
+    <section className={['print-report-card', className].filter(Boolean).join(' ')}>
+      <div className="print-report-card-title">{title}</div>
+      {subtitle ? <div className="print-report-card-subtitle">{subtitle}</div> : null}
+      {children}
+      {note ? <div className="print-report-note">{note}</div> : null}
+    </section>
+  );
+}
+
+function PrintLineChart({
+  series,
+  color,
+  formatValue,
+  label,
+}: {
+  series: SeriesPoint[];
+  color: string;
+  formatValue: (value: number) => string;
+  label: string;
+}): JSX.Element {
+  const values = series.map((point) => point.value);
+  const points = getChartPoints(values, SMALL_CHART_WIDTH, SMALL_CHART_HEIGHT, SMALL_CHART_PADDING);
+  const linePath = buildLinePath(points);
+  const labelIndexes = new Set([0, Math.max(0, series.length - 1)]);
+
+  return (
+    <div className="mt-3 rounded-[16px] border border-[color:#e5e7eb] bg-white p-3">
+      <div className="flex items-center gap-2 text-[11px] text-slate-600">
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+        <span>{label}</span>
+      </div>
+      <svg viewBox={`0 0 ${SMALL_CHART_WIDTH} ${SMALL_CHART_HEIGHT}`} className="mt-2 h-36 w-full">
+        {Array.from({ length: 4 }).map((_, index) => {
+          const y = SMALL_CHART_PADDING + ((SMALL_CHART_HEIGHT - SMALL_CHART_PADDING * 2) / 4) * index;
+          return (
+            <line
+              key={index}
+              x1={SMALL_CHART_PADDING}
+              x2={SMALL_CHART_WIDTH - SMALL_CHART_PADDING}
+              y1={y}
+              y2={y}
+              stroke="rgba(148,163,184,0.2)"
+              strokeDasharray="4 6"
+            />
+          );
+        })}
+        <path d={linePath} fill="none" stroke={color} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((point, index) => (
+          <g key={`${series[index]?.monthIso ?? index}-print-point`}>
+            <circle cx={point.x} cy={point.y} r={3} fill={color} stroke="#ffffff" strokeWidth={1} />
+            {labelIndexes.has(index) ? (
+              <text
+                x={point.x}
+                y={Math.max(point.y - 10, SMALL_CHART_PADDING + 6)}
+                fontSize={12}
+                textAnchor="middle"
+                fill="rgba(51,65,85,0.95)"
+              >
+                {formatValue(values[index] ?? 0)}
+              </text>
+            ) : null}
+          </g>
+        ))}
+      </svg>
+      <div className="mt-2 flex flex-wrap justify-between gap-2 text-[10px] text-slate-500">
+        {series.map((point) => (
+          <span key={point.monthIso}>{formatMonthLabel(point.monthIso)}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PrintTrendCard({
+  title,
+  subtitle,
+  series,
+  color,
+  formatValue,
+  note,
+}: {
+  title: string;
+  subtitle?: string;
+  series: SeriesPoint[];
+  color: string;
+  formatValue: (value: number) => string;
+  note?: string;
+}): JSX.Element {
+  return (
+    <PrintBlock title={title} subtitle={subtitle} note={note}>
+      <PrintLineChart series={series} color={color} formatValue={formatValue} label={title} />
+    </PrintBlock>
+  );
+}
+
+function PrintCollectionsReport({
+  latestSnapshot,
+  seriesEntries,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+}): JSX.Element {
+  const latestAr = latestSnapshot?.ar;
+  const agingSeries = seriesEntries
+    .map((entry) => ({ monthIso: entry.monthIso, buckets: getArBuckets(entry.snapshot) }))
+    .filter((entry): entry is { monthIso: string; buckets: NonNullable<ReturnType<typeof getArBuckets>> } => {
+      return Boolean(entry.monthIso) && Boolean(entry.buckets);
+    });
+  const agingTotals = agingSeries.map((entry) => {
+    return entry.buckets.days0to10 + entry.buckets.days11to30 + entry.buckets.days31to60 + entry.buckets.days61plus;
+  });
+  const agingMax = Math.max(1, ...agingTotals);
+  const agingBuckets = [
+    { label: '0-10', color: '#38bdf8' },
+    { label: '11-30', color: '#818cf8' },
+    { label: '31-60', color: '#fbbf24' },
+    { label: '61+', color: '#f87171' },
+  ] as const;
+  const overlockDistribution = Array.isArray(latestAr?.overlockBucketShare)
+    ? latestAr.overlockBucketShare.filter((bucket) => isFiniteNumber(bucket.percent))
+    : [];
+  const topDelinquencies = getTopDelinquencies(latestSnapshot ?? {});
+
+  return (
+    <PrintReportSection
+      title="Delinquency"
+      subtitle="Accounts receivable, aging, and overlock risk for the selected range."
+    >
+      <PrintMetricGrid
+        items={[
+          { label: 'Total past due', value: formatMaybeCurrency(latestAr?.totalPastDue), detail: 'All unpaid delinquent balances' },
+          { label: '61+ days past due', value: formatMaybeCurrency(latestAr?.pastDue61Plus), detail: 'Oldest aging bucket only' },
+          { label: 'Delinquent tenants', value: formatMaybeNumber(latestAr?.delinquentTenantCount), detail: 'Current tenant count past due' },
+        ]}
+        columns={3}
+      />
+
+      <div className="print-report-grid-2">
+        {agingSeries.length ? (
+          <PrintBlock title="AR aging trend" subtitle="Past-due dollars by bucket">
+            <div className="mt-3 rounded-[16px] border border-[color:#e5e7eb] bg-white p-3">
+              <div className="relative h-36">
+                <div className="absolute inset-0 flex flex-col justify-between">
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <div key={index} className="border-t border-dashed border-[rgba(148,163,184,0.2)]" />
+                  ))}
+                </div>
+                <div className="relative z-10 flex h-full items-end gap-2">
+                  {agingSeries.map((row) => {
+                    const stack = [
+                      row.buckets.days0to10,
+                      row.buckets.days11to30,
+                      row.buckets.days31to60,
+                      row.buckets.days61plus,
+                    ];
+                    return (
+                      <div key={row.monthIso} className="flex h-full flex-1 flex-col-reverse">
+                        {stack.map((value, stackIndex) => (
+                          <div
+                            key={`${row.monthIso}-${stackIndex}`}
+                            className="history-chart-bar w-full"
+                            style={{
+                              height: `${(value / agingMax) * 100}%`,
+                              backgroundColor: agingBuckets[stackIndex].color,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+                <div className="flex flex-wrap items-center gap-3">
+                  {agingBuckets.map((bucket) => (
+                    <span key={bucket.label} className="inline-flex items-center gap-1">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: bucket.color }} />
+                      {bucket.label}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {agingSeries.map((row) => (
+                    <span key={row.monthIso}>{formatMonthLabel(row.monthIso)}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </PrintBlock>
+        ) : null}
+
+        {overlockDistribution.length || isFiniteNumber(latestAr?.overlockTotalBalance) ? (
+          <PrintBlock title="Overlock risk" subtitle="Overlocked spaces only">
+            <PrintMetricGrid
+              items={[
+                { label: 'Overlocked units', value: formatMaybeNumber(latestAr?.overlockedUnitCount), detail: 'Subset already overlocked' },
+                { label: 'Total balance', value: formatMaybeCurrency(latestAr?.overlockTotalBalance), detail: 'Balance on overlocked units only' },
+                { label: 'Avg days late', value: formatMaybeNumber(latestAr?.overlockAvgDaysLate), detail: 'Average for overlocked units' },
+              ]}
+              columns={3}
+            />
+            {overlockDistribution.length ? (
+              <div className="mt-3 space-y-2">
+                {overlockDistribution.map((bucket) => (
+                  <div key={bucket.label} className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] text-slate-600">
+                      <span>{bucket.label} days</span>
+                      <span>{formatMaybePercent(bucket.percent, 0)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-[rgba(59,130,246,0.75)]"
+                        style={{ width: `${bucket.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </PrintBlock>
+        ) : null}
+      </div>
+
+      {topDelinquencies.length ? (
+        <PrintBlock title="Top delinquent units" subtitle="Highest balances in the latest snapshot" className="print-report-table">
+          <SimpleTable
+            rows={topDelinquencies}
+            columns={[
+              { header: 'Tenant', accessor: (row) => row.tenant ?? 'N/A' },
+              { header: 'Unit', accessor: (row) => row.unit ?? 'N/A' },
+              { header: 'Days late', accessor: (row) => formatMaybeNumber(row.daysLate), align: 'right' },
+              { header: 'Balance', accessor: (row) => formatMaybeCurrency(row.balance), align: 'right' },
+              { header: 'Start date', accessor: (row) => formatDateValue(row.startDate) },
+            ]}
+            rowKey={(row, index) => `${row.tenant ?? 'tenant'}-${row.unit ?? 'unit'}-${index}`}
+          />
+        </PrintBlock>
+      ) : null}
+    </PrintReportSection>
+  );
+}
+
+function PrintPricingReport({
+  latestSnapshot,
+  seriesEntries,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+}): JSX.Element {
+  const pricing = latestSnapshot?.pricing;
+  const revenue = latestSnapshot?.revenue;
+  const setRate = pricing?.avgSellRatePerSqftOccupied ?? pricing?.avgSellRateOccupied;
+  const sellRate = pricing?.avgCurrentRentPerSqftOccupied ?? pricing?.avgCurrentRentOccupied;
+  const spreadPct =
+    isFiniteNumber(setRate) && isFiniteNumber(sellRate) && sellRate !== 0
+      ? ((setRate - sellRate) / sellRate) * 100
+      : null;
+  const occupiedRateVariancePct = revenue?.occupiedRateVariancePct ?? pricing?.occupiedRateVariancePct;
+  const rateSeries = seriesEntries
+    .map((entry) => ({
+      monthIso: entry.monthIso,
+      set: entry.snapshot.pricing?.avgSellRatePerSqftOccupied ?? entry.snapshot.pricing?.avgSellRateOccupied,
+      sell: entry.snapshot.pricing?.avgCurrentRentPerSqftOccupied ?? entry.snapshot.pricing?.avgCurrentRentOccupied,
+    }))
+    .filter((entry): entry is { monthIso: string; set: number; sell: number } => {
+      return Boolean(entry.monthIso) && isFiniteNumber(entry.set) && isFiniteNumber(entry.sell);
+    });
+  const setSeries = rateSeries.map((entry) => ({ monthIso: entry.monthIso, value: entry.set }));
+  const sellSeries = rateSeries.map((entry) => ({ monthIso: entry.monthIso, value: entry.sell }));
+  const rentChangeSeries = seriesEntries
+    .map((entry) => {
+      const pricingEntry = entry.snapshot.pricing;
+      const count =
+        isFiniteNumber(pricingEntry?.rentChangeCount) ? pricingEntry?.rentChangeCount : pricingEntry?.rentChangeCountMtd;
+      const pct01 = toPct01(pricingEntry?.avgRentChangePct);
+      return {
+        monthIso: entry.monthIso,
+        count: isFiniteNumber(count) ? count : null,
+        pct: isFiniteNumber(pct01) ? pct01 * 100 : null,
+      };
+    })
+    .filter((entry) => Boolean(entry.monthIso));
+  const rentChangeCountSeries = rentChangeSeries.flatMap((entry) =>
+    isFiniteNumber(entry.count) && entry.monthIso ? [{ monthIso: entry.monthIso, value: entry.count }] : [],
+  );
+  const rentChangePctSeries = rentChangeSeries.flatMap((entry) =>
+    isFiniteNumber(entry.pct) && entry.monthIso ? [{ monthIso: entry.monthIso, value: entry.pct }] : [],
+  );
+  const staleRentByType = pricing?.noRentChange12MoByType ?? null;
+  const staleRentEntries = staleRentByType ? Object.entries(staleRentByType) : [];
+  const staleRentTotal = staleRentEntries.reduce((sum, [, value]) => sum + (isFiniteNumber(value) ? value : 0), 0);
+  const staleRentCount = pricing?.noRentChange12MoCount;
+  const staleUnits =
+    isFiniteNumber(staleRentCount) && staleRentCount >= 0 ? staleRentCount : staleRentTotal > 0 ? staleRentTotal : null;
+  const totalUnits =
+    isFiniteNumber(latestSnapshot?.occupancy?.occupiedCount)
+      ? latestSnapshot?.occupancy?.occupiedCount
+      : isFiniteNumber(latestSnapshot?.occupancy?.totalCount)
+        ? latestSnapshot?.occupancy?.totalCount
+        : null;
+  const stalePct =
+    isFiniteNumber(staleUnits) && isFiniteNumber(totalUnits) && totalUnits > 0 ? (staleUnits / totalUnits) * 100 : null;
+  const staleSegments = staleRentEntries
+    .map(([label, value]) => ({ label, value: isFiniteNumber(value) ? value : 0 }))
+    .filter((entry) => entry.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5);
+  const showRentChange = rentChangeCountSeries.length > 0 || rentChangePctSeries.length > 0;
+  const showStaleRent = !showRentChange && staleSegments.length > 0;
+
+  return (
+    <PrintReportSection
+      title="Pricing & Revenue"
+      subtitle="Rate positioning, revenue snapshot, and one supporting pricing drilldown."
+    >
+      <div className="print-report-grid-2">
+        {setSeries.length && sellSeries.length ? (
+          <PrintBlock title="Set rate vs sell rate" subtitle="Rate comparison over time">
+            <div className="mt-3">
+              <PrintMetricGrid
+                items={[
+                  { label: 'Set rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
+                  { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
+                  { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
+                ]}
+                columns={3}
+              />
+            </div>
+            <div className="mt-3 print-report-grid-2">
+              <PrintLineChart series={setSeries} color="rgba(37,99,235,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="Set rate" />
+              <PrintLineChart series={sellSeries} color="rgba(14,165,233,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="Sell rate" />
+            </div>
+          </PrintBlock>
+        ) : null}
+
+        <PrintBlock title="Revenue statistics" subtitle="Latest snapshot">
+          <PrintMetricGrid
+            items={[
+              { label: 'Gross potential revenue', value: formatMaybeCurrency(revenue?.grossPotentialRevenue) },
+              { label: 'Projected rent', value: formatMaybeCurrency(revenue?.economicOccupancy) },
+              { label: 'Occupied rate variance', value: formatMaybePercent(occupiedRateVariancePct, 1) },
+              { label: 'Net revenue', value: formatMaybeCurrency(revenue?.netRevenueMtd) },
+            ]}
+            columns={4}
+          />
+        </PrintBlock>
+      </div>
+
+      <div className="print-report-grid-2">
+        <PrintBlock title="Rent analysis" subtitle="Rate spread summary">
+          <PrintMetricGrid
+            items={[
+              { label: 'Set - sell (%)', value: formatMaybePercent(spreadPct, 1), detail: 'Relative spread from current rates' },
+              {
+                label: 'Set - sell ($)',
+                value: isFiniteNumber(setRate) && isFiniteNumber(sellRate) ? formatMaybeCurrency(setRate - sellRate) : 'N/A',
+                detail: 'Absolute spread between rate metrics',
+              },
+              { label: 'Occupied rate variance', value: formatMaybePercent(occupiedRateVariancePct, 1), detail: 'Variance vs target occupancy' },
+            ]}
+            columns={3}
+          />
+        </PrintBlock>
+
+        {showRentChange ? (
+          <PrintBlock title="Rent change activity" subtitle="Selected pricing drilldown">
+            <PrintMetricGrid
+              items={[
+                {
+                  label: 'Rent changes',
+                  value:
+                    isFiniteNumber(pricing?.rentChangeCountMtd) || isFiniteNumber(pricing?.rentChangeCount)
+                      ? formatMaybeNumber(pricing?.rentChangeCountMtd ?? pricing?.rentChangeCount)
+                      : 'N/A',
+                },
+                { label: 'Avg change %', value: formatMaybePercent(pricing?.avgRentChangePct, 1) },
+              ]}
+              columns={2}
+            />
+            <div className="mt-3 print-report-grid-2">
+              {rentChangeCountSeries.length ? (
+                <PrintLineChart
+                  series={rentChangeCountSeries}
+                  color="rgba(37,99,235,0.85)"
+                  formatValue={formatMaybeNumber}
+                  label="Rent change count"
+                />
+              ) : null}
+              {rentChangePctSeries.length ? (
+                <PrintLineChart
+                  series={rentChangePctSeries}
+                  color="rgba(99,102,241,0.85)"
+                  formatValue={(value) => formatMaybePercent(value, 1)}
+                  label="Average change %"
+                />
+              ) : null}
+            </div>
+          </PrintBlock>
+        ) : showStaleRent ? (
+          <PrintBlock title="Stale rent exposure" subtitle="Units with no ECRI in 12 months">
+            <PrintMetricGrid
+              items={[
+                { label: 'Stale units', value: formatMaybeNumber(staleUnits), detail: isFiniteNumber(stalePct) ? `${formatPercent(stalePct, 1)} of total` : undefined },
+                { label: 'Total units', value: formatMaybeNumber(totalUnits) },
+              ]}
+              columns={2}
+            />
+            <div className="mt-3 space-y-2">
+              {staleSegments.map((segment) => (
+                <div key={segment.label} className="flex items-center justify-between border-b border-slate-200 pb-1 text-[11px] text-slate-600">
+                  <span>{segment.label}</span>
+                  <span>
+                    {formatMaybeNumber(segment.value)} ({formatMaybePercent((segment.value / Math.max(staleRentTotal, 1)) * 100, 0)})
+                  </span>
+                </div>
+              ))}
+            </div>
+          </PrintBlock>
+        ) : null}
+      </div>
+    </PrintReportSection>
+  );
+}
+
+function PrintOperationsReport({
+  latestSnapshot,
+  seriesEntries,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+}): JSX.Element {
+  const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
+  const sellRateSeries = buildSeries(
+    seriesEntries,
+    (snapshot) => snapshot.pricing?.avgCurrentRentPerSqftOccupied ?? snapshot.pricing?.avgCurrentRentOccupied,
+  );
+  const moveInsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd);
+  const moveOutsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd);
+  const netRentalsSeries = seriesEntries
+    .map((entry) => {
+      const rentals = entry.snapshot.rentals;
+      const netValue =
+        isFiniteNumber(rentals?.netMtd)
+          ? rentals?.netMtd
+          : isFiniteNumber(rentals?.moveInsMtd) && isFiniteNumber(rentals?.moveOutsMtd)
+            ? Number(rentals?.moveInsMtd ?? 0) - Number(rentals?.moveOutsMtd ?? 0)
+            : null;
+      return Boolean(entry.monthIso) && isFiniteNumber(netValue) ? { monthIso: entry.monthIso!, value: netValue } : null;
+    })
+    .filter((entry): entry is SeriesPoint => Boolean(entry));
+  const latestMoveIns = latestSnapshot?.rentals?.moveInsMtd;
+  const latestMoveOuts = latestSnapshot?.rentals?.moveOutsMtd;
+  const latestNetRentals =
+    isFiniteNumber(latestSnapshot?.rentals?.netMtd)
+      ? latestSnapshot?.rentals?.netMtd
+      : isFiniteNumber(latestMoveIns) && isFiniteNumber(latestMoveOuts)
+        ? Number(latestMoveIns ?? 0) - Number(latestMoveOuts ?? 0)
+        : null;
+  const latestOccupancy = occupancySeries.length ? occupancySeries[occupancySeries.length - 1].value : null;
+  const latestSellRate = sellRateSeries.length ? sellRateSeries[sellRateSeries.length - 1].value : null;
+  const channelData = latestSnapshot?.leads?.byChannelMtd ?? {};
+  const channelTotals = [
+    { label: 'Web', value: isFiniteNumber(channelData.web) ? channelData.web : 0, color: 'rgba(37,99,235,0.72)' },
+    { label: 'Phone', value: isFiniteNumber(channelData.phone) ? channelData.phone : 0, color: 'rgba(14,165,233,0.7)' },
+    { label: 'Walk-in', value: isFiniteNumber(channelData.walkIn) ? channelData.walkIn : 0, color: 'rgba(129,140,248,0.68)' },
+    { label: 'Other', value: isFiniteNumber(channelData.other) ? channelData.other : 0, color: 'rgba(245,158,11,0.68)' },
+  ];
+  const channelSum = channelTotals.reduce((sum, entry) => sum + entry.value, 0);
+  const leadsTotal = isFiniteNumber(latestSnapshot?.leads?.totalMtd) ? latestSnapshot?.leads?.totalMtd : channelSum || null;
+  const conversionPct =
+    isFiniteNumber(leadsTotal) && isFiniteNumber(latestMoveIns) && leadsTotal > 0 ? (latestMoveIns / leadsTotal) * 100 : null;
+  const conversionSeries = seriesEntries
+    .map((entry) => {
+      const totalLeads = entry.snapshot.leads?.totalMtd;
+      const moveIns = entry.snapshot.rentals?.moveInsMtd;
+      if (!entry.monthIso || !isFiniteNumber(totalLeads) || !isFiniteNumber(moveIns) || totalLeads <= 0) return null;
+      return { monthIso: entry.monthIso, value: (moveIns / totalLeads) * 100 };
+    })
+    .filter((entry): entry is SeriesPoint => Boolean(entry));
+  const unitMix = latestSnapshot?.unitMix;
+  const occupiedByType = unitMix?.occupiedRsfByType ?? {};
+  const totalOccupiedRsf = isFiniteNumber(unitMix?.totalOccupiedRsf)
+    ? unitMix?.totalOccupiedRsf
+    : Object.values(occupiedByType).reduce((sum, value) => sum + (isFiniteNumber(value) ? value : 0), 0);
+  const unitMixSegments = Object.entries(occupiedByType)
+    .filter(([, value]) => isFiniteNumber(value) && value > 0)
+    .map(([label, value], index) => ({
+      label,
+      percent: totalOccupiedRsf > 0 ? (Number(value) / totalOccupiedRsf) * 100 : 0,
+      color: UNIT_MIX_COLORS[index % UNIT_MIX_COLORS.length],
+    }))
+    .sort((a, b) => b.percent - a.percent);
+
+  return (
+    <PrintReportSection title="Operations" subtitle="Occupancy, rental velocity, demand funnel, and latest unit mix.">
+      <div className="print-report-grid-2">
+        <PrintBlock title="Occupancy & unit mix" subtitle="Current occupancy, sell rate, and mix">
+          <PrintMetricGrid
+            items={[
+              { label: 'Occupancy (RSF)', value: formatMaybePercent(latestOccupancy), detail: 'Latest occupancy snapshot' },
+              { label: 'Sell rate', value: formatMaybeCurrencyPerSqft(latestSellRate), detail: 'Latest occupied sell rate' },
+              { label: 'Occupied RSF', value: isFiniteNumber(totalOccupiedRsf) ? formatMaybeNumber(totalOccupiedRsf) : 'N/A', detail: 'Occupied square footage' },
+            ]}
+            columns={3}
+          />
+          <div className="mt-3 print-report-grid-2">
+            {occupancySeries.length ? (
+              <PrintLineChart
+                series={occupancySeries}
+                color="rgba(37,99,235,0.9)"
+                formatValue={(value) => formatPercent(value, 1)}
+                label="Occupancy (RSF)"
+              />
+            ) : null}
+            {sellRateSeries.length ? (
+              <PrintLineChart
+                series={sellRateSeries}
+                color="rgba(14,165,233,0.9)"
+                formatValue={formatMaybeCurrencyPerSqft}
+                label="Sell rate"
+              />
+            ) : null}
+          </div>
+          {unitMixSegments.length ? (
+            <div className="mt-3 space-y-2">
+              {unitMixSegments.map((segment) => (
+                <div key={segment.label} className="flex items-center justify-between border-b border-slate-200 pb-1 text-[11px] text-slate-600">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: segment.color }} />
+                    {segment.label}
+                  </span>
+                  <span>{formatMaybePercent(segment.percent, 0)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </PrintBlock>
+
+        <PrintBlock title="Rental statistics" subtitle="Move-ins, move-outs, and net rentals">
+          <PrintMetricGrid
+            items={[
+              { label: 'Move-ins', value: formatMaybeNumber(latestMoveIns) },
+              { label: 'Move-outs', value: formatMaybeNumber(latestMoveOuts) },
+              { label: 'Net rentals', value: formatSignedNumber(latestNetRentals) },
+            ]}
+            columns={3}
+          />
+          <div className="mt-3 print-report-grid-3">
+            {moveInsSeries.length ? (
+              <PrintLineChart series={moveInsSeries} color="rgba(37,99,235,0.88)" formatValue={formatMaybeNumber} label="Move-ins" />
+            ) : null}
+            {moveOutsSeries.length ? (
+              <PrintLineChart series={moveOutsSeries} color="rgba(248,113,113,0.84)" formatValue={formatMaybeNumber} label="Move-outs" />
+            ) : null}
+            {netRentalsSeries.length ? (
+              <PrintLineChart series={netRentalsSeries} color="rgba(16,185,129,0.9)" formatValue={formatSignedNumber} label="Net rentals" />
+            ) : null}
+          </div>
+        </PrintBlock>
+      </div>
+
+      {(channelSum > 0 || conversionSeries.length > 0) ? (
+        <div className="print-report-grid-2">
+          {channelSum > 0 ? (
+            <PrintBlock title="Demand funnel" subtitle="Lead sources in the latest snapshot">
+              <PrintMetricGrid
+                items={[
+                  { label: 'Total leads', value: formatMaybeNumber(leadsTotal) },
+                  { label: 'Move-ins', value: formatMaybeNumber(latestMoveIns) },
+                  { label: 'Conversion %', value: formatMaybePercent(conversionPct, 1) },
+                ]}
+                columns={3}
+              />
+              <div className="mt-3 rounded-[16px] border border-[color:#e5e7eb] bg-white p-3">
+                <div className="flex h-32 items-end gap-3">
+                  {channelTotals.map((channel) => (
+                    <div key={channel.label} className="flex flex-1 flex-col items-center gap-2">
+                      <div className="flex h-24 w-full items-end">
+                        <div
+                          className="history-chart-bar w-full rounded-t-md"
+                          style={{
+                            height: `${channelSum > 0 ? (channel.value / channelSum) * 100 : 0}%`,
+                            backgroundColor: channel.color,
+                          }}
+                        />
+                      </div>
+                      <div className="text-center text-[10px] text-slate-600">
+                        <div>{channel.label}</div>
+                        <div>{formatMaybeNumber(channel.value)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </PrintBlock>
+          ) : null}
+          {conversionSeries.length ? (
+            <PrintTrendCard
+              title="Conversion rate"
+              subtitle="Move-ins vs leads"
+              series={conversionSeries}
+              color="rgba(37,99,235,0.9)"
+              formatValue={(value) => formatPercent(value, 1)}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </PrintReportSection>
+  );
+}
+
+function PrintFinancialsReport({
+  latestSnapshot,
+  seriesEntries,
+  laggedFinancialSeriesEntries,
+}: {
+  latestSnapshot: MsrSnapshot | null;
+  seriesEntries: SnapshotEntry[];
+  laggedFinancialSeriesEntries: SnapshotEntry[];
+}): JSX.Element {
+  const netRevenueSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS));
+  const expensesSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS));
+  const noiSeries = laggedFinancialSeriesEntries.flatMap((entry) => {
+    if (!entry.monthIso) return [];
+    const netRevenue = getSnapshotNumber(entry.snapshot, NET_REVENUE_VALUE_PATHS);
+    const expenses = getSnapshotNumber(entry.snapshot, EXPENSES_VALUE_PATHS);
+    const directNoi = getSnapshotNumber(entry.snapshot, NOI_VALUE_PATHS);
+    const noi =
+      isFiniteNumber(directNoi)
+        ? directNoi
+        : isFiniteNumber(netRevenue) && isFiniteNumber(expenses)
+          ? netRevenue - expenses
+          : null;
+    return isFiniteNumber(noi) ? [{ monthIso: entry.monthIso, value: noi }] : [];
+  });
+  const concessionsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
+  const creditsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.creditsAdjustmentsMtd);
+  const refundsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.refundsWriteoffsMtd);
+  const latestNetRevenue =
+    (latestSnapshot ? getSnapshotNumber(latestSnapshot, NET_REVENUE_VALUE_PATHS) : null) ?? getLatestSeriesValue(netRevenueSeries);
+  const latestExpenses =
+    (latestSnapshot ? getSnapshotNumber(latestSnapshot, EXPENSES_VALUE_PATHS) : null) ?? getLatestSeriesValue(expensesSeries);
+  const directLatestNoi =
+    (latestSnapshot ? getSnapshotNumber(latestSnapshot, NOI_VALUE_PATHS) : null) ?? getLatestSeriesValue(noiSeries);
+  const latestNoi =
+    isFiniteNumber(directLatestNoi)
+      ? directLatestNoi
+      : isFiniteNumber(latestNetRevenue) && isFiniteNumber(latestExpenses)
+        ? latestNetRevenue - latestExpenses
+        : null;
+  const marginPct =
+    isFiniteNumber(latestNoi) && isFiniteNumber(latestNetRevenue) && latestNetRevenue !== 0 ? (latestNoi / latestNetRevenue) * 100 : null;
+
+  return (
+    <PrintReportSection title="Financials" subtitle="Revenue, expenses, NOI, and allowance trends.">
+      <PrintMetricGrid
+        items={[
+          { label: 'Net revenue', value: formatMaybeCurrency(latestNetRevenue), detail: 'Current month-to-date' },
+          { label: 'Expenses', value: formatMaybeCurrency(latestExpenses), detail: 'Updated monthly; prior month close' },
+          { label: 'NOI', value: formatMaybeCurrency(latestNoi), detail: 'Updated monthly; prior month close' },
+          { label: 'NOI margin', value: formatMaybePercent(marginPct, 1), detail: 'NOI divided by net revenue' },
+        ]}
+        columns={4}
+      />
+
+      <div className="print-report-grid-3">
+        {netRevenueSeries.length ? (
+          <PrintTrendCard
+            title="Net revenue"
+            subtitle="Monthly trend"
+            series={netRevenueSeries}
+            color="rgba(14,165,233,0.9)"
+            formatValue={formatCompactCurrency}
+          />
+        ) : null}
+        {expensesSeries.length ? (
+          <PrintTrendCard
+            title="Expenses"
+            subtitle="Monthly trend"
+            series={expensesSeries}
+            color="rgba(248,113,113,0.86)"
+            formatValue={formatCompactCurrency}
+            note="Expenses are intentionally lagged one month to align with monthly close timing."
+          />
+        ) : null}
+        {noiSeries.length ? (
+          <PrintTrendCard
+            title="NOI"
+            subtitle="Monthly trend"
+            series={noiSeries}
+            color="rgba(16,185,129,0.9)"
+            formatValue={formatCompactCurrency}
+            note="NOI is intentionally lagged one month to align with monthly close timing."
+          />
+        ) : null}
+      </div>
+
+      {(concessionsSeries.length || creditsSeries.length || refundsSeries.length) ? (
+        <PrintReportSection title="Allowances" subtitle="Concessions and leakage trends.">
+          <PrintMetricGrid
+            items={[
+              { label: 'Promos', value: formatMaybeCurrency(latestSnapshot?.concessions?.promosDiscountsMtd) },
+              { label: 'Credits', value: formatMaybeCurrency(latestSnapshot?.concessions?.creditsAdjustmentsMtd) },
+              { label: 'Refunds + write-offs', value: formatMaybeCurrency(latestSnapshot?.concessions?.refundsWriteoffsMtd) },
+            ]}
+            columns={3}
+          />
+          <div className="print-report-grid-3">
+            {concessionsSeries.length ? (
+              <PrintTrendCard
+                title="Promos and discounts"
+                subtitle="Monthly trend"
+                series={concessionsSeries}
+                color="rgba(37,99,235,0.85)"
+                formatValue={formatCompactCurrency}
+              />
+            ) : null}
+            {creditsSeries.length ? (
+              <PrintTrendCard
+                title="Credits and adjustments"
+                subtitle="Monthly trend"
+                series={creditsSeries}
+                color="rgba(14,165,233,0.85)"
+                formatValue={formatCompactCurrency}
+              />
+            ) : null}
+            {refundsSeries.length ? (
+              <PrintTrendCard
+                title="Refunds + write-offs"
+                subtitle="Monthly trend"
+                series={refundsSeries}
+                color="rgba(248,113,113,0.8)"
+                formatValue={formatCompactCurrency}
+              />
+            ) : null}
+          </div>
+        </PrintReportSection>
+      ) : null}
+    </PrintReportSection>
   );
 }
 
