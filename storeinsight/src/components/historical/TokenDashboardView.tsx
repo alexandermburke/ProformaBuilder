@@ -2754,10 +2754,6 @@ function PricingSection({
       <section className="space-y-6">
         <SectionHeader title="Pricing & Revenue" subtitle="Pricing, demand, and revenue leakage updated daily." />
         <section className="ios-card ios-animate-up space-y-6 p-6">
-          <SectionHeader
-            title="Pricing Positioning"
-            subtitle="Current rate placement, spread, and revenue snapshot."
-          />
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
         <ChartCard
           title="Set Rate vs Sell Rate"
