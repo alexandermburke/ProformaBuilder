@@ -1,73 +1,65 @@
-// /src/lib/snapshots.ts
-import { db } from './firebase';
-import {
-  addDoc,
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  limit,
-  Timestamp,
-  type Firestore,
-} from 'firebase/firestore';
 import type { SnapshotRowLite } from './types';
 
-const SNAP_COLLECTION = 'snapshots';
+const SNAPSHOT_POLL_INTERVAL_MS = 30_000;
+
+async function fetchSnapshots(take: number, signal?: AbortSignal): Promise<SnapshotRowLite[]> {
+  const response = await fetch(`/api/snapshots?take=${encodeURIComponent(String(take))}`, {
+    method: 'GET',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Snapshot fetch failed with status ${response.status}`);
+  }
+  const payload = (await response.json()) as { rows?: SnapshotRowLite[] };
+  return Array.isArray(payload.rows) ? payload.rows : [];
+}
 
 export function subscribeSnapshots(
   onRows: (rows: SnapshotRowLite[]) => void,
-  take: number = 12
+  take: number = 12,
 ): () => void {
-  if (!db) {
-    console.warn('[snapshots] Firestore disabled (missing env). Returning empty list.');
-    onRows([]);
-    // no-op unsubscribe
-    return () => {};
-  }
+  let active = true;
+  let inFlight: AbortController | null = null;
 
-  const q = query(
-    collection(db as Firestore, SNAP_COLLECTION),
-    orderBy('createdAt', 'desc'),
-    limit(take)
-  );
-  return onSnapshot(q, (snap) => {
-    const rows: SnapshotRowLite[] = [];
-    snap.forEach((d) => {
-      const data = d.data() as Record<string, unknown>;
-      const createdAtRaw = data.createdAt;
-      const createdAt =
-        createdAtRaw instanceof Timestamp
-          ? createdAtRaw.toDate().toISOString()
-          : typeof createdAtRaw === 'string'
-            ? createdAtRaw
-            : new Date().toISOString();
+  const load = async () => {
+    inFlight?.abort();
+    const controller = new AbortController();
+    inFlight = controller;
+    try {
+      const rows = await fetchSnapshots(take, controller.signal);
+      if (active) onRows(rows);
+    } catch (error) {
+      if ((error as { name?: string } | null)?.name === 'AbortError') return;
+      console.error('[snapshots] unable to load snapshots', error);
+      if (active) onRows([]);
+    }
+  };
 
-      rows.push({
-        id: String(data.id ?? d.id),
-        facility: typeof data.facility === 'string' ? data.facility : 'Unknown Facility',
-        period: typeof data.period === 'string' ? data.period : 'Unknown Period',
-        noi: Number(data.noi) || 0,
-        createdBy: typeof data.createdBy === 'string' ? data.createdBy : 'User',
-        createdAt,
-      });
-    });
-    onRows(rows);
-  });
+  void load();
+  const intervalId = window.setInterval(() => {
+    void load();
+  }, SNAPSHOT_POLL_INTERVAL_MS);
+
+  return () => {
+    active = false;
+    inFlight?.abort();
+    window.clearInterval(intervalId);
+  };
 }
 
 export async function createSnapshotRow(row: SnapshotRowLite): Promise<boolean> {
-  if (!db) {
-    console.warn('[snapshots] Firestore disabled (missing env). Skipping remote write.');
-    return false;
-  }
   try {
-    await addDoc(collection(db, SNAP_COLLECTION), {
-      ...row,
-      createdAt: row.createdAt ?? new Date().toISOString(),
+    const response = await fetch('/api/snapshots', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row }),
     });
-    return true;
-  } catch (err) {
-    console.error('[snapshots] createSnapshotRow failed', err);
+    return response.ok;
+  } catch (error) {
+    console.error('[snapshots] createSnapshotRow failed', error);
     return false;
   }
 }

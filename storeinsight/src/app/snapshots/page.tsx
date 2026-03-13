@@ -200,11 +200,11 @@ export default function SnapshotsPage(): JSX.Element {
           </div>
 
           <aside className="space-y-6">
-            <section className="ios-card ios-animate-up space-y-4 p-6">
+    <section className="ios-card ios-animate-up space-y-4 p-6">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">Snapshot cadence</div>
               <p className="text-sm text-[color:var(--text-secondary)]">
-                Snapshots subscribe to Firestore updates. If you do not see a recent run, confirm that Generate completed and
-                the Firestore write succeeded.
+                Snapshots refresh automatically from the internal API. If you do not see a recent run, confirm that Generate
+                completed and the snapshot save succeeded.
               </p>
               <div className="rounded-[16px] border border-dashed border-[rgba(148,163,255,0.35)] bg-[rgba(37,99,235,0.08)] p-4 text-xs text-[color:var(--accent-strong)]">
                 <div className="font-medium uppercase tracking-wide">Latest run</div>
@@ -224,7 +224,7 @@ export default function SnapshotsPage(): JSX.Element {
               <ul className="list-disc space-y-2 pl-5 text-[13px] text-[color:var(--text-secondary)]">
                 <li>Keep facility names consistent so historical NOI aggregates correctly.</li>
                 <li>Use the Export page to download the Excel file tied to the latest snapshot.</li>
-                <li>Snapshots refresh live, so there is no need to reload the page after generating.</li>
+                <li>Snapshots refresh automatically, so there is no need to reload the page after generating.</li>
               </ul>
             </section>
           </aside>
