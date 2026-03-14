@@ -22,6 +22,69 @@ type GraphMessage = {
 const viewerRegex =
   /https:\/\/reportviewer\.tenantinc\.com\/shared-reports\/owners\/[^\s"'<>]+\/folders\/[^\s"'<>]+/i;
 const trackingRegex = /https:\/\/track\.pstmrk\.it\/[^\s"'<>]+/i;
+const safeLinksRegex = /https:\/\/[^\s"'<>]*safelinks\.protection\.outlook\.com\/[^\s"'<>]+/i;
+
+const decodeHtmlEntities = (value: string): string =>
+  value
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+
+const unwrapViewerUrl = (rawUrl: string): string | null => {
+  if (!rawUrl) return null;
+
+  const normalized = decodeHtmlEntities(rawUrl.trim());
+  if (viewerRegex.test(normalized) || trackingRegex.test(normalized)) {
+    return normalized.match(viewerRegex)?.[0] ?? normalized.match(trackingRegex)?.[0] ?? normalized;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    const wrappedUrl = parsed.searchParams.get("url") ?? parsed.searchParams.get("u");
+    if (wrappedUrl) {
+      const decodedWrapped = decodeURIComponent(wrappedUrl);
+      if (viewerRegex.test(decodedWrapped) || trackingRegex.test(decodedWrapped)) {
+        return decodedWrapped.match(viewerRegex)?.[0] ?? decodedWrapped.match(trackingRegex)?.[0] ?? decodedWrapped;
+      }
+    }
+  } catch {
+    // ignore invalid wrapper URLs
+  }
+
+  return null;
+};
+
+const extractViewerUrlFromHtml = (html: string): string | null => {
+  if (!html) return null;
+
+  const normalizedHtml = decodeHtmlEntities(html);
+
+  // Do not tighten this matcher. Tenant/Outlook delivery has changed wrappers repeatedly
+  // between direct reportviewer links, pstmrk tracking links, and Safe Links URLs.
+  const directCandidate =
+    normalizedHtml.match(viewerRegex)?.[0] ??
+    normalizedHtml.match(trackingRegex)?.[0] ??
+    normalizedHtml.match(safeLinksRegex)?.[0] ??
+    "";
+  const directUrl = unwrapViewerUrl(directCandidate);
+  if (directUrl) return directUrl;
+
+  const hrefMatches = [...normalizedHtml.matchAll(/href=["']([^"']+)["']/gi)];
+  for (const match of hrefMatches) {
+    const candidate = unwrapViewerUrl(match[1] ?? "");
+    if (candidate) return candidate;
+  }
+
+  const looseUrlMatches = normalizedHtml.match(/https:\/\/[^\s"'<>]+/gi) ?? [];
+  for (const candidateRaw of looseUrlMatches) {
+    const candidate = unwrapViewerUrl(candidateRaw);
+    if (candidate) return candidate;
+  }
+
+  return null;
+};
 
 const mstDateString = (date: Date): string => {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -164,12 +227,15 @@ export async function ingestMsrEmails(options: {
     }
 
     const html = message.body?.content ?? "";
-    const viewerMatch = html.match(viewerRegex) ?? html.match(trackingRegex);
-    if (!viewerMatch) {
-      console.warn("[msr-email] viewer URL not found", { id: messageId, subject: message.subject });
+    const viewerUrl = extractViewerUrlFromHtml(html);
+    if (!viewerUrl) {
+      console.warn("[msr-email] viewer URL not found", {
+        id: messageId,
+        subject: message.subject,
+        from: fromAddress,
+      });
       continue;
     }
-    const viewerUrl = viewerMatch[0];
 
     const receivedAt = message.receivedDateTime ?? new Date().toISOString();
     const receivedDateMst = mstDateString(new Date(receivedAt));

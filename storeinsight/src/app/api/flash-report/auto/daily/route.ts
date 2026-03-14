@@ -28,6 +28,10 @@ const formatReportDateDisplay = (value: string): string => {
 
 const normalizeCode = (value: string | undefined | null): string => (value ?? "").toString().trim();
 const normalizeSlug = (value: string | undefined | null): string => normalizeCode(value).toLowerCase();
+const normalizeCompact = (value: string | undefined | null): string =>
+  normalizeCode(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+const stripEphemeralPropertySuffix = (value: string | undefined | null): string =>
+  normalizeCode(value).replace(/-\d{10,}-\d+$/i, "");
 
 const resolvePropertyCode = (property: PropertyConfig): string =>
   normalizeCode(property.propertyCode) || normalizeCode(property.tenantPropertyId) || normalizeCode(property.id);
@@ -193,15 +197,53 @@ export async function POST(req: NextRequest) {
       { status: 404 },
     );
   }
+  const propertyBySlug = new Map(baseProps.map((prop) => [normalizeSlug(resolvePropertyCode(prop)), prop] as const));
+  const propertyByCompactName = new Map(
+    baseProps.map((prop) => [normalizeCompact(prop.name || resolvePropertyCode(prop)), prop] as const),
+  );
+  const resolveDocPropertySlug = (doc: { id: string; data: MsrDoc }): string | null => {
+    const candidates = [
+      doc.data.propertyCode,
+      stripEphemeralPropertySuffix(doc.data.propertyCode),
+      doc.id.split("_")[0],
+      stripEphemeralPropertySuffix(doc.id.split("_")[0]),
+    ].filter((value): value is string => Boolean(normalizeCode(value)));
+
+    for (const candidate of candidates) {
+      const slug = normalizeSlug(candidate);
+      if (propertyBySlug.has(slug)) return slug;
+    }
+
+    const paths = [doc.data.storagePath, doc.data.msrPath, doc.data.cloudfrontUrl].filter(
+      (value): value is string => Boolean(normalizeCode(value)),
+    );
+    for (const path of paths) {
+      const fileName = decodeURIComponent(path.split("/").pop() ?? "");
+      const propertyNameMatch = fileName.match(/management summary report\s*-\s*(.+?)\s*-\s*\d{4}-\d{2}-\d{2}\.xlsx/i);
+      if (propertyNameMatch?.[1]) {
+        const compact = normalizeCompact(propertyNameMatch[1]);
+        const matchedProperty = propertyByCompactName.get(compact);
+        if (matchedProperty) return normalizeSlug(resolvePropertyCode(matchedProperty));
+      }
+      const baseName = fileName.replace(/\.[^.]+$/, "");
+      const stripped = stripEphemeralPropertySuffix(baseName);
+      const slug = normalizeSlug(stripped);
+      if (propertyBySlug.has(slug)) return slug;
+    }
+
+    return null;
+  };
   const msrByCode = new Map<string, MsrDoc>();
   msrDocs.forEach((doc) => {
     const data = doc.data;
-    const codeRaw = normalizeCode(data.propertyCode ?? doc.id.split("_")[0]);
-    const slug = normalizeSlug(codeRaw);
+    // Do not rely on raw msrReports.propertyCode alone. Older/bad ingests may persist
+    // transient viewer suffixes like `storeatthegrove-1773476121417-0`, which breaks
+    // flash matching unless we repair them back to the real property slug here.
+    const slug = resolveDocPropertySlug(doc);
     if (!slug) return;
     msrByCode.set(slug, {
       ...data,
-      propertyCode: codeRaw,
+      propertyCode: normalizeCode(data.propertyCode ?? slug),
       storagePath: data.storagePath ?? data.msrPath,
       reportDate: data.reportDate ?? reportDate,
       emailDate: data.emailDate ?? data.reportDate ?? reportDate,

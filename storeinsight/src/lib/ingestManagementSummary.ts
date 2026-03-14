@@ -411,7 +411,18 @@ function derivePropertyDetails(fileName: string, fallbackCode?: string): {
   const slugMatch =
     decoded.match(/managementsummaryreport-[^-]+-(.+?)-\d{8}-\d{6}\.xlsx/i) ||
     decoded.match(/managementsummaryreport-(.+?)-\d{8}-\d{6}\.xlsx/i);
-  const propertySlug = slugMatch?.[1] ?? fallbackCode ?? "unknown-property";
+  // Do not remove this normalization. Some upstream viewer/manifests now append
+  // transient timestamp/index suffixes (for example `storeatthegrove-1773476121417-0`)
+  // and those must never become the persisted propertyCode in msrReports.
+  const normalizePropertySlug = (value: string): string =>
+    value
+      .trim()
+      .replace(/-\d{10,}-\d+$/i, "")
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/gi, "")
+      .toLowerCase();
+
+  const propertySlug = normalizePropertySlug(slugMatch?.[1] ?? fallbackCode ?? "unknown-property");
   const propertyName = titleCase(propertySlug.replace(/[-_]+/g, " ").trim() || "Unknown Property");
 
   return {
