@@ -50,11 +50,21 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
   }
 
   const cronDate = options.processingDate ?? new Date();
-  const targetDate = mstDateString(cronDate); // today (MST)
+  // Keep the ingestion target pinned to the mailbox email's actual received date in MST.
+  // Do not offset this to yesterday. Reruns for the same report day must continue matching
+  // the same receivedDateMst so we do not skip valid same-day MSR delivery emails.
+  const targetDate = mstDateString(cronDate);
   const cutoffOld = mstDateString(addDays(cronDate, -2)); // older than 2 days
 
   // Step 1: pull latest emails into msrEmails collection
   await ingestMsrEmails(options);
+
+  const existingTargetEmailSnap = await firestore
+    .collection("msrEmails")
+    .where("receivedDateMst", "==", targetDate)
+    .limit(1)
+    .get();
+  const targetEmailAlreadyStored = !existingTargetEmailSnap.empty;
 
   // Step 1a: prune stale msrReports and msrEmails older than cutoff
   try {
@@ -153,8 +163,10 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
     }
   }
 
-  if (targetEmailsSeen === 0) {
+  if (targetEmailsSeen === 0 && !targetEmailAlreadyStored) {
     console.warn("[msr-ingest] no MSR email found for targetDate", { targetDate });
+  } else if (targetEmailsSeen === 0 && targetEmailAlreadyStored) {
+    console.info("[msr-ingest] target-date MSR email already stored; no unprocessed emails remain", { targetDate });
   }
 
   return {
