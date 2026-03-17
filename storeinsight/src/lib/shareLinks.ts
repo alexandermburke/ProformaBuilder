@@ -16,6 +16,7 @@ import { firestore } from '@/server/firebaseAdmin';
 
 const COLLECTION = 'dashboard_share_links';
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 export type ShareLinkStatus = 'VALID' | 'EXPIRED' | 'REVOKED' | 'NOT_FOUND' | 'INVALID';
 
@@ -23,6 +24,7 @@ export type ShareLinkRecord = {
   id: string;
   propertyId: string;
   investorId: string;
+  snapshotMonthIso: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string | null;
@@ -57,6 +59,7 @@ const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord
   id,
   propertyId: (data.property_id ?? '').toString(),
   investorId: (data.investor_id ?? '').toString(),
+  snapshotMonthIso: typeof data.snapshot_month_iso === 'string' ? data.snapshot_month_iso : null,
   expiresAt: toIsoString(data.expires_at),
   revokedAt: toIsoString(data.revoked_at),
   createdAt: toIsoString(data.created_at),
@@ -64,6 +67,19 @@ const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord
   useCount: Number(data.use_count ?? 0),
   overviewWidgets: getOverviewWidgetsOrDefault(data.overview_widgets),
 });
+
+const normalizeSnapshotMonthIso = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = value.trim();
+  return /^\d{4}-\d{2}$/.test(normalized) ? normalized : null;
+};
+
+const normalizeTtlMs = (ttlHours?: number | null): number => {
+  if (!Number.isFinite(ttlHours)) return TOKEN_TTL_MS;
+  const ttlMs = Math.round(Number(ttlHours) * 60 * 60 * 1000);
+  if (!Number.isFinite(ttlMs)) return TOKEN_TTL_MS;
+  return Math.min(Math.max(ttlMs, 60 * 60 * 1000), MAX_TOKEN_TTL_MS);
+};
 
 const generateToken = (): string => crypto.randomBytes(32).toString('hex');
 const hashToken = (token: string): string => crypto.createHash('sha256').update(token).digest('hex');
@@ -117,18 +133,20 @@ const resolveShareLinkByToken = async (
 export async function createShareLink(
   propertyId: string,
   investorId: string,
+  options?: { snapshotMonthIso?: string | null; ttlHours?: number | null },
 ): Promise<{ id: string; token: string; expiresAt: string }> {
   if (!firestore) {
     throw new Error('Firebase is not configured.');
   }
   const normalizedProperty = propertyId.trim();
   const normalizedInvestor = investorId.trim();
+  const snapshotMonthIso = normalizeSnapshotMonthIso(options?.snapshotMonthIso);
   if (!normalizedProperty || !normalizedInvestor) {
     throw new Error('propertyId and investorId are required.');
   }
   const token = generateToken();
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+  const expiresAt = new Date(Date.now() + normalizeTtlMs(options?.ttlHours));
 
   const docRef = firestore.collection(COLLECTION).doc();
   await docRef.set({
@@ -136,6 +154,7 @@ export async function createShareLink(
     token_hash: tokenHash,
     property_id: normalizedProperty,
     investor_id: normalizedInvestor,
+    snapshot_month_iso: snapshotMonthIso,
     expires_at: admin.firestore.Timestamp.fromDate(expiresAt),
     revoked_at: null,
     created_at: admin.firestore.FieldValue.serverTimestamp(),

@@ -15,6 +15,7 @@ type ShareLinkRecord = {
   id: string;
   propertyId: string;
   investorId: string;
+  snapshotMonthIso: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string | null;
@@ -26,6 +27,8 @@ type CreateResult = {
   id: string;
   url: string;
   expiresAt: string;
+  snapshotMonthIso?: string | null;
+  ttlHours?: number | null;
 };
 
 type ValidateResult = {
@@ -59,6 +62,8 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
 
   const [propertyId, setPropertyId] = useState('');
   const [investorId, setInvestorId] = useState('');
+  const [snapshotMonthIso, setSnapshotMonthIso] = useState('');
+  const [ttlHours, setTtlHours] = useState('24');
   const [createResult, setCreateResult] = useState<CreateResult | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createStatus, setCreateStatus] = useState<string | null>(null);
@@ -101,12 +106,22 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
       setCreateError('Enter both propertyId and investorId.');
       return;
     }
+    const ttlHoursNumber = Number(ttlHours);
+    if (!Number.isFinite(ttlHoursNumber) || ttlHoursNumber < 1) {
+      setCreateError('Enter a TTL of at least 1 hour.');
+      return;
+    }
     setIsCreating(true);
     try {
       const response = await fetch('/api/share-links/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propertyId, investorId }),
+        body: JSON.stringify({
+          propertyId,
+          investorId,
+          snapshotMonthIso: snapshotMonthIso || null,
+          ttlHours: ttlHoursNumber,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -204,12 +219,22 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
       setCreateError('Enter both propertyId and investorId.');
       return;
     }
+    const ttlHoursNumber = Number(ttlHours);
+    if (!Number.isFinite(ttlHoursNumber) || ttlHoursNumber < 1) {
+      setCreateError('Enter a TTL of at least 1 hour.');
+      return;
+    }
     setIsTesting(true);
     try {
       const response = await fetch('/api/share-links/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propertyId, investorId }),
+        body: JSON.stringify({
+          propertyId,
+          investorId,
+          snapshotMonthIso: snapshotMonthIso || null,
+          ttlHours: ttlHoursNumber,
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -323,7 +348,9 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
           <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
             <div className="space-y-1">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
-              <p className="text-xs text-[color:var(--text-secondary)]">TTL is fixed at 24 hours.</p>
+              <p className="text-xs text-[color:var(--text-secondary)]">
+                Optionally pin the token to data through a specific month and customize the TTL in hours.
+              </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -338,6 +365,24 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                 placeholder="investorId"
                 value={investorId}
                 onChange={(event) => setInvestorId(event.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                type="month"
+                className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                value={snapshotMonthIso}
+                onChange={(event) => setSnapshotMonthIso(event.target.value)}
+              />
+              <input
+                type="number"
+                min="1"
+                step="1"
+                className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                placeholder="TTL hours"
+                value={ttlHours}
+                onChange={(event) => setTtlHours(event.target.value)}
               />
             </div>
 
@@ -380,6 +425,10 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
               <div className="ios-list-card space-y-2 p-4 text-xs">
                 <div className="text-[color:var(--text-secondary)]">id: {createResult.id}</div>
                 <div className="text-[color:var(--text-secondary)]">expires: {createResult.expiresAt}</div>
+                <div className="text-[color:var(--text-secondary)]">
+                  pinned month: {createResult.snapshotMonthIso ?? 'latest'}
+                </div>
+                <div className="text-[color:var(--text-secondary)]">ttl hours: {createResult.ttlHours ?? '24'}</div>
                 <div className="break-all text-[color:var(--text-primary)]">{createResult.url}</div>
               </div>
             ) : null}
@@ -445,6 +494,9 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                     <div className="text-[color:var(--text-secondary)]">id: {validateResult.record.id}</div>
                     <div className="text-[color:var(--text-secondary)]">property: {validateResult.record.propertyId}</div>
                     <div className="text-[color:var(--text-secondary)]">investor: {validateResult.record.investorId}</div>
+                    <div className="text-[color:var(--text-secondary)]">
+                      pinned month: {validateResult.record.snapshotMonthIso ?? 'latest'}
+                    </div>
                     <div className="text-[color:var(--text-secondary)]">expires: {validateResult.record.expiresAt}</div>
                     <div className="text-[color:var(--text-secondary)]">revoked: {validateResult.record.revokedAt ?? 'n/a'}</div>
                     <div className="text-[color:var(--text-secondary)]">last used: {validateResult.record.lastUsedAt ?? 'n/a'}</div>
@@ -528,20 +580,22 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
 
             {activeTokensResult ? (
               <div className="ios-list-card overflow-hidden p-0 text-xs">
-                <div className="grid grid-cols-6 gap-3 border-b border-[color:var(--border-soft)] px-4 py-2 text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                <div className="grid grid-cols-7 gap-3 border-b border-[color:var(--border-soft)] px-4 py-2 text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
                   <span className="col-span-2">Token id</span>
                   <span>Property</span>
                   <span>Investor</span>
+                  <span>Month</span>
                   <span>Expires</span>
                   <span>Usage</span>
                 </div>
                 <div className="divide-y divide-[color:var(--border-soft)]">
                   {activeTokensResult.tokens.length ? (
                     activeTokensResult.tokens.map((token) => (
-                      <div key={token.id} className="grid grid-cols-6 gap-3 px-4 py-3 text-[color:var(--text-secondary)]">
+                      <div key={token.id} className="grid grid-cols-7 gap-3 px-4 py-3 text-[color:var(--text-secondary)]">
                         <div className="col-span-2 break-all text-[color:var(--text-primary)]">{token.id}</div>
                         <div>{token.propertyId}</div>
                         <div>{token.investorId}</div>
+                        <div>{token.snapshotMonthIso ?? 'latest'}</div>
                         <div>{token.expiresAt ?? 'n/a'}</div>
                         <div>{token.useCount}</div>
                       </div>

@@ -190,14 +190,24 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
       message: 'Historical performance data has not been uploaded for this property yet.',
     });
   }
+  const pinnedMonthIso = validation.record.snapshotMonthIso;
+  const visibleSnapshots = pinnedMonthIso
+    ? snapshots.filter((snapshot) => typeof snapshot.monthIso === 'string' && snapshot.monthIso <= pinnedMonthIso)
+    : snapshots;
+  if (!visibleSnapshots.length) {
+    return renderStatus({
+      title: 'Pinned month unavailable',
+      message: `No historical snapshots are available on or before ${pinnedMonthIso}.`,
+    });
+  }
 
-  const propertyName = resolvePropertyName(docData ?? {}, snapshots, propertyId);
+  const propertyName = resolvePropertyName(docData ?? {}, visibleSnapshots, propertyId);
 
   return (
     <TokenDashboardView
       propertyId={propertyId}
       propertyName={propertyName}
-      snapshots={snapshots}
+      snapshots={visibleSnapshots}
       shareToken={token}
       initialOverviewWidgets={validation.record.overviewWidgets}
     />
