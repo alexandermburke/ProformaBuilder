@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -46,6 +46,19 @@ type FirebaseStatus = {
 type ActiveTokensResult = {
   tokens: ShareLinkRecord[];
   count: number;
+};
+
+type DailySummaryProperty = {
+  id: string;
+  propertyId?: string;
+  tenantPropertyId?: string;
+  propertyCode?: string;
+  name?: string;
+};
+
+type PropertyOption = {
+  value: string;
+  label: string;
 };
 
 const extractToken = (input: string): string | null => {
@@ -91,6 +104,10 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
   const [activeTokensError, setActiveTokensError] = useState<string | null>(null);
   const [activeTokensStatus, setActiveTokensStatus] = useState<string | null>(null);
   const [isLoadingActiveTokens, setIsLoadingActiveTokens] = useState(false);
+  const [propertyOptionsStatus, setPropertyOptionsStatus] = useState<string | null>(null);
+  const [propertyOptionsError, setPropertyOptionsError] = useState<string | null>(null);
+  const [isLoadingPropertyOptions, setIsLoadingPropertyOptions] = useState(false);
+  const [propertyRecords, setPropertyRecords] = useState<DailySummaryProperty[]>([]);
 
   const overlayTop = isDark
     ? 'bg-[radial-gradient(circle_at_18%_10%,rgba(59,130,246,0.28),transparent_60%)]'
@@ -98,6 +115,41 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
   const overlayBottom = isDark
     ? 'bg-[radial-gradient(circle_at_85%_85%,rgba(56,189,248,0.22),transparent_65%)]'
     : 'bg-[radial-gradient(circle_at_82%_88%,rgba(125,211,252,0.16),transparent_62%)]';
+
+  const propertyOptions = useMemo<PropertyOption[]>(() => {
+    const deduped = new Map<string, PropertyOption>();
+    propertyRecords.forEach((record) => {
+      const value = record.propertyId?.trim() || record.tenantPropertyId?.trim() || record.id?.trim();
+      if (!value || deduped.has(value)) return;
+      const name = record.name?.trim() || record.propertyCode?.trim() || record.id?.trim() || value;
+      deduped.set(value, { value, label: `${name} (${value})` });
+    });
+    return Array.from(deduped.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [propertyRecords]);
+
+  const loadPropertyOptions = async () => {
+    setPropertyOptionsError(null);
+    setPropertyOptionsStatus(null);
+    setIsLoadingPropertyOptions(true);
+    try {
+      const response = await fetch('/api/daily-summary/properties', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data)) {
+        setPropertyOptionsError('Failed to load properties from Firebase.');
+        return;
+      }
+      setPropertyRecords(data as DailySummaryProperty[]);
+      setPropertyOptionsStatus(`Loaded ${(data as DailySummaryProperty[]).length} properties from Firebase.`);
+    } catch {
+      setPropertyOptionsError('Failed to load properties from Firebase.');
+    } finally {
+      setIsLoadingPropertyOptions(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadPropertyOptions();
+  }, []);
 
   const handleCreate = async () => {
     setCreateError(null);
@@ -345,7 +397,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         </header>
 
         <section className="ios-card ios-animate-up space-y-8 p-6">
-          <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
+            <div className="space-y-4 border-b border-[color:var(--border-soft)] pb-6">
             <div className="space-y-1">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
               <p className="text-xs text-[color:var(--text-secondary)]">
@@ -353,13 +405,34 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
               </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="secondary"
+                onClick={() => {
+                  void loadPropertyOptions();
+                }}
+                disabled={isLoadingPropertyOptions}
+              >
+                {isLoadingPropertyOptions ? 'Refreshing properties...' : 'Refresh properties'}
+              </button>
+              {propertyOptionsStatus ? <span className="text-[11px] text-[color:var(--text-secondary)]">{propertyOptionsStatus}</span> : null}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
-              <input
+              <select
                 className="owner-field-input rounded-2xl px-4 py-2 text-sm"
-                placeholder="propertyId"
                 value={propertyId}
                 onChange={(event) => setPropertyId(event.target.value)}
-              />
+              >
+                <option value="">Select propertyId</option>
+                {propertyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <input
                 className="owner-field-input rounded-2xl px-4 py-2 text-sm"
                 placeholder="investorId"
@@ -434,6 +507,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
             ) : null}
 
             <div className="space-y-1 text-[11px]">
+              {propertyOptionsError ? <p className="text-red-500">Error: {propertyOptionsError}</p> : null}
               {createError ? <p className="text-red-500">Error: {createError}</p> : null}
               {createStatus ? <p className="text-[color:var(--text-secondary)]">{createStatus}</p> : null}
               {testStatus ? <p className="text-[color:var(--text-secondary)]">{testStatus}</p> : null}
@@ -562,12 +636,18 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <input
+              <select
                 className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
-                placeholder="propertyId (optional)"
                 value={activeTokensPropertyId}
                 onChange={(event) => setActiveTokensPropertyId(event.target.value)}
-              />
+              >
+                <option value="">All properties</option>
+                {propertyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className="ios-button px-4 py-2 text-sm"
@@ -620,12 +700,18 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <input
+              <select
                 className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
-                placeholder="propertyId"
                 value={statusPropertyId}
                 onChange={(event) => setStatusPropertyId(event.target.value)}
-              />
+              >
+                <option value="">Select propertyId</option>
+                {propertyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 className="ios-button px-4 py-2 text-sm"

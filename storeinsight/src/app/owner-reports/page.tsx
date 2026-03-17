@@ -599,7 +599,7 @@ export default function OwnerReportsPage() {
     async (hb: File | null, iprc: File | null) => {
       performanceRequestRef.current += 1;
       const requestId = performanceRequestRef.current;
-      if (!hb || !iprc) {
+      if (!hb) {
         if (requestId === performanceRequestRef.current) {
           resetPerformanceUpload();
           setPerformanceLoading(false);
@@ -609,7 +609,7 @@ export default function OwnerReportsPage() {
             } else {
               setPerformanceStatus({
                 variant: "warning",
-                text: "Upload both the Hummingbird workbook (.xlsx) and the IPRC Change History CSV.",
+                text: "Upload the Hummingbird workbook (.xlsx) to populate performance tokens.",
               });
             }
           });
@@ -620,7 +620,10 @@ export default function OwnerReportsPage() {
       setPerformanceLoading(true);
       setPerformanceStatus(null);
       try {
-        const [hbBuffer, iprcText] = await Promise.all([hb.arrayBuffer(), iprc.text()]);
+        const [hbBuffer, iprcText] = await Promise.all([
+          hb.arrayBuffer(),
+          iprc ? iprc.text() : Promise.resolve(""),
+        ]);
         if (performanceRequestRef.current !== requestId) return;
         const result = computeOwnerPerformance({
           hummingbirdWorkbook: hbBuffer,
@@ -634,7 +637,14 @@ export default function OwnerReportsPage() {
           startTransition(() => {
             setPerformanceTokens(result.tokens);
             setPerformancePreview(result.preview);
-            setPerformanceStatus(null);
+            setPerformanceStatus(
+              iprc
+                ? null
+                : {
+                    variant: "warning",
+                    text: "IPRC CSV not uploaded. Move activity is populated from the workbook, but rate management fields will remain blank.",
+                  },
+            );
           });
         } else {
           resetPerformanceUpload();
@@ -2041,11 +2051,13 @@ export default function OwnerReportsPage() {
                         {performanceStatus.text}
                       </div>
                     )}
-                    {!performanceLoading && performancePreview.length > 0 && !performanceStatus && (
+                    {!performanceLoading &&
+                      performancePreview.length > 0 &&
+                      performanceStatus?.variant !== "error" && (
                       <p className="text-[11px] text-[color:var(--text-muted)]">
                         Preview is available on Step 4 in the Performance tokens panel.
                       </p>
-                    )}
+                      )}
                   </div>
                   <div className="mt-6 flex flex-wrap gap-2">
                     <button

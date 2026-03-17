@@ -190,14 +190,6 @@ export function computeOwnerPerformance({
   iprcCsvText: string;
   options?: OwnerPerformanceOptions;
 }): OwnerPerformanceResult {
-  if (!iprcCsvText || !iprcCsvText.trim()) {
-    return {
-      ok: false,
-      code: "iprc_missing",
-      message: "Upload the IPRC Change History export (.csv).",
-    };
-  }
-
   let workbook: XLSX.WorkBook;
   try {
     const buffer = toArrayBuffer(hummingbirdWorkbook);
@@ -373,22 +365,31 @@ export function computeOwnerPerformance({
     PROMOLM: formatPercent(ratio(previousStats.moveInsPromoCount, previousStats.moveIns)),
   };
 
-  const iprcParse = parseIprcCsv(iprcCsvText);
-  if (!iprcParse.ok) {
-    return iprcParse;
-  }
+  // Do not make slide-4 move activity depend on the IPRC CSV.
+  // The Hummingbird workbook must always populate move-ins / move-outs / trailing
+  // windows even if rate-management data is missing or malformed.
+  let iprcRows = 0;
+  let iprcRowsMatched = 0;
+  let rateTokens: RateManagementTokens = createEmptyRateManagementTokens();
 
-  const rateStats = aggregateIprc(iprcParse.rows, rateTargetMonthKey);
-  const rateTokens: RateManagementTokens = {
-    NUMREN: formatInteger(rateStats.count),
-    TOTSFT: formatInteger(rateStats.totalSqft),
-    BASREVPR: formatCurrencyValue(rateStats.baseRevenue),
-    BASERENPR: formatCurrencyPerSqft(rateStats.baseRevenue, rateStats.totalSqft),
-    TOTINCESC: formatCurrencyValue(rateStats.totalIncrease),
-    REVWINC: formatCurrencyValue(rateStats.newRevenue),
-    NEWRENRT: formatCurrencyPerSqft(rateStats.newRevenue, rateStats.totalSqft),
-    AVGPERINC: formatPercent(average(rateStats.percentIncreases)),
-  };
+  if (iprcCsvText && iprcCsvText.trim()) {
+    const iprcParse = parseIprcCsv(iprcCsvText);
+    if (iprcParse.ok) {
+      iprcRows = iprcParse.rows.length;
+      const rateStats = aggregateIprc(iprcParse.rows, rateTargetMonthKey);
+      iprcRowsMatched = rateStats.count;
+      rateTokens = {
+        NUMREN: formatInteger(rateStats.count),
+        TOTSFT: formatInteger(rateStats.totalSqft),
+        BASREVPR: formatCurrencyValue(rateStats.baseRevenue),
+        BASERENPR: formatCurrencyPerSqft(rateStats.baseRevenue, rateStats.totalSqft),
+        TOTINCESC: formatCurrencyValue(rateStats.totalIncrease),
+        REVWINC: formatCurrencyValue(rateStats.newRevenue),
+        NEWRENRT: formatCurrencyPerSqft(rateStats.newRevenue, rateStats.totalSqft),
+        AVGPERINC: formatPercent(average(rateStats.percentIncreases)),
+      };
+    }
+  }
 
   const tokens: OwnerPerformanceTokenValues = {
     ...moveActivityTokens,
@@ -402,16 +403,16 @@ export function computeOwnerPerformance({
     ok: true,
     tokens,
     preview,
-    metadata: {
-      currentMonthKey: currentKey,
-      previousMonthKey: previousKey,
-      latestMoveDateISO: dateKey(latestMoveDate),
-      hummingbirdRows: hummingbirdRowCount,
-      iprcRows: iprcParse.rows.length,
-      rateTargetMonthKey,
-      iprcRowsMatched: rateStats.count,
-    },
-  };
+      metadata: {
+        currentMonthKey: currentKey,
+        previousMonthKey: previousKey,
+        latestMoveDateISO: dateKey(latestMoveDate),
+        hummingbirdRows: hummingbirdRowCount,
+        iprcRows,
+        rateTargetMonthKey,
+        iprcRowsMatched,
+      },
+    };
 }
 
 function toArrayBuffer(input: WorkbookInput): ArrayBuffer {
@@ -580,6 +581,19 @@ function formatAverageDays(sum: number, count: number): string {
   const avg = sum / count;
   if (!Number.isFinite(avg)) return DASH;
   return integerFormatter.format(Math.round(avg));
+}
+
+function createEmptyRateManagementTokens(): RateManagementTokens {
+  return {
+    NUMREN: DASH,
+    TOTSFT: DASH,
+    BASREVPR: DASH,
+    BASERENPR: DASH,
+    TOTINCESC: DASH,
+    REVWINC: DASH,
+    NEWRENRT: DASH,
+    AVGPERINC: DASH,
+  };
 }
 
 function ratio(numerator: number, denominator: number): number | null {

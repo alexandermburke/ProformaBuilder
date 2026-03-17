@@ -66,7 +66,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 50;
 
   try {
-    let query = firestore.collection(COLLECTION).orderBy('created_at', 'desc').limit(limit);
+    let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = firestore.collection(COLLECTION);
     if (propertyId) {
       query = query.where('property_id', '==', propertyId);
     }
@@ -81,10 +81,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         if (revokedAtMs) return false;
         if (expiresAtMs && expiresAtMs < now) return false;
         return true;
-      });
+      })
+      .sort((a, b) => (toMillis(b.createdAt) ?? 0) - (toMillis(a.createdAt) ?? 0))
+      .slice(0, limit);
 
     return NextResponse.json({ ok: true, tokens, count: tokens.length });
-  } catch {
+  } catch (error) {
+    console.error('[share-links/active] failed to load active tokens', { propertyId, limit }, error);
     return NextResponse.json({ ok: false, message: 'Failed to load active tokens.' }, { status: 500 });
   }
 }

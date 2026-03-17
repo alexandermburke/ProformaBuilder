@@ -370,11 +370,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (inventoryBuffer && iprcText) {
+  if (inventoryBuffer) {
     try {
       const result = computeOwnerPerformance({
         hummingbirdWorkbook: inventoryBuffer,
-        iprcCsvText: iprcText,
+        iprcCsvText: iprcText ?? "",
         options: performanceOptions,
       });
       if (result.ok) {
