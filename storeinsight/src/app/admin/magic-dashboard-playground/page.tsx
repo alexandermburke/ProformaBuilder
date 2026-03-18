@@ -615,7 +615,14 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                   pinned month: {createResult.snapshotMonthIso ?? 'latest'}
                 </div>
                 <div className="text-[color:var(--text-secondary)]">ttl hours: {createResult.ttlHours ?? '24'}</div>
-                <div className="break-all text-[color:var(--text-primary)]">{createResult.url}</div>
+                <a
+                  href={createResult.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-[color:var(--accent-strong)] underline underline-offset-2"
+                >
+                  {createResult.url}
+                </a>
               </div>
             ) : null}
 

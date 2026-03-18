@@ -235,8 +235,8 @@ export default function DirectoryPage(): JSX.Element {
                 Workflow directory for STORE Management.
               </h1>
               <p className="text-base leading-relaxed text-[color:var(--text-secondary)] sm:text-lg">
-                Start from accounting, finance, historical data, or reporting tools. Each section opens its own view
-                with the workflows that belong there.
+                Start from accounting, finance, or historical data tools. Each section opens its own view with the
+                workflows that belong there.
               </p>
             </div>
             <div className="flex flex-wrap gap-3 text-sm">
@@ -259,8 +259,8 @@ export default function DirectoryPage(): JSX.Element {
                   What This Covers
                 </div>
                 <p className="text-sm leading-6 text-[color:var(--text-secondary)]">
-                  Accounting handles prep and reconciliation work, finance handles planning and owner reporting,
-                  historical data covers dashboards and uploads, and reporting covers recurring operational reports.
+                  Accounting handles prep and reconciliation work, finance handles planning, owner reporting, and
+                  daily flash reporting, and historical data covers dashboards and uploads.
                 </p>
               </div>
               <div className="ios-list-card space-y-2 p-5">

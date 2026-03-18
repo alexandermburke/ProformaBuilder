@@ -435,21 +435,46 @@ const looksLikeOwnerLabel = (value: string | null | undefined): boolean => {
   return /^owner\s*=/i.test(value.trim()) || /stor ?spaces/i.test(value);
 };
 
-const formatSnapshotDate = (value: unknown): string | null => {
+const toDateFromUnknown = (value: unknown): Date | null => {
   if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    const parsed = (value as { toDate: () => Date }).toDate();
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return null;
-    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
     const parsed = new Date(trimmed);
-    return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString().slice(0, 10);
-  }
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  if (typeof value === 'number') return new Date(value).toISOString().slice(0, 10);
-  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate().toISOString().slice(0, 10);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
   return null;
+};
+
+const formatSnapshotDisplayDate = (value: unknown): string | null => {
+  if (!value) return null;
+  const parsed = toDateFromUnknown(value);
+  if (parsed) {
+    return parsed.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  return null;
+};
+
+const formatSnapshotIsoDate = (value: unknown): string | null => {
+  const parsed = toDateFromUnknown(value);
+  return parsed ? parsed.toISOString().slice(0, 10) : null;
 };
 
 const getTopDelinquencies = (snapshot: MsrSnapshot) => {
@@ -602,9 +627,11 @@ export function TokenDashboardView({
 
   const latestSnapshot = rangeSnapshots[rangeSnapshots.length - 1]?.snapshot ?? sortedSnapshots[sortedSnapshots.length - 1]?.snapshot ?? null;
   const latestDateLabel = latestSnapshot
-    ? formatSnapshotDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate)
+    ? formatSnapshotDisplayDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate)
     : null;
-  const printDateLabel = latestDateLabel ?? new Date().toISOString().slice(0, 10);
+  const printDateLabel =
+    (latestSnapshot ? formatSnapshotIsoDate(latestSnapshot.reportDate ?? latestSnapshot.asOfDate) : null) ??
+    new Date().toISOString().slice(0, 10);
   const resolvedPrintPropertyName = useMemo(() => {
     const snapshotName = normalizePrintPropertyName(latestSnapshot?.propertyName);
     const propName = normalizePrintPropertyName(propertyName);

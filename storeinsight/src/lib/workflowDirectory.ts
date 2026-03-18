@@ -21,7 +21,7 @@ export type WorkflowCard = {
   disabled?: boolean;
 };
 
-export type WorkflowCategoryKey = 'accounting' | 'finance' | 'other' | 'reporting';
+export type WorkflowCategoryKey = 'accounting' | 'finance' | 'other';
 
 export type WorkflowCategory = {
   key: WorkflowCategoryKey;
@@ -100,7 +100,7 @@ export const workflowCategories: WorkflowCategory[] = [
     href: '/finance',
     title: 'Finance',
     summaryDescription: 'Planning, owner reporting, and benchmarking workflows for underwriting and asset performance.',
-    summaryHighlights: ['Proforma Data Drop', 'Owner Reports', 'Comp Sets'],
+    summaryHighlights: ['Proforma Data Drop', 'Owner Reports', 'Daily Summary Report'],
     summaryTone: 'green',
     summaryIcon: 'spreadsheet',
     pageBadge: 'Finance tools',
@@ -149,6 +149,20 @@ export const workflowCategories: WorkflowCategory[] = [
           'Export comp set notes for underwriting decks',
         ],
         href: '/comp-sets',
+      },
+      {
+        id: 'daily-summary-report',
+        title: 'Daily Summary Report',
+        description: 'Automate daily flash reports for STORE properties.',
+        status: 'Active',
+        tone: 'purple',
+        icon: 'document',
+        highlights: [
+          'Pull daily metrics from Tenant management summary exports',
+          'Fill Excel flash templates with rentals, vacates, and occupancy',
+          'Schedule automatic email delivery to property owners',
+        ],
+        href: '/daily-summary',
       },
     ],
   },
@@ -206,35 +220,6 @@ export const workflowCategories: WorkflowCategory[] = [
           'Review active tokens and Firebase snapshot coverage from one admin page.',
         ],
         href: '/admin/magic-dashboard-playground',
-      },
-    ],
-  },
-  {
-    key: 'reporting',
-    href: '/reporting',
-    title: 'Reporting',
-    summaryDescription: 'Recurring report generation and delivery workflows for STORE operational updates.',
-    summaryHighlights: ['Daily Summary Report'],
-    summaryTone: 'purple',
-    summaryIcon: 'document',
-    pageBadge: 'Reporting workflows',
-    pageTitle: 'Choose a reporting workflow.',
-    pageDescription:
-      'Open the reporting workflow you need for daily report generation, review, and delivery.',
-    features: [
-      {
-        id: 'daily-summary-report',
-        title: 'Daily Summary Report',
-        description: 'Automate daily flash reports for STORE properties.',
-        status: 'Active',
-        tone: 'purple',
-        icon: 'document',
-        highlights: [
-          'Pull daily metrics from Tenant management summary exports',
-          'Fill Excel flash templates with rentals, vacates, and occupancy',
-          'Schedule automatic email delivery to property owners',
-        ],
-        href: '/daily-summary',
       },
     ],
   },

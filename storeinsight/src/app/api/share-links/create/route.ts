@@ -1,6 +1,19 @@
-﻿import type { NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { createShareLink } from '@/lib/shareLinks';
+
+const DASHBOARD_PUBLIC_ORIGIN = (() => {
+  const candidates = [
+    process.env.DASHBOARD_PUBLIC_ORIGIN,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const safe = candidates.find((value) => !/localhost/i.test(value));
+  return safe || 'https://storeinternalplatform.com';
+})();
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const body = await request.json().catch(() => null);
@@ -19,10 +32,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       snapshotMonthIso: snapshotMonthIso || null,
       ttlHours,
     });
-    const url = `${request.nextUrl.origin}/dash/t/${token}`;
+    const url = `${DASHBOARD_PUBLIC_ORIGIN}/dash/t/${token}`;
     return NextResponse.json({ id, url, expiresAt, snapshotMonthIso: snapshotMonthIso || null, ttlHours });
   } catch {
     return NextResponse.json({ ok: false, message: 'Failed to create share link.' }, { status: 500 });
   }
 }
-
