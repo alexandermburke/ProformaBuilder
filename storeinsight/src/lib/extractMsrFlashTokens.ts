@@ -77,6 +77,25 @@ const readNumber = (sheet: ExcelJS.Worksheet, address: string, label: string): n
   throw new Error(`${label} is not a number.`);
 };
 
+const readOptionalNumber = (sheet: ExcelJS.Worksheet, address: string): number | null => {
+  const primaryValue = normalizeCellValue(sheet.getCell(address).value);
+  const primaryNumeric = coerceNumber(primaryValue);
+  if (Number.isFinite(primaryNumeric)) {
+    return primaryNumeric;
+  }
+
+  const shiftedAddress = shiftAddressByRow(address, 1);
+  if (shiftedAddress) {
+    const shiftedValue = normalizeCellValue(sheet.getCell(shiftedAddress).value);
+    const shiftedNumeric = coerceNumber(shiftedValue);
+    if (Number.isFinite(shiftedNumeric)) {
+      return shiftedNumeric;
+    }
+  }
+
+  return null;
+};
+
 const formatToTwo = (value: number): number => {
   if (!Number.isFinite(value)) return value;
   const factor = 100;
@@ -142,10 +161,13 @@ export async function extractMsrFlashTokens(
   const mtdNetRentals = readNumber(msrSheet, "J10", "MTD net rentals (MSR!J10)");
   const leadConversion = readNumber(msrSheet, "O10", "Lead conversion % (MSR!O10)");
 
-  const projRent = readNumber(msrSheet, "L32", "Projected rent (MSR!L32)");
+  // Keep these revenue tokens aligned with the daily flash/MSR extraction path.
+  const totalRsf = readOptionalNumber(msrSheet, "M45");
+  const projRent = readNumber(msrSheet, "L33", "Projected rent (MSR!L33)");
   const projRentPerSf = readNumber(msrSheet, "K33", "Projected rent per SF (MSR!K33)");
-  const grossVacantRevenue = readNumber(msrSheet, "I28", "Gross Vacant Revenue (MSR!I28)");
+  const grossVacantRevenue = readNumber(msrSheet, "I29", "Gross Vacant Revenue (MSR!I29)");
   const effPotRent = projRent + grossVacantRevenue;
+  const effRentSf = totalRsf && totalRsf > 0 ? effPotRent / totalRsf : Number.NaN;
   const avgSfVaca = readNumber(msrSheet, "L39", "Average SF Vacant (MSR!L39)");
   const grossPotRent = readNumber(msrSheet, "L27", "Gross potential rent (MSR!L27)");
   const grossPotRentRate = readNumber(msrSheet, "N27", "Gross potential rent rate (MSR!N27)");
@@ -159,8 +181,13 @@ export async function extractMsrFlashTokens(
     PROJRENT: formatCurrency(projRent),
     PROJRENTPERSF: formatCurrency(projRentPerSf),
     EFFPOTRENT: formatCurrency(effPotRent),
+    EFFPOTERENT: formatCurrency(effPotRent),
+    EFFRENTSF: formatCurrency(effRentSf),
+    EFFRENTPERSF: formatCurrency(effRentSf),
     AVGSFVACA: formatCurrency(avgSfVaca),
     GROSSPOTRENT: formatCurrency(grossPotRent),
     GROSSPOTRENTRATE: formatCurrency(grossPotRentRate),
+    GROSSPOTSFT: formatCurrency(grossPotRentRate),
+    GROSSPOTRENTSF: formatCurrency(grossPotRentRate),
   };
 }
