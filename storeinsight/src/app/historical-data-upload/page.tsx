@@ -674,11 +674,11 @@ export default function HistoricalDataUploadPage(): JSX.Element {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/historical-data" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-                Back to historical data
-              </Link>
               <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                Directory
+                <span aria-hidden className="-ml-1 mr-1 text-base">
+                  &larr;
+                </span>
+                Back to directory
               </Link>
             </div>
           </div>

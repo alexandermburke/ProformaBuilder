@@ -499,11 +499,11 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/historical-data-upload" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-                Historical upload
-              </Link>
-              <Link href="/historical-data" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                Historical dashboard
+              <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
+                <span aria-hidden className="-ml-1 mr-1 text-base">
+                  &larr;
+                </span>
+                Back to directory
               </Link>
             </div>
           </div>
