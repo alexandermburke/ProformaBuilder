@@ -46,6 +46,11 @@ const BUDGET_SUFFIXES = [
 ] as const;
 
 const PPT_XML_FILE_PATTERN = /^ppt\/(slides|slideLayouts|slideMasters)\/.*\.xml$/;
+const VARIANCE_PERCENT_MARKER_START = "__CDX_VARPCT_START__";
+const VARIANCE_PERCENT_MARKER_END = "__CDX_VARPCT_END__";
+const POSITIVE_VARIANCE_COLOR = "008000";
+const NEGATIVE_VARIANCE_COLOR = "C00000";
+const NEUTRAL_VARIANCE_COLOR = "000000";
 
 type TemplateValue = string | number;
 
@@ -131,7 +136,7 @@ const fmtNumber = (n: number) => new Intl.NumberFormat("en-US").format(n);
 const fmtOwnerPercent = (n: number) => {
   if (!Number.isFinite(n)) return "";
   const value = Math.abs(n) <= 1 ? n * 100 : n;
-  return `${value.toFixed(1)}%`;
+  return `${value.toFixed(2)}%`;
 };
 
 const isPercentToken = (token: string): boolean => /(VARPER|YTDVARPER)$/.test(token);
@@ -146,7 +151,7 @@ const fmtCurrency = (value: number): string =>
         maximumFractionDigits: 2,
       });
 
-const fmtBudgetPercent = (value: number): string => `${Number(value).toFixed(1)}%`;
+const fmtBudgetPercent = (value: number): string => `${Number(value).toFixed(2)}%`;
 const fmtPercentWholeNumber = (n: number): string => {
   if (!Number.isFinite(n)) return "";
   const value = Math.abs(n) <= 1 ? n * 100 : n;
@@ -255,6 +260,8 @@ type TokenMeta = {
   trailingPercent: boolean;
 };
 
+const shouldColorizeVariancePercentToken = (token: string): boolean => /(VARPER|YTDVARPER)$/.test(token);
+
 function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, TokenMeta> {
   const discovered = new Map<string, TokenMeta>();
   const keyLookup = new Map(keys.map((key) => [key.toUpperCase(), key]));
@@ -281,6 +288,9 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, Token
         meta.trailingPercent = true;
       }
       discovered.set(canonical, meta);
+      if (shouldColorizeVariancePercentToken(canonical)) {
+        return `${VARIANCE_PERCENT_MARKER_START}{{${canonical}}}${VARIANCE_PERCENT_MARKER_END}`;
+      }
       return `{{${canonical}}}`;
     });
     if (updated !== original) {
@@ -289,6 +299,55 @@ function normalizeTemplateTokens(zip: PizZip, keys: string[]): Map<string, Token
   }
   return discovered;
 }
+
+const resolveVariancePercentColor = (rawValue: string): string => {
+  const trimmed = rawValue.trim();
+  if (!trimmed || trimmed === DASH_CHARACTER) return NEUTRAL_VARIANCE_COLOR;
+  const numeric = Number(trimmed.replace(/[^0-9.\-]+/g, ""));
+  if (!Number.isFinite(numeric) || Math.abs(numeric) < 0.0000001) {
+    return NEUTRAL_VARIANCE_COLOR;
+  }
+  return numeric < 0 ? NEGATIVE_VARIANCE_COLOR : POSITIVE_VARIANCE_COLOR;
+};
+
+const applyRunTextColor = (runXml: string, color: string): string => {
+  const solidFillXml = `<a:solidFill><a:srgbClr val="${color}"/></a:solidFill>`;
+  if (/<a:rPr\b[^>]*\/>/.test(runXml)) {
+    return runXml.replace(/<a:rPr\b([^>]*)\/>/, `<a:rPr$1>${solidFillXml}</a:rPr>`);
+  }
+  if (/<a:rPr\b[^>]*>[\s\S]*?<\/a:rPr>/.test(runXml)) {
+    return runXml.replace(/<a:rPr\b([^>]*)>([\s\S]*?)<\/a:rPr>/, (_match, attrs: string, inner: string) => {
+      const withoutSolidFill = inner.replace(/<a:solidFill>[\s\S]*?<\/a:solidFill>/g, "");
+      return `<a:rPr${attrs}>${solidFillXml}${withoutSolidFill}</a:rPr>`;
+    });
+  }
+  return runXml.replace(/<a:r\b([^>]*)>/, `<a:r$1><a:rPr>${solidFillXml}</a:rPr>`);
+};
+
+const colorizeVariancePercentRuns = (zip: PizZip): void => {
+  const xmlPaths = Object.keys(zip.files).filter((filename) => PPT_XML_FILE_PATTERN.test(filename));
+  for (const filename of xmlPaths) {
+    const file = zip.file(filename);
+    if (!file) continue;
+    const original = file.asText();
+    if (!original.includes(VARIANCE_PERCENT_MARKER_START)) continue;
+    const updated = original.replace(/<a:r\b[\s\S]*?<\/a:r>/g, (runXml) => {
+      if (!runXml.includes(VARIANCE_PERCENT_MARKER_START)) return runXml;
+      const markerMatch = runXml.match(
+        new RegExp(`${VARIANCE_PERCENT_MARKER_START}([\\s\\S]*?)${VARIANCE_PERCENT_MARKER_END}`),
+      );
+      const rawValue = markerMatch?.[1] ?? "";
+      const color = resolveVariancePercentColor(rawValue);
+      const cleanedRun = runXml
+        .replaceAll(VARIANCE_PERCENT_MARKER_START, "")
+        .replaceAll(VARIANCE_PERCENT_MARKER_END, "");
+      return applyRunTextColor(cleanedRun, color);
+    });
+    if (updated !== original) {
+      zip.file(filename, updated);
+    }
+  }
+};
 
 type BuildOwnerPptxOptions = {
   // templateBuffer: PPTX template (default public/OWNERTEMPLATE.pptx)
@@ -427,7 +486,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     if (!Number.isFinite(numericValue)) continue;
     const printable = isPercentToken(token)
       ? tokensWithTrailingPercent.has(token)
-        ? Number(numericValue).toFixed(1)
+        ? Number(numericValue).toFixed(2)
         : fmtBudgetPercent(numericValue)
       : fmtCurrency(numericValue);
     budgetTokens[token] = printable;
@@ -449,7 +508,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     if (!Number.isFinite(numericValue)) continue;
     const printable = isPercentToken(token)
       ? tokensWithTrailingPercent.has(token)
-        ? Number(numericValue).toFixed(1)
+        ? Number(numericValue).toFixed(2)
         : fmtBudgetPercent(numericValue)
       : fmtCurrency(numericValue);
     budgetOverrides[token] = printable;
@@ -700,6 +759,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   // New Docxtemplater API: pass data directly to render
   // (removes deprecated .setData())
   doc.render(templateData);
+  colorizeVariancePercentRuns(doc.getZip() as PizZip);
 
   // Optional sanity check: count placeholders inside the PPTX template
   try {

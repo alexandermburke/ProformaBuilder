@@ -7,7 +7,7 @@ const moneyFmt = (n: unknown): string =>
     ? n.toLocaleString("en-US", { style: "currency", currency: "USD" })
     : String(n);
 const pctFmt = (n: unknown): string =>
-  typeof n === "number" ? `${n.toFixed(1)}%` : String(n);
+  typeof n === "number" ? `${n.toFixed(2)}%` : String(n);
 
 type CellValue = string | number | boolean | Date | null | undefined;
 type Grid = CellValue[][];
@@ -312,6 +312,7 @@ const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number
 
   let str = String(value ?? "").trim();
   if (!str) return Number.NaN;
+  const hadPercentSymbol = str.includes("%");
 
   const upper = str.toUpperCase();
   if (upper === "N/A" || upper === "NA" || upper === "NONE" || upper === "--") return Number.NaN;
@@ -322,7 +323,7 @@ const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number
     str = str.slice(1, -1);
   }
 
-  const percentLike = isPercent || str.includes("%");
+  const percentLike = isPercent || hadPercentSymbol;
 
   str = str.replace(/[$,%]/g, "").replace(/\s+/g, "");
   if (!str) return Number.NaN;
@@ -331,7 +332,9 @@ const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number
   if (!Number.isFinite(parsed)) return Number.NaN;
 
   let result = parsed;
-  if (percentLike && !str.includes("%") && Math.abs(result) <= 1) {
+  // If the workbook already gave us an explicit percent string like "0.96%",
+  // do not scale it again. Only scale ratio-style values such as 0.0096.
+  if (percentLike && !hadPercentSymbol && Math.abs(result) <= 1) {
     result *= 100;
   }
   if (isNegative) result *= -1;
@@ -372,7 +375,7 @@ const resolveLabelBase = (value: CellValue): string | null => {
 };
 
 const roundMoney = (value: number): number => Math.round(value * 100) / 100;
-const roundPercent = (value: number): number => Math.round(value * 10) / 10;
+const roundPercent = (value: number): number => Math.round(value * 100) / 100;
 const normalizeZero = (value: number): number => (Object.is(value, -0) ? 0 : value);
 
 const hasValue = (meta?: RowValueMeta): meta is RowValueMeta & { value: number } =>

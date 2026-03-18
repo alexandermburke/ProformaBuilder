@@ -386,7 +386,7 @@ function formatOwnerFieldForLog(key: FieldKey, raw: OwnerFields[FieldKey]): stri
     if (!Number.isFinite(raw)) return LOG_DASH_CHARACTER;
     if (key === "OCCUPIEDAREAPERCENT") {
       const percent = Math.abs(raw) <= 1 ? raw * 100 : raw;
-      return normalizeLogValue(`${percent.toFixed(1)}%`);
+      return normalizeLogValue(`${percent.toFixed(2)}%`);
     }
     return normalizeLogValue(ownerLogNumber.format(raw));
   }
@@ -396,7 +396,7 @@ function formatOwnerFieldForLog(key: FieldKey, raw: OwnerFields[FieldKey]): stri
 function formatBudgetTokenForLog(token: string, value: number): string {
   if (!Number.isFinite(value)) return LOG_DASH_CHARACTER;
   if (BUDGET_LOG_PERCENT_SUFFIX.test(token)) {
-    return normalizeLogValue(`${Number(value).toFixed(1)}%`);
+    return normalizeLogValue(`${Number(value).toFixed(2)}%`);
   }
   return normalizeLogValue(budgetLogCurrency.format(value));
 }
@@ -722,7 +722,7 @@ export default function OwnerReportsPage() {
     if (!Number.isFinite(value)) return "0";
     if (key === "OCCUPIEDAREAPERCENT") {
       const percent = Math.abs(value) <= 1 ? value * 100 : value;
-      return `${percent.toFixed(1)}%`;
+      return `${percent.toFixed(2)}%`;
     }
     return value.toLocaleString();
   }
@@ -1128,8 +1128,8 @@ export default function OwnerReportsPage() {
   const percentFormatter = useMemo(
     () =>
       new Intl.NumberFormat("en-US", {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
       }),
     [],
   );
@@ -2248,7 +2248,7 @@ export default function OwnerReportsPage() {
                                   const placeholderValue =
                                     formattedDetected ||
                                     formattedBaseline ||
-                                    (isPercentToken ? "0.0%" : "Enter value");
+                                    (isPercentToken ? "0.00%" : "Enter value");
 
                                   const percentToneClass =
                                     isPercentToken &&
