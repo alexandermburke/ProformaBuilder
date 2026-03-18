@@ -45,6 +45,12 @@ type FirebaseStatus = {
   latestMonth: string | null;
 };
 
+type MonthlyFinancialRow = {
+  monthIso: string;
+  expenses: number | null;
+  noi: number | null;
+};
+
 type ActiveTokensResult = {
   tokens: ShareLinkRecord[];
   count: number;
@@ -100,6 +106,13 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
   const [firebaseStatus, setFirebaseStatus] = useState<FirebaseStatus | null>(null);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const [financialEditorPropertyId, setFinancialEditorPropertyId] = useState('');
+  const [monthlyFinancialRows, setMonthlyFinancialRows] = useState<MonthlyFinancialRow[]>([]);
+  const [monthlyFinancialStatus, setMonthlyFinancialStatus] = useState<string | null>(null);
+  const [monthlyFinancialError, setMonthlyFinancialError] = useState<string | null>(null);
+  const [isLoadingMonthlyFinancials, setIsLoadingMonthlyFinancials] = useState(false);
+  const [isSavingMonthlyFinancials, setIsSavingMonthlyFinancials] = useState(false);
 
   const [activeTokensPropertyId, setActiveTokensPropertyId] = useState('');
   const [activeTokensResult, setActiveTokensResult] = useState<ActiveTokensResult | null>(null);
@@ -368,6 +381,90 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
       setActiveTokensError('Failed to load active tokens.');
     } finally {
       setIsLoadingActiveTokens(false);
+    }
+  };
+
+  const handleMonthlyFinancialChange = (
+    monthIso: string,
+    field: 'expenses' | 'noi',
+    value: string,
+  ) => {
+    setMonthlyFinancialRows((current) =>
+      current.map((row) =>
+        row.monthIso === monthIso
+          ? {
+              ...row,
+              [field]: value.trim() === '' ? null : Number(value.replace(/,/g, '')),
+            }
+          : row,
+      ),
+    );
+  };
+
+  const handleLoadMonthlyFinancials = async () => {
+    setMonthlyFinancialError(null);
+    setMonthlyFinancialStatus(null);
+    setMonthlyFinancialRows([]);
+    if (!financialEditorPropertyId.trim()) {
+      setMonthlyFinancialError('Select a propertyId.');
+      return;
+    }
+    setIsLoadingMonthlyFinancials(true);
+    try {
+      const response = await fetch(
+        `/api/firebase/property-historical/monthly-financials?propertyId=${encodeURIComponent(financialEditorPropertyId.trim())}`,
+        { cache: 'no-store' },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        setMonthlyFinancialError(data?.message ?? 'Failed to load monthly financials.');
+        return;
+      }
+      const rows = Array.isArray(data?.rows) ? (data.rows as MonthlyFinancialRow[]) : [];
+      setMonthlyFinancialRows(rows);
+      setMonthlyFinancialStatus(`Loaded ${rows.length} monthly financial rows.`);
+    } catch {
+      setMonthlyFinancialError('Failed to load monthly financials.');
+    } finally {
+      setIsLoadingMonthlyFinancials(false);
+    }
+  };
+
+  const handleSaveAllMonthlyFinancials = async () => {
+    setMonthlyFinancialError(null);
+    setMonthlyFinancialStatus(null);
+    if (!financialEditorPropertyId.trim()) {
+      setMonthlyFinancialError('Select a propertyId.');
+      return;
+    }
+    if (!monthlyFinancialRows.length) {
+      setMonthlyFinancialError('Load monthly financials first.');
+      return;
+    }
+    setIsSavingMonthlyFinancials(true);
+    try {
+      for (const row of monthlyFinancialRows) {
+        const response = await fetch('/api/firebase/property-historical/monthly-financials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            propertyId: financialEditorPropertyId.trim(),
+            monthIso: row.monthIso,
+            expenses: row.expenses,
+            noi: row.noi,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setMonthlyFinancialError(data?.message ?? `Failed to save ${row.monthIso}.`);
+          return;
+        }
+      }
+      setMonthlyFinancialStatus(`Saved ${monthlyFinancialRows.length} monthly financial rows.`);
+    } catch {
+      setMonthlyFinancialError('Failed to save monthly financial rows.');
+    } finally {
+      setIsSavingMonthlyFinancials(false);
     }
   };
 
@@ -773,6 +870,89 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
 
             <div className="space-y-1 text-[11px]">
               {firebaseError ? <p className="text-red-500">Error: {firebaseError}</p> : null}
+            </div>
+          </div>
+
+          <div className="space-y-4 border-t border-[color:var(--border-soft)] pt-6">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-[color:var(--text-primary)]">Monthly NOI / Expenses editor</div>
+              <p className="text-xs text-[color:var(--text-secondary)]">
+                Edit stored financial values by month for a property. Changes write directly into the historical snapshot record.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <select
+                className="owner-field-input flex-1 rounded-2xl px-4 py-2 text-sm"
+                value={financialEditorPropertyId}
+                onChange={(event) => setFinancialEditorPropertyId(event.target.value)}
+              >
+                <option value="">Select propertyId</option>
+                {propertyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                onClick={handleLoadMonthlyFinancials}
+                disabled={isLoadingMonthlyFinancials}
+              >
+                {isLoadingMonthlyFinancials ? 'Loading...' : 'Load monthly financials'}
+              </button>
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                data-variant="secondary"
+                onClick={handleSaveAllMonthlyFinancials}
+                disabled={isSavingMonthlyFinancials || !monthlyFinancialRows.length}
+              >
+                {isSavingMonthlyFinancials ? 'Saving...' : 'Save all'}
+              </button>
+            </div>
+
+            {monthlyFinancialRows.length ? (
+              <div className="ios-list-card overflow-hidden p-0 text-xs">
+                <table className="min-w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-[color:var(--border-soft)] text-left text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                      <th className="px-4 py-3">Month</th>
+                      <th className="px-4 py-3">Expenses</th>
+                      <th className="px-4 py-3">NOI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[color:var(--border-soft)]">
+                    {monthlyFinancialRows.map((row) => (
+                      <tr key={row.monthIso}>
+                        <td className="px-4 py-3 font-medium text-[color:var(--text-primary)]">{row.monthIso}</td>
+                        <td className="px-4 py-3">
+                          <input
+                            className="owner-field-input w-full rounded-xl px-3 py-2 text-sm"
+                            inputMode="decimal"
+                            value={row.expenses ?? ''}
+                            onChange={(event) => handleMonthlyFinancialChange(row.monthIso, 'expenses', event.target.value)}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            className="owner-field-input w-full rounded-xl px-3 py-2 text-sm"
+                            inputMode="decimal"
+                            value={row.noi ?? ''}
+                            onChange={(event) => handleMonthlyFinancialChange(row.monthIso, 'noi', event.target.value)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            <div className="space-y-1 text-[11px]">
+              {monthlyFinancialError ? <p className="text-red-500">Error: {monthlyFinancialError}</p> : null}
+              {monthlyFinancialStatus ? <p className="text-[color:var(--text-secondary)]">{monthlyFinancialStatus}</p> : null}
             </div>
           </div>
         </section>

@@ -3,6 +3,9 @@ const normalizePropertyKey = (value: string): string =>
 
 const DASHBOARD_EMAIL_PROPERTY_ID_BY_KEY = new Map<string, string>([
   ["L001", "L001"],
+  ["W003", "W003"],
+  ["STOREONBASELINE", "W003"],
+  ["BASELINE", "W003"],
   ["PROP_PITTMAN", "prop-pittman"],
   ["PITTMAN", "prop-pittman"],
 ]);

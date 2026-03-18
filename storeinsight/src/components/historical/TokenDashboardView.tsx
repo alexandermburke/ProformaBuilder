@@ -1963,7 +1963,7 @@ export function TokenDashboardView({
 
         <footer className="ios-card ios-animate-up mt-4 space-y-2 p-6 text-sm" data-tone="blue">
           
-          <p className="text-[color:var(--text-secondary)]">Copyright © {currentYear} STORE Management LLC</p>
+          <p className="text-[color:var(--text-secondary)]">Copyright © {currentYear} STORE Management. All Rights Reserved.</p>
           <p className="text-[color:var(--text-secondary)]">
             By viewing this dashboard, you agree to our{' '}
             <Link href="/privacy" className="text-[color:var(--accent-strong)] hover:underline">

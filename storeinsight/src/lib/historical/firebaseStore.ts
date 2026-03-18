@@ -56,6 +56,17 @@ const hasFinancialSnapshotData = (value: unknown): boolean => {
   );
 };
 
+const readFirstFiniteNumber = (...values: unknown[]): number | null => {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+};
+
 const hasRangeSeries = (rangeData: unknown): boolean => {
   if (!rangeData || typeof rangeData !== 'object') return false;
   const series = (rangeData as { series?: Record<string, unknown> }).series;
@@ -241,6 +252,133 @@ export async function getPropertyBudgetFinancialStatus(
     exists: Boolean(match),
     hasFinancials: hasFinancialSnapshotData(match?.financials),
     updatedAt: toIsoString(doc.updated_at),
+  };
+}
+
+export type MonthlyFinancialEditorRow = {
+  monthIso: string;
+  expenses: number | null;
+  noi: number | null;
+};
+
+export async function getPropertyMonthlyFinancialRows(
+  propertyId: string,
+): Promise<{ rows: MonthlyFinancialEditorRow[]; updatedAt: string | null }> {
+  if (!firestore) {
+    return { rows: [], updatedAt: null };
+  }
+  const normalizedId = propertyId.trim();
+  if (!normalizedId) {
+    return { rows: [], updatedAt: null };
+  }
+  const snapshot = await firestore.collection(COLLECTION).doc(normalizedId).get();
+  if (!snapshot.exists) {
+    return { rows: [], updatedAt: null };
+  }
+  const doc = snapshot.data() as { snapshots?: unknown[]; updated_at?: unknown };
+  const snapshots = Array.isArray(doc.snapshots) ? doc.snapshots : [];
+  const rows = snapshots
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const monthIso =
+        normalizeSnapshotMonth((entry as { reportMonthIso?: unknown }).reportMonthIso) ??
+        normalizeSnapshotMonth((entry as { monthIso?: unknown }).monthIso);
+      if (!monthIso) return null;
+      const financials = (entry as { financials?: Record<string, unknown> }).financials ?? {};
+      return {
+        monthIso,
+        expenses: readFirstFiniteNumber(
+          financials.expensesMtd,
+          financials.totalOperatingExpenseMtd,
+          financials.expenses,
+          financials.totalOperatingExpense,
+        ),
+        noi: readFirstFiniteNumber(
+          financials.noiMtd,
+          financials.netOperatingIncomeMtd,
+          financials.noi,
+          financials.netOperatingIncome,
+        ),
+      } satisfies MonthlyFinancialEditorRow;
+    })
+    .filter((row): row is MonthlyFinancialEditorRow => Boolean(row))
+    .sort((a, b) => b.monthIso.localeCompare(a.monthIso));
+
+  return {
+    rows,
+    updatedAt: toIsoString(doc.updated_at),
+  };
+}
+
+export async function updatePropertyMonthlyFinancialRow(
+  propertyId: string,
+  monthIso: string,
+  input: { expenses: number | null; noi: number | null },
+): Promise<{ updatedAt: string | null }> {
+  if (!firestore) {
+    throw new Error('Firebase is not configured.');
+  }
+  const normalizedId = propertyId.trim();
+  if (!normalizedId) {
+    throw new Error('Property ID is required.');
+  }
+  const normalizedMonth = normalizeSnapshotMonth(monthIso);
+  if (!normalizedMonth) {
+    throw new Error('Month is required.');
+  }
+
+  const docRef = firestore.collection(COLLECTION).doc(normalizedId);
+  const snapshot = await docRef.get();
+  if (!snapshot.exists) {
+    throw new Error('Historical data document not found.');
+  }
+
+  const docData = snapshot.data() as { snapshots?: unknown[] } | undefined;
+  const snapshots = Array.isArray(docData?.snapshots) ? [...docData.snapshots] : [];
+  const existingIndex = snapshots.findIndex((entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const entryMonth =
+      normalizeSnapshotMonth((entry as { reportMonthIso?: unknown }).reportMonthIso) ??
+      normalizeSnapshotMonth((entry as { monthIso?: unknown }).monthIso);
+    return entryMonth === normalizedMonth;
+  });
+
+  if (existingIndex < 0) {
+    throw new Error('Snapshot month not found.');
+  }
+
+  const existingEntry = snapshots[existingIndex] as Record<string, unknown>;
+  const nextFinancials = sanitizeSnapshotValue({
+    ...(existingEntry.financials as Record<string, unknown> | undefined),
+    expenses: input.expenses,
+    expensesMtd: input.expenses,
+    totalOperatingExpense: input.expenses,
+    totalOperatingExpenseMtd: input.expenses,
+    noi: input.noi,
+    noiMtd: input.noi,
+    netOperatingIncome: input.noi,
+    netOperatingIncomeMtd: input.noi,
+  });
+
+  snapshots[existingIndex] = sanitizeSnapshotValue({
+    ...existingEntry,
+    financials: nextFinancials,
+  });
+
+  await docRef.set(
+    {
+      id: normalizedId,
+      property_id: normalizedId,
+      snapshots,
+      financials_updated_at: admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  const updatedSnap = await docRef.get();
+  return {
+    updatedAt: toIsoString(updatedSnap.data()?.updated_at) ?? new Date().toISOString(),
   };
 }
 
