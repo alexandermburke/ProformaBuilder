@@ -1780,9 +1780,6 @@ export function TokenDashboardView({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="ios-badge text-[10px]">Investor dashboard</span>
                 <span className="ios-pill text-[10px]" data-tone="neutral">
-                  Beta testing
-                </span>
-                <span className="ios-pill text-[10px]" data-tone="neutral">
                   As of {latestDateLabel ?? 'N/A'}
                 </span>
               </div>
@@ -1884,14 +1881,11 @@ export function TokenDashboardView({
               <button
                 type="button"
                 onClick={handlePrint}
-                className="ios-button ml-auto inline-flex h-9 w-9 items-center justify-center p-0"
+                className="ios-button ml-auto px-4 py-2 text-sm"
                 data-variant="secondary"
-                aria-label="Print dashboard"
                 title="Print dashboard"
               >
-                <span className="text-lg leading-none text-[color:var(--text-primary)]" aria-hidden="true">
-                  ⎙
-                </span>
+                Print
               </button>
             </div>
           </div>

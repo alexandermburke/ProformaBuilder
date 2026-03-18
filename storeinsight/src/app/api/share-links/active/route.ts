@@ -9,6 +9,7 @@ const COLLECTION = 'dashboard_share_links';
 
 type ShareLinkRecord = {
   id: string;
+  token: string | null;
   propertyId: string;
   investorId: string;
   snapshotMonthIso: string | null;
@@ -44,6 +45,7 @@ const toMillis = (value: unknown): number | null => {
 
 const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord => ({
   id,
+  token: typeof data.token === 'string' && data.token.trim() ? data.token : null,
   propertyId: (data.property_id ?? '').toString(),
   investorId: (data.investor_id ?? '').toString(),
   snapshotMonthIso: typeof data.snapshot_month_iso === 'string' ? data.snapshot_month_iso : null,

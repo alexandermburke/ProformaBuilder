@@ -21,7 +21,7 @@ export type WorkflowCard = {
   disabled?: boolean;
 };
 
-export type WorkflowCategoryKey = 'accounting' | 'finance' | 'other';
+export type WorkflowCategoryKey = 'accounting' | 'finance' | 'other' | 'reporting';
 
 export type WorkflowCategory = {
   key: WorkflowCategoryKey;
@@ -155,15 +155,15 @@ export const workflowCategories: WorkflowCategory[] = [
   {
     key: 'other',
     href: '/other',
-    title: 'Other',
-    summaryDescription: 'Operational reporting and historical analysis workflows that do not sit under accounting or finance.',
-    summaryHighlights: ['Historical Data', 'Daily Summary Report'],
+    title: 'Historical Data',
+    summaryDescription: 'Historical dashboards, uploads, and access tools for reviewing property performance over time.',
+    summaryHighlights: ['Historical Dashboard', 'Historical Data Upload', 'Dashboard Access'],
     summaryTone: 'amber',
     summaryIcon: 'layers',
-    pageBadge: 'Supporting workflows',
-    pageTitle: 'Choose a supporting workflow.',
+    pageBadge: 'Historical tools',
+    pageTitle: 'Choose a historical data workflow.',
     pageDescription:
-      'Access supporting reporting and analysis tools that complement the accounting and finance workflow hubs.',
+      'Access the historical dashboard, upload new monthly data, and manage historical dashboard access links.',
     features: [
       {
         id: 'historical-data',
@@ -179,6 +179,49 @@ export const workflowCategories: WorkflowCategory[] = [
         ],
         href: '/historical-data',
       },
+      {
+        id: 'historical-data-upload',
+        title: 'Historical Data Upload',
+        description: 'Upload MSR and accounting files into the historical reporting pipeline.',
+        status: 'Active',
+        tone: 'blue',
+        icon: 'spreadsheet',
+        highlights: [
+          'Preview parsed historical snapshots before saving them.',
+          'Validate MSR, accounting, and monthly rollup inputs in one place.',
+          'Push cleaned monthly history into the dashboard data store.',
+        ],
+        href: '/historical-data-upload',
+      },
+      {
+        id: 'magic-dashboard-playground',
+        title: 'Historical Dashboard Access',
+        description: 'Create and inspect tokenized historical dashboard access links.',
+        status: 'Active',
+        tone: 'green',
+        icon: 'globe',
+        highlights: [
+          'Generate share tokens by property with custom expiration windows.',
+          'Pin dashboard links to a specific historical month.',
+          'Review active tokens and Firebase snapshot coverage from one admin page.',
+        ],
+        href: '/admin/magic-dashboard-playground',
+      },
+    ],
+  },
+  {
+    key: 'reporting',
+    href: '/reporting',
+    title: 'Reporting',
+    summaryDescription: 'Recurring report generation and delivery workflows for STORE operational updates.',
+    summaryHighlights: ['Daily Summary Report'],
+    summaryTone: 'purple',
+    summaryIcon: 'document',
+    pageBadge: 'Reporting workflows',
+    pageTitle: 'Choose a reporting workflow.',
+    pageDescription:
+      'Open the reporting workflow you need for daily report generation, review, and delivery.',
+    features: [
       {
         id: 'daily-summary-report',
         title: 'Daily Summary Report',

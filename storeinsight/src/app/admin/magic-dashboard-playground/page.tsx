@@ -10,9 +10,11 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
+import { resolveDashboardEmailPropertyId } from '@/lib/flash/dashboardEmailConfig';
 
 type ShareLinkRecord = {
   id: string;
+  token: string | null;
   propertyId: string;
   investorId: string;
   snapshotMonthIso: string | null;
@@ -119,7 +121,16 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
   const propertyOptions = useMemo<PropertyOption[]>(() => {
     const deduped = new Map<string, PropertyOption>();
     propertyRecords.forEach((record) => {
-      const value = record.propertyId?.trim() || record.tenantPropertyId?.trim() || record.id?.trim();
+      const value =
+        resolveDashboardEmailPropertyId(
+          record.propertyId?.trim(),
+          record.tenantPropertyId?.trim(),
+          record.propertyCode?.trim(),
+          record.id?.trim(),
+        ) ||
+        record.propertyId?.trim() ||
+        record.tenantPropertyId?.trim() ||
+        record.id?.trim();
       if (!value || deduped.has(value)) return;
       const name = record.name?.trim() || record.propertyCode?.trim() || record.id?.trim() || value;
       deduped.set(value, { value, label: `${name} (${value})` });
@@ -360,11 +371,16 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
     }
   };
 
-  const openInvestorView = (input: string) => {
+  const getInvestorViewUrl = (input: string): string => {
     const token = extractToken(input);
     const base = typeof window === 'undefined' ? '' : window.location.origin;
-    if (!token || !base) return;
-    const url = input.includes('/dash/t/') ? input : `${base}/dash/t/${token}`;
+    if (!token || !base) return '';
+    return input.includes('/dash/t/') ? input : `${base}/dash/t/${token}`;
+  };
+
+  const openInvestorView = (input: string) => {
+    const url = getInvestorViewUrl(input);
+    if (!url) return;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -377,9 +393,9 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         <header className="ios-card ios-animate-up space-y-4 p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
-              <span className="ios-badge text-[10px]">Magic dashboard playground</span>
+              <span className="ios-badge text-[10px]">Dashboard access admin</span>
               <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)]">
-                Magic dashboard links
+                Historical dashboard access
               </h1>
               <p className="max-w-2xl text-sm text-[color:var(--text-secondary)]">
                 Generate, validate, and revoke investor access tokens. Check Firebase data status for a property.
@@ -670,16 +686,36 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                 </div>
                 <div className="divide-y divide-[color:var(--border-soft)]">
                   {activeTokensResult.tokens.length ? (
-                    activeTokensResult.tokens.map((token) => (
-                      <div key={token.id} className="grid grid-cols-7 gap-3 px-4 py-3 text-[color:var(--text-secondary)]">
-                        <div className="col-span-2 break-all text-[color:var(--text-primary)]">{token.id}</div>
-                        <div>{token.propertyId}</div>
-                        <div>{token.investorId}</div>
-                        <div>{token.snapshotMonthIso ?? 'latest'}</div>
-                        <div>{token.expiresAt ?? 'n/a'}</div>
-                        <div>{token.useCount}</div>
-                      </div>
-                    ))
+                    activeTokensResult.tokens.map((token) => {
+                      return (
+                        <div key={token.id} className="grid grid-cols-7 gap-3 px-4 py-3 text-[color:var(--text-secondary)]">
+                          <div className="col-span-2 space-y-2">
+                            <div className="break-all text-[color:var(--text-primary)]">{token.id}</div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="ios-button px-3 py-1 text-[11px]"
+                                data-variant="secondary"
+                                onClick={() => openInvestorView(token.token ?? '')}
+                                disabled={!token.token}
+                              >
+                                Open link
+                              </button>
+                              {!token.token ? (
+                                <span className="self-center text-[11px] text-[color:var(--text-muted)]">
+                                  Link unavailable for older token
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div>{token.propertyId}</div>
+                          <div>{token.investorId}</div>
+                          <div>{token.snapshotMonthIso ?? 'latest'}</div>
+                          <div>{token.expiresAt ?? 'n/a'}</div>
+                          <div>{token.useCount}</div>
+                        </div>
+                      );
+                    })
                   ) : (
                     <div className="px-4 py-3 text-[color:var(--text-muted)]">No active tokens found.</div>
                   )}
