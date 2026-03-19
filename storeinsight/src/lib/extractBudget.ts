@@ -35,6 +35,7 @@ type BudgetSuffix = "CM" | "PTD" | "VAR" | "VARPER" | "YTD" | "YTDBUD" | "YTDVAR
 
 type ParseNumberOptions = {
   isPercent?: boolean;
+  cell?: XLSX.CellObject;
 };
 
 type ValueSource = "budget" | "fallback" | "computed";
@@ -299,13 +300,18 @@ const locateBudgetSheet = (
 
 const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number => {
   if (value == null || value === "") return Number.NaN;
-  const { isPercent = false } = options;
+  const { isPercent = false, cell } = options;
+  const percentCellFormat = String(cell?.z ?? cell?.w ?? "");
+  const isPercentFormattedCell = percentCellFormat.includes("%");
 
   if (typeof value === "number") {
     if (!Number.isFinite(value)) return Number.NaN;
     if (!isPercent) return value;
     const abs = Math.abs(value);
-    return abs <= 1 ? value * 100 : value;
+    // Budget variance columns often store plain numeric percentages like 0.96,
+    // which means 0.96% and must not be scaled to 96%. Only scale ratio-style
+    // raw numbers when Excel explicitly marks the cell with percent formatting.
+    return isPercentFormattedCell && abs <= 1 ? value * 100 : value;
   }
 
   if (value instanceof Date) return Number.NaN;
@@ -323,7 +329,7 @@ const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number
     str = str.slice(1, -1);
   }
 
-  const percentLike = isPercent || hadPercentSymbol;
+  const percentLike = isPercent || hadPercentSymbol || isPercentFormattedCell;
 
   str = str.replace(/[$,%]/g, "").replace(/\s+/g, "");
   if (!str) return Number.NaN;
@@ -334,7 +340,7 @@ const parseNumber = (value: CellValue, options: ParseNumberOptions = {}): number
   let result = parsed;
   // If the workbook already gave us an explicit percent string like "0.96%",
   // do not scale it again. Only scale ratio-style values such as 0.0096.
-  if (percentLike && !hadPercentSymbol && Math.abs(result) <= 1) {
+  if (percentLike && !hadPercentSymbol && isPercentFormattedCell && Math.abs(result) <= 1) {
     result *= 100;
   }
   if (isNegative) result *= -1;
@@ -396,7 +402,12 @@ const ensureMeta = (
   return meta;
 };
 
-const buildRowStates = (grid: Grid, header: HeaderMatch, sheetName: string): RowState[] => {
+const buildRowStates = (
+  grid: Grid,
+  header: HeaderMatch,
+  sheetName: string,
+  sheet: XLSX.WorkSheet,
+): RowState[] => {
   const rows: RowState[] = [];
   for (let r = header.rowIndex + 1; r < grid.length; r += 1) {
     const row = grid[r] ?? [];
@@ -410,7 +421,11 @@ const buildRowStates = (grid: Grid, header: HeaderMatch, sheetName: string): Row
       if (columnIndex === undefined) continue;
       const cellRef = `${columnIndexToLetter(columnIndex)}${r + 1}`;
       const rawValue = row[columnIndex];
-      const numeric = parseNumber(rawValue, { isPercent: PERCENT_SUFFIXES.has(suffix) });
+      const cell = sheet[cellRef] as XLSX.CellObject | undefined;
+      const numeric = parseNumber(rawValue, {
+        isPercent: PERCENT_SUFFIXES.has(suffix),
+        cell,
+      });
       if (Number.isFinite(numeric)) {
         const value = normalizeZero(
           PERCENT_SUFFIXES.has(suffix) ? roundPercent(numeric) : roundMoney(numeric),
@@ -578,7 +593,7 @@ export async function extractBudgetTableFields(
 
   const { grid, header, sheetName } = located;
   const ownerGroup = extractOwnerGroupFromGrid(grid);
-  const rows = buildRowStates(grid, header, sheetName);
+  const rows = buildRowStates(grid, header, sheetName, workbook.Sheets[sheetName]!);
 
   if (financialsBuffer) {
     const fallbackMap = parseFinancialFallback(financialsBuffer);
