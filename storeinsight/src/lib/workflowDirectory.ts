@@ -123,6 +123,20 @@ export const workflowCategories: WorkflowCategory[] = [
         href: '/finance/proforma-import',
       },
       {
+        id: 'proforma-lakehouse',
+        title: 'Proforma Lakehouse',
+        description: 'Profile raw operator workbooks for P-Builder and stage them into SQL-backed intake.',
+        status: 'Prototype',
+        tone: 'green',
+        icon: 'layers',
+        highlights: [
+          'Upload raw workbook families like Extra Space, Wentworth Results, and CubeSmart.',
+          'Inspect detected sheets and section tags before building operator-specific parsers.',
+          'Stage workbook metadata in Supabase so P-Builder can later pull normalized facts.',
+        ],
+        href: '/finance/proforma-lakehouse',
+      },
+      {
         id: 'owner-reports',
         title: 'Owner Reports',
         description: 'Build owner report packages with STORE portfolio and market data.',
