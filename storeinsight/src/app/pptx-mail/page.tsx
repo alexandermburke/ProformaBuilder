@@ -1,41 +1,52 @@
-﻿import Link from "next/link";
-import { listProperties } from "@/app/api/daily-summary/store";
-import PptxMailForm from "./ui/PptxMailForm";
+'use client';
 
-export const runtime = "nodejs";
+import Link from 'next/link';
+import type { JSX } from 'react';
+import { useTheme } from '@/components/ThemeProvider';
+import PropertyAnalysisPackageForm from './ui/PropertyAnalysisPackageForm';
 
-export default async function PptxMailPage() {
-  const properties = await listProperties().catch(() => []);
-  const propertyOptions = properties
-    .filter((p) => p.enabled !== false)
-    .map((p) => ({
-      id: p.id,
-      label: p.name || p.propertyCode || p.tenantPropertyId || p.id,
-      code: p.propertyCode || p.tenantPropertyId || "",
-      ownerEmails: p.ownerEmails ?? [],
-    }));
+const overlayTopLight =
+  'bg-[radial-gradient(circle_at_18%_12%,rgba(34,197,94,0.2),transparent_60%)]';
+const overlayTopDark =
+  'bg-[radial-gradient(circle_at_12%_10%,rgba(34,197,94,0.28),transparent_58%)]';
+const overlayBottomLight =
+  'bg-[radial-gradient(circle_at_82%_86%,rgba(74,222,128,0.16),transparent_62%)]';
+const overlayBottomDark =
+  'bg-[radial-gradient(circle_at_88%_82%,rgba(74,222,128,0.2),transparent_60%)]';
+
+export default function PptxMailPage(): JSX.Element {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const overlayTop = isDark ? overlayTopDark : overlayTopLight;
+  const overlayBottom = isDark ? overlayBottomDark : overlayBottomLight;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-8 px-4 py-10 text-slate-900 dark:text-slate-100">
-      <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-slate-800/80 dark:bg-slate-900/70">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600"
-          >
-            &larr; Back
-          </Link>
-        </div>
-        <div className="flex flex-col gap-2">
-          <p className="text-xs uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Owner Reports</p>
-          <h1 className="text-3xl font-semibold">Monthly PPTX to PDF Mailer</h1>
-          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-            Upload monthly owner-report PPTX files, select the property, and we&apos;ll convert them to PDF and send to the configured owner email list. No PNG preview is generated for these long decks.
-          </p>
-        </div>
-        <div className="mt-6">
-          <PptxMailForm properties={propertyOptions} />
-        </div>
+    <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
+      <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-16">
+        <header className="ios-card ios-animate-up flex flex-col gap-6 p-10">
+          <span className="ios-badge text-[10px]">Automation tools</span>
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-4 sm:flex-1">
+              <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
+                Property Analysis Package
+              </h1>
+              <p className="max-w-3xl text-sm text-[color:var(--text-secondary)] sm:text-base">
+                Upload a supported proforma workbook, review the first 3 slides of extracted package tokens, and
+                generate a templated PowerPoint from the managed <code>PackageTemplate.pptx</code> asset.
+              </p>
+            </div>
+            <Link href="/" className="ios-button shrink-0 px-4 py-2 text-sm" data-variant="ghost">
+              <span aria-hidden className="-ml-1 mr-1 text-base">
+                &larr;
+              </span>
+              Back to directory
+            </Link>
+          </div>
+        </header>
+
+        <PropertyAnalysisPackageForm />
       </div>
     </div>
   );

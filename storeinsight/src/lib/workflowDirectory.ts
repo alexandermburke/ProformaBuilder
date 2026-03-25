@@ -239,14 +239,14 @@ export const workflowCategories: WorkflowCategory[] = [
       {
         id: 'property-analysis-package',
         title: 'Property Analysis Package',
-        description: 'Convert monthly PPTX decks to PDF packages and send them to the configured owner list.',
+        description: 'Generate templated PowerPoint packages directly from Wentworth-format proforma workbooks.',
         status: 'Active',
         tone: 'green',
         icon: 'globe',
         highlights: [
-          'Upload monthly owner-report PPTX files by property.',
-          'Convert long decks to PDF without generating slide previews.',
-          'Send the packaged output to configured owner recipients.',
+          'Upload a single Wentworth-format workbook and parse package-ready values.',
+          'Review extracted and manual token fields before export.',
+          'Generate a PPTX from the managed PackageTemplate asset.',
         ],
         href: '/pptx-mail',
       },
