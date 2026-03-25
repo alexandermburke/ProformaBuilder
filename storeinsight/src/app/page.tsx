@@ -224,7 +224,7 @@ export default function DirectoryPage(): JSX.Element {
     <div className="relative min-h-screen overflow-hidden text-[color:var(--text-primary)]">
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
-      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-20">
+      <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-20">
         <header className="ios-card ios-animate-up grid gap-8 p-8 lg:p-10">
           <div className="max-w-4xl space-y-6">
             <span className="ios-badge inline-flex items-center gap-2 text-[10px]">
@@ -235,8 +235,8 @@ export default function DirectoryPage(): JSX.Element {
                 Workflow directory for STORE Management.
               </h1>
               <p className="text-base leading-relaxed text-[color:var(--text-secondary)] sm:text-lg">
-                Start from accounting, finance, or historical data tools. Each section opens its own view with the
-                workflows that belong there.
+                Start from accounting, finance, historical data, or automation tools. Each section opens its own view
+                with the workflows that belong there.
               </p>
             </div>
             <div className="flex flex-wrap gap-3 text-sm">
@@ -260,7 +260,8 @@ export default function DirectoryPage(): JSX.Element {
                 </div>
                 <p className="text-sm leading-6 text-[color:var(--text-secondary)]">
                   Accounting handles prep and reconciliation work, finance handles planning, owner reporting, and
-                  daily flash reporting, and historical data covers dashboards and uploads.
+                  underwriting intake, historical data covers dashboards and uploads, and automations covers recurring
+                  reporting and package delivery workspaces.
                 </p>
               </div>
               <div className="ios-list-card space-y-2 p-5">
@@ -275,7 +276,7 @@ export default function DirectoryPage(): JSX.Element {
           </div>
         </header>
 
-        <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <section className="mx-auto grid w-full max-w-7xl gap-6 md:grid-cols-2 lg:grid-cols-4">
           {directoryCards.map((card, index) => {
             const delayClass = index === 1 ? 'ios-animate-delay-sm' : index === 2 ? 'ios-animate-delay-md' : '';
             const cardClass = [

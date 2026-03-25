@@ -21,7 +21,7 @@ export type WorkflowCard = {
   disabled?: boolean;
 };
 
-export type WorkflowCategoryKey = 'accounting' | 'finance' | 'other';
+export type WorkflowCategoryKey = 'accounting' | 'finance' | 'other' | 'automations';
 
 export type WorkflowCategory = {
   key: WorkflowCategoryKey;
@@ -99,14 +99,14 @@ export const workflowCategories: WorkflowCategory[] = [
     key: 'finance',
     href: '/finance',
     title: 'Finance',
-    summaryDescription: 'Planning, owner reporting, and benchmarking workflows for underwriting and asset performance.',
-    summaryHighlights: ['Proforma Data Drop', 'Owner Reports', 'Daily Summary Report'],
+    summaryDescription: 'Planning, owner reporting, and intake workflows for underwriting, operator data prep, and asset performance.',
+    summaryHighlights: ['Proforma Data Drop', 'Owner Reports', 'Proforma Lakehouse'],
     summaryTone: 'green',
     summaryIcon: 'spreadsheet',
     pageBadge: 'Finance tools',
     pageTitle: 'Choose your finance workflow.',
     pageDescription:
-      'Open the finance workflow you need for data preparation, owner-facing reporting, or market benchmarking.',
+      'Open the finance workflow you need for operator data preparation, owner-facing reporting, staging, and underwriting intake.',
     features: [
       {
         id: 'proforma-data-drop',
@@ -123,6 +123,20 @@ export const workflowCategories: WorkflowCategory[] = [
         href: '/finance/proforma-import',
       },
       {
+        id: 'owner-reports',
+        title: 'Owner Reports',
+        description: 'Build owner report packages with STORE portfolio and market data.',
+        status: 'Active',
+        tone: 'green',
+        icon: 'globe',
+        highlights: [
+          'Blend STORE portfolio results with market benchmarks.',
+          'Assemble owner decks with structured commentary sections.',
+          'Queue recurring owner report deliveries around asset manager cycles.',
+        ],
+        href: '/owner-reports',
+      },
+      {
         id: 'proforma-lakehouse',
         title: 'Proforma Lakehouse',
         description: 'Profile raw operator workbooks for P-Builder and stage them into SQL-backed intake.',
@@ -135,48 +149,6 @@ export const workflowCategories: WorkflowCategory[] = [
           'Stage workbook metadata in Supabase so P-Builder can later pull normalized facts.',
         ],
         href: '/finance/proforma-lakehouse',
-      },
-      {
-        id: 'owner-reports',
-        title: 'Owner Reports',
-        description: 'Build owner report packages with STORE portfolio and market data.',
-        status: 'Active',
-        tone: 'green',
-        icon: 'globe',
-        highlights: [
-          'Blend STORE portfolio results with market benchmarks',
-          'Assemble owner decks with structured commentary sections',
-          'Queue recurring owner report deliveries around asset manager cycles',
-        ],
-        href: '/owner-reports',
-      },
-      {
-        id: 'comp-sets',
-        title: 'Comp Sets',
-        description: 'Benchmark STORE assets against competitor pricing.',
-        status: 'Planned',
-        tone: 'blue',
-        icon: 'target',
-        highlights: [
-          'Import rate shops, rent rolls, and competitor snapshots',
-          'Normalize premiums, concessions, and occupancy deltas',
-          'Export comp set notes for underwriting decks',
-        ],
-        href: '/comp-sets',
-      },
-      {
-        id: 'daily-summary-report',
-        title: 'Daily Summary Report',
-        description: 'Automate daily flash reports for STORE properties.',
-        status: 'Active',
-        tone: 'purple',
-        icon: 'document',
-        highlights: [
-          'Pull daily metrics from Tenant management summary exports',
-          'Fill Excel flash templates with rentals, vacates, and occupancy',
-          'Schedule automatic email delivery to property owners',
-        ],
-        href: '/daily-summary',
       },
     ],
   },
@@ -234,6 +206,63 @@ export const workflowCategories: WorkflowCategory[] = [
           'Review active tokens and Firebase snapshot coverage from one admin page.',
         ],
         href: '/admin/magic-dashboard-playground',
+      },
+    ],
+  },
+  {
+    key: 'automations',
+    href: '/automations',
+    title: 'Automations',
+    summaryDescription: 'Recurring reports, scheduled deliveries, and automation monitoring tools for portfolio workflows.',
+    summaryHighlights: ['Daily Summary Report', 'Property Analysis Package', 'Comp Sets'],
+    summaryTone: 'purple',
+    summaryIcon: 'clipboard',
+    pageBadge: 'Automation tools',
+    pageTitle: 'Choose an automation workflow.',
+    pageDescription:
+      'Open the automation workspace you need to manage scheduled reporting, monitor recurring jobs, or generate repeatable output packages.',
+    features: [
+      {
+        id: 'daily-summary-report',
+        title: 'Daily Summary Report',
+        description: 'Manage daily flash reporting, delivery windows, and automation health.',
+        status: 'Active',
+        tone: 'purple',
+        icon: 'document',
+        highlights: [
+          'Control recipient lists and send windows by property.',
+          'Monitor nightly flash automation and recent MSR ingestion status.',
+          'Generate manual Daily Flash PPTX output when needed.',
+        ],
+        href: '/daily-summary',
+      },
+      {
+        id: 'property-analysis-package',
+        title: 'Property Analysis Package',
+        description: 'Convert monthly PPTX decks to PDF packages and send them to the configured owner list.',
+        status: 'Active',
+        tone: 'green',
+        icon: 'globe',
+        highlights: [
+          'Upload monthly owner-report PPTX files by property.',
+          'Convert long decks to PDF without generating slide previews.',
+          'Send the packaged output to configured owner recipients.',
+        ],
+        href: '/pptx-mail',
+      },
+      {
+        id: 'comp-sets',
+        title: 'Comp Sets',
+        description: 'Benchmark STORE assets against competitor pricing.',
+        status: 'Planned',
+        tone: 'blue',
+        icon: 'target',
+        highlights: [
+          'Import rate shops, rent rolls, and competitor snapshots.',
+          'Normalize premiums, concessions, and occupancy deltas.',
+          'Export comp set notes for underwriting decks.',
+        ],
+        href: '/comp-sets',
       },
     ],
   },
