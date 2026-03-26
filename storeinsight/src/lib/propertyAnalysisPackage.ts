@@ -692,7 +692,7 @@ function addArrayAliases(
   map: Map<string, ExtractedTokenRecord>,
   prefix: 'YEAR' | 'MONTH',
   values: SheetValueRow[],
-  section: PropertyAnalysisTokenSection,
+  section: InternalTokenSection,
 ): void {
   for (const entry of values) {
     const tokenBase = tokenBaseFromLabel(entry.label);
@@ -1297,8 +1297,11 @@ function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string):
 
   const propertyName =
     findValueForLabel(inputsRows, ['Name']) ||
-    firstNonEmpty(summaryRows.find((row) => rowEntries(row).some((entry) => normalizeLabel(entry).includes('year proforma'))) ?? []) ||
-    firstNonEmpty(workbook.SheetNames.map((sheetName) => [sheetName]));
+    firstNonEmpty(
+      summaryRows.find((row) => rowEntries(row).some((entry) => normalizeLabel(entry).includes('year proforma'))) ?? [],
+    ) ||
+    workbook.SheetNames[0] ||
+    '';
   const propertyAddress = findValueForLabel(inputsRows, ['Location']);
   const propertyType = findValueForLabel(inputsRows, ['Type']);
 
