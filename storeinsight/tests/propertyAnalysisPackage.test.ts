@@ -152,7 +152,7 @@ function buildTemplateBuffer(): Buffer {
   zip.file("ppt/slides/slide1.xml", "<a:t>{{PUBLISHMONTHYEAR}}</a:t>");
   zip.file(
     "ppt/slides/slide2.xml",
-    "<a:t>{{3YIRR}}</a:t><a:t>{{3YMUL}}</a:t><a:t>{{5YIRR}}</a:t><a:t>{{5YMUL}}</a:t><a:t>{{7YIRR}}</a:t><a:t>{{7YMUL}}</a:t><a:t>{{ASSETVALUE}}</a:t><a:t>{{NOIPERCENT}}</a:t><a:t>{{EXPREDPERC}}</a:t><a:t>{{REVENUELIFT}}</a:t>",
+    "<a:t>{{3YIRR}}</a:t><a:t>{{3YMUL}}</a:t><a:t>{{5YIRR}}</a:t><a:t>{{5YMUL}}</a:t><a:t>{{7YIRR}}</a:t><a:t>{{7YMUL}}</a:t><a:t>{{ASSETVALUE}}</a:t><a:t>{{NOIPERCENT}}</a:t><a:t>{{EXPREDPERC}}</a:t><a:t>{{REVENUELIFT}}</a:t><a:t>{{REGION}}</a:t>",
   );
   zip.file(
     "ppt/slides/slide3.xml",
@@ -182,6 +182,7 @@ test("scanPackageTemplateTokens returns the 17-token contract", async () => {
     "OCCPER",
     "PUBLISHMONTHYEAR",
     "RATING",
+    "REGION",
     "RENTSQFT",
     "REVENUELIFT",
     "REVIEWS",
@@ -200,16 +201,22 @@ test("parsePropertyAnalysisWorkbook maps Wentworth workbooks to physical tokens 
   const publishMonth = parsed.tokenFields.find((field) => field.token === "PUBLISHMONTHYEAR");
   const occupancy = parsed.tokenFields.find((field) => field.token === "OCCPER");
   const rentableSqft = parsed.tokenFields.find((field) => field.token === "RENTSQFT");
+  const region = parsed.tokenFields.find((field) => field.token === "REGION");
   const totalUnits = parsed.tokenFields.find((field) => field.token === "UNITS");
   const threeYearIrr = parsed.tokenFields.find((field) => field.token === "3YIRR");
+  const snapshotDescription = parsed.tokenFields.find((field) => field.token === "SNAPSHOTDESCRIPTION");
 
   assert.equal(parsed.metadata.workbookType, "wentworth-results");
   assert.equal(publishMonth?.source, "derived");
   assert.match(publishMonth?.defaultValue ?? "", /^[A-Z][a-z]+ \d{4}$/);
   assert.equal(occupancy?.defaultValue, "97.30%");
   assert.equal(rentableSqft?.defaultValue, "96,755");
+  assert.equal(region?.defaultValue, "West Coast");
+  assert.equal(region?.source, "derived");
   assert.equal(totalUnits?.defaultValue, "688");
   assert.equal(threeYearIrr?.source, "manual");
+  assert.equal(snapshotDescription?.source, "derived");
+  assert.equal(snapshotDescription?.defaultValue, "N/A ERROR");
 });
 
 test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-profile and physical tokens", async () => {
@@ -223,6 +230,7 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   const fiveYearMultiple = parsed.tokenFields.find((field) => field.token === "5YMUL");
   const sevenYearIrr = parsed.tokenFields.find((field) => field.token === "7YIRR");
   const occupancy = parsed.tokenFields.find((field) => field.token === "OCCPER");
+  const region = parsed.tokenFields.find((field) => field.token === "REGION");
   const rentableSqft = parsed.tokenFields.find((field) => field.token === "RENTSQFT");
   const totalUnits = parsed.tokenFields.find((field) => field.token === "UNITS");
   const assetValue = parsed.tokenFields.find((field) => field.token === "ASSETVALUE");
@@ -230,6 +238,8 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   const noiIncrease = parsed.tokenFields.find((field) => field.token === "NOIPERCENT");
   const revenueLift = parsed.tokenFields.find((field) => field.token === "REVENUELIFT");
   const rating = parsed.tokenFields.find((field) => field.token === "RATING");
+  const reviews = parsed.tokenFields.find((field) => field.token === "REVIEWS");
+  const snapshotDescription = parsed.tokenFields.find((field) => field.token === "SNAPSHOTDESCRIPTION");
 
   assert.equal(parsed.metadata.workbookType, "public-proforma-template");
   assert.equal(threeYearIrr?.defaultValue, "8.7%");
@@ -237,16 +247,21 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   assert.equal(sevenYearIrr?.defaultValue, "9.0%");
   assert.equal(assetValue?.defaultValue, "1.7M");
   assert.equal(assetValue?.source, "derived");
-  assert.equal(expenseReduction?.defaultValue, "3");
+  assert.equal(expenseReduction?.defaultValue, "3%");
   assert.equal(expenseReduction?.source, "extracted");
   assert.equal(noiIncrease?.defaultValue, "18");
   assert.equal(noiIncrease?.source, "extracted");
   assert.equal(revenueLift?.defaultValue, "93");
   assert.equal(revenueLift?.source, "extracted");
   assert.equal(occupancy?.defaultValue, "86.97%");
+  assert.equal(region?.defaultValue, "Southwest");
+  assert.equal(region?.source, "derived");
   assert.equal(rentableSqft?.defaultValue, "69945");
   assert.equal(totalUnits?.defaultValue, "706");
   assert.equal(rating?.source, "manual");
+  assert.equal(reviews?.source, "manual");
+  assert.equal(snapshotDescription?.source, "derived");
+  assert.equal(snapshotDescription?.defaultValue, "N/A ERROR");
 });
 
 test("parsePropertyAnalysisWorkbook leaves comparison callouts manual and warns when Public workbook comparison data is missing", async () => {
@@ -292,8 +307,9 @@ test("renderPropertyAnalysisPackage replaces provided tokens and blanks missing 
       "3YIRR": "26%",
       ASSETVALUE: "5.5M",
       NOIPERCENT: "20",
-      EXPREDPERC: "8",
+      EXPREDPERC: "8%",
       REVENUELIFT: "178",
+      REGION: "Carolinas",
       OCCPER: "95%",
       UNITS: "592",
     },
@@ -308,8 +324,9 @@ test("renderPropertyAnalysisPackage replaces provided tokens and blanks missing 
   assert.match(slide2Xml, /26%/);
   assert.match(slide2Xml, /5\.5M/);
   assert.match(slide2Xml, /20/);
-  assert.match(slide2Xml, /8/);
+  assert.match(slide2Xml, /8%/);
   assert.match(slide2Xml, /178/);
+  assert.match(slide2Xml, /Carolinas/);
   assert.match(slide3Xml, /95%/);
   assert.match(slide3Xml, /592/);
   assert.doesNotMatch(slide3Xml, /\{\{RATING\}\}/);

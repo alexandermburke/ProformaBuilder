@@ -142,6 +142,11 @@ const PACKAGE_TOKEN_DEFINITIONS: Record<string, PackageTokenDefinition> = {
     section: 'marketSnapshot',
     aliases: ['PROPERTY_OCCUPANCY', 'CURRENT_OCCUPANCY', 'OCCUPANCY'],
   },
+  REGION: {
+    label: 'Region',
+    section: 'returnProfile',
+    aliases: ['REGION_NAME'],
+  },
   RENTSQFT: {
     label: 'Rentable SqFt',
     section: 'marketSnapshot',
@@ -164,8 +169,8 @@ const PACKAGE_TOKEN_DEFINITIONS: Record<string, PackageTokenDefinition> = {
   },
   SNAPSHOTDESCRIPTION: {
     label: 'Snapshot Description',
-    section: 'manualInputs',
-    aliases: [],
+    section: 'marketSnapshot',
+    aliases: ['SNAPSHOT_DESCRIPTION'],
   },
 };
 
@@ -258,12 +263,142 @@ function formatWholePercentToken(value: number): string {
   return String(Math.round(value));
 }
 
+function formatWholePercentWithSymbol(value: number): string {
+  return `${Math.round(value)}%`;
+}
+
 function formatThousandsToken(value: number): string {
   return String(Math.round(value / 1000));
 }
 
 function formatMillionsToken(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}M`;
+}
+
+function parseAddressLocation(address: string): { city: string; state: string } {
+  const parts = address
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 4) {
+    return {
+      city: parts[parts.length - 3] ?? '',
+      state: parts[parts.length - 2]?.split(/\s+/)[0] ?? '',
+    };
+  }
+  if (parts.length >= 3) {
+    const city = parts[parts.length - 2] ?? '';
+    const statePart = parts[parts.length - 1] ?? '';
+    const state = statePart.split(/\s+/)[0] ?? '';
+    return { city, state };
+  }
+  if (parts.length >= 2) {
+    const cityPart = parts[parts.length - 1] ?? '';
+    const tokens = cityPart.split(/\s+/).filter(Boolean);
+    if (tokens.length >= 2) {
+      return {
+        city: tokens.slice(0, -2).join(' '),
+        state: tokens[tokens.length - 2] ?? '',
+      };
+    }
+  }
+  return { city: '', state: '' };
+}
+
+function mapStateToRegion(state: string): string {
+  const normalized = state.trim().toUpperCase();
+  if (!normalized) return '';
+  if (['NC', 'SC'].includes(normalized)) return 'Carolinas';
+  if (['AZ', 'NM', 'NV'].includes(normalized)) return 'Southwest';
+  if (['CA', 'OR', 'WA'].includes(normalized)) return 'West Coast';
+  if (['TX'].includes(normalized)) return 'Texas';
+  if (['FL'].includes(normalized)) return 'Florida';
+  if (['CO', 'ID', 'MT', 'UT', 'WY'].includes(normalized)) return 'Mountain';
+  if (['IL', 'IN', 'IA', 'KS', 'MI', 'MN', 'MO', 'ND', 'NE', 'OH', 'SD', 'WI'].includes(normalized)) return 'Midwest';
+  if (['CT', 'MA', 'ME', 'NH', 'NJ', 'NY', 'PA', 'RI', 'VT'].includes(normalized)) return 'Northeast';
+  if (['AL', 'AR', 'GA', 'KY', 'LA', 'MS', 'OK', 'TN', 'VA', 'WV'].includes(normalized)) return 'Southeast';
+  if (['DC', 'DE', 'MD'].includes(normalized)) return 'Mid-Atlantic';
+  return normalized;
+}
+
+function buildSnapshotDescription(
+  propertyName: string,
+  propertyAddress: string,
+  propertyType: string,
+): string {
+  void propertyName;
+  void propertyAddress;
+  void propertyType;
+  return 'N/A ERROR';
+}
+
+function buildSnapshotDescriptionPrompt(
+  propertyName: string,
+  propertyAddress: string,
+  propertyType: string,
+  region: string,
+): string {
+  return [
+    'Write a two-sentence investment-style market snapshot for a property analysis presentation.',
+    'Do not include any actual numbers, percentages, counts, square footage, ratings, review counts, or address street numbers.',
+    'Keep it general, polished, and confident.',
+    "Emphasize location fundamentals, demand, and STORE Management's execution-driven value creation.",
+    'Do not use bullet points.',
+    `Property name: ${propertyName || 'Unknown property'}`,
+    `City/state: ${propertyAddress || 'Unknown location'}`,
+    `Property type: ${propertyType || 'Storage asset'}`,
+    `Region: ${region || 'Unknown region'}`,
+    'Example tone: "The Carolina Property is a well-positioned asset in a high-growth submarket, supported by strong location fundamentals and consistent demand. STORE Management’s disciplined execution enhances these advantages, driving tangible value creation and strengthening the property’s ability to capture and retain market share."',
+    'Return only the final description text.',
+  ].join(' ');
+}
+
+function normalizeAiDescription(value: string): string {
+  return value.replace(/^["']|["']$/g, '').replace(/\s+/g, ' ').trim();
+}
+
+async function maybeGenerateSnapshotDescriptionWithAi(
+  propertyName: string,
+  propertyAddress: string,
+  propertyType: string,
+  region: string,
+): Promise<string | null> {
+  const apiKey = process.env.OPENAI_KEY;
+  if (!apiKey) return null;
+
+  const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You write concise real-estate presentation copy. Follow the prompt exactly and never include raw numbers unless explicitly requested.',
+        },
+        {
+          role: 'user',
+          content: buildSnapshotDescriptionPrompt(propertyName, propertyAddress, propertyType, region),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = payload.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') return null;
+  const normalized = normalizeAiDescription(content);
+  return normalized || null;
 }
 
 function sheetToMatrix(workbook: XLSX.WorkBook, sheetName: string): string[][] {
@@ -523,6 +658,19 @@ function registerValue(
       matchedKey: normalized,
     });
   }
+}
+
+function setRegisteredValue(
+  map: Map<string, ExtractedTokenRecord>,
+  alias: string,
+  record: Omit<ExtractedTokenRecord, 'matchedKey'>,
+): void {
+  const normalized = normalizeTokenKey(alias);
+  if (!normalized) return;
+  map.set(normalized, {
+    ...record,
+    matchedKey: normalized,
+  });
 }
 
 function addPropertyAliases(map: Map<string, ExtractedTokenRecord>, label: string, value: string): void {
@@ -824,6 +972,38 @@ function addDerivedValues(
       );
     }
   }
+
+  const snapshotDescription = buildSnapshotDescription(
+    propertyName,
+    propertyAddress,
+    propertyLookup.get('property type') ?? '',
+  );
+  if (snapshotDescription) {
+    registerValue(
+      map,
+      ['SNAPSHOT_DESCRIPTION'],
+      {
+        label: 'Snapshot Description',
+        value: snapshotDescription,
+        section: 'propertyProfile',
+        source: 'derived',
+      },
+    );
+  }
+
+  const region = mapStateToRegion(parseAddressLocation(propertyAddress).state);
+  if (region) {
+    registerValue(
+      map,
+      ['REGION_NAME'],
+      {
+        label: 'Region',
+        value: region,
+        section: 'stabilizedSummary',
+        source: 'derived',
+      },
+    );
+  }
 }
 
 function addPublicHoldPeriodReturnAliases(
@@ -976,7 +1156,7 @@ function addPublicComparisonCalloutAliases(
         ['EXPENSE_REDUCTION_PERCENT'],
         {
           label: 'Expense Reduction',
-          value: formatWholePercentToken(expenseReductionPercent),
+          value: formatWholePercentWithSymbol(expenseReductionPercent),
           section: 'stabilizedSummary',
           source: 'extracted',
         },
@@ -1192,6 +1372,22 @@ export async function parsePropertyAnalysisWorkbook(
 ): Promise<PropertyAnalysisParseResponse> {
   const templatePath = options?.templatePath ?? PACKAGE_TEMPLATE_PATH;
   const parsed = buildDefaultsFromWorkbook(buffer, fileName);
+  const region = parsed.defaults.get('REGION_NAME')?.value ?? '';
+  const propertyType = parsed.defaults.get('PROPERTY_TYPE')?.value ?? '';
+  const aiSnapshotDescription = await maybeGenerateSnapshotDescriptionWithAi(
+    parsed.metadata.propertyName,
+    parsed.metadata.propertyAddress,
+    propertyType,
+    region,
+  );
+  if (aiSnapshotDescription) {
+    setRegisteredValue(parsed.defaults, 'SNAPSHOT_DESCRIPTION', {
+      label: 'Snapshot Description',
+      value: aiSnapshotDescription,
+      section: 'propertyProfile',
+      source: 'derived',
+    });
+  }
   try {
     await fs.access(templatePath);
   } catch {
