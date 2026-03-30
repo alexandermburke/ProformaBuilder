@@ -17,6 +17,8 @@ export type OverviewWidgetKey =
 
 type OverviewWidgetDefaults = readonly OverviewWidgetKey[];
 
+const REQUIRED_OVERVIEW_WIDGET_PREFIX: readonly OverviewWidgetKey[] = ['noi', 'expenses'];
+
 export const OVERVIEW_WIDGET_OPTIONS: Array<{
   id: OverviewWidgetKey;
   label: string;
@@ -50,6 +52,24 @@ export const INTERNAL_DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetKey[] = [
   'rateVariance',
 ];
 
+export function prioritizeOverviewWidgets(input: readonly OverviewWidgetKey[]): OverviewWidgetKey[] {
+  const next: OverviewWidgetKey[] = [];
+
+  for (const widget of REQUIRED_OVERVIEW_WIDGET_PREFIX) {
+    if (!next.includes(widget)) {
+      next.push(widget);
+    }
+  }
+
+  for (const widget of input) {
+    if (!next.includes(widget)) {
+      next.push(widget);
+    }
+  }
+
+  return next;
+}
+
 export function filterOverviewWidgets(input: unknown): OverviewWidgetKey[] {
   if (!Array.isArray(input)) return [];
   const allowed = new Set<OverviewWidgetKey>(OVERVIEW_WIDGET_OPTIONS.map((option) => option.id));
@@ -72,5 +92,5 @@ export function getOverviewWidgetsOrDefault(
   defaults: OverviewWidgetDefaults = DEFAULT_OVERVIEW_WIDGETS,
 ): OverviewWidgetKey[] {
   const widgets = filterOverviewWidgets(input);
-  return widgets.length ? widgets : [...defaults];
+  return prioritizeOverviewWidgets(widgets.length ? widgets : [...defaults]);
 }

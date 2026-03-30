@@ -38,6 +38,7 @@ import {
   INTERNAL_DEFAULT_OVERVIEW_WIDGETS,
   OVERVIEW_WIDGET_OPTIONS,
   getOverviewWidgetsOrDefault,
+  prioritizeOverviewWidgets,
   type OverviewWidgetKey,
 } from '@/lib/overviewWidgets';
 
@@ -887,10 +888,10 @@ export function HistoricalSnapshotDashboardView({
 
   const toggleOverviewDraftWidget = (key: OverviewWidgetKey): void => {
     setOverviewDraftWidgets((current) => {
-      if (current.includes(key)) {
-        return current.filter((value) => value !== key);
-      }
-      return [...current, key];
+      const next = current.includes(key)
+        ? current.filter((value) => value !== key)
+        : [...current, key];
+      return prioritizeOverviewWidgets(next);
     });
   };
 
@@ -903,7 +904,7 @@ export function HistoricalSnapshotDashboardView({
       const next = [...current];
       const [item] = next.splice(index, 1);
       next.splice(nextIndex, 0, item);
-      return next;
+      return prioritizeOverviewWidgets(next);
     });
   }, []);
 
@@ -989,7 +990,9 @@ export function HistoricalSnapshotDashboardView({
     }
 
     if (!shareToken) {
-      setOverviewWidgets(overviewDraftWidgets);
+      const nextWidgets = prioritizeOverviewWidgets(overviewDraftWidgets);
+      setOverviewWidgets(nextWidgets);
+      setOverviewDraftWidgets(nextWidgets);
       setOverviewSaveStatus(isInternal ? 'Graph preferences saved on this device.' : 'Graph preferences updated.');
       setIsOverviewModalOpen(false);
       return;
