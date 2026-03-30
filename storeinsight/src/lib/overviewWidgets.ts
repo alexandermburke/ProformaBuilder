@@ -15,6 +15,8 @@ export type OverviewWidgetKey =
   | 'netRentals'
   | 'staleRent';
 
+type OverviewWidgetDefaults = readonly OverviewWidgetKey[];
+
 export const OVERVIEW_WIDGET_OPTIONS: Array<{
   id: OverviewWidgetKey;
   label: string;
@@ -39,6 +41,15 @@ export const OVERVIEW_WIDGET_OPTIONS: Array<{
 
 export const DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetKey[] = ['expenses', 'noi'];
 
+export const INTERNAL_DEFAULT_OVERVIEW_WIDGETS: OverviewWidgetKey[] = [
+  'occupancy',
+  'netRevenue',
+  'expenses',
+  'noi',
+  'pastDue',
+  'rateVariance',
+];
+
 export function filterOverviewWidgets(input: unknown): OverviewWidgetKey[] {
   if (!Array.isArray(input)) return [];
   const allowed = new Set<OverviewWidgetKey>(OVERVIEW_WIDGET_OPTIONS.map((option) => option.id));
@@ -56,7 +67,10 @@ export function filterOverviewWidgets(input: unknown): OverviewWidgetKey[] {
   return next;
 }
 
-export function getOverviewWidgetsOrDefault(input: unknown): OverviewWidgetKey[] {
+export function getOverviewWidgetsOrDefault(
+  input: unknown,
+  defaults: OverviewWidgetDefaults = DEFAULT_OVERVIEW_WIDGETS,
+): OverviewWidgetKey[] {
   const widgets = filterOverviewWidgets(input);
-  return widgets.length ? widgets : [...DEFAULT_OVERVIEW_WIDGETS];
+  return widgets.length ? widgets : [...defaults];
 }

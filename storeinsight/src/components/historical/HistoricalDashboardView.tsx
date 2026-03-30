@@ -40,6 +40,7 @@ export type HistoricalDashboardViewProps = {
   showDirectoryLink?: boolean;
   customDataError?: string | null;
   hasCustomData?: boolean;
+  hidePropertySelector?: boolean;
 };
 
 const SECTION_TABS: Array<{ id: SectionKey; label: string }> = [
@@ -182,6 +183,7 @@ export function HistoricalDashboardView({
   showDirectoryLink,
   customDataError,
   hasCustomData,
+  hidePropertySelector,
 }: HistoricalDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -401,7 +403,7 @@ export function HistoricalDashboardView({
                   </button>
                 ))}
               </div>
-              {viewMode === 'internal' ? (
+              {viewMode === 'internal' && !hidePropertySelector ? (
                 <div className="flex items-center gap-2 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-1 shadow-inner">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                     Property

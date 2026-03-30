@@ -7,6 +7,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, JSX, ReactNode } from 'react';
 import { flushSync } from 'react-dom';
@@ -16,145 +17,47 @@ import { SectionHeader } from './SectionHeader';
 import { SimpleTable } from './SimpleTable';
 import { useTheme } from '@/components/ThemeProvider';
 import { buildLinePath, formatShortMonth, getChartPoints } from '@/lib/historical/chartUtils';
+import type {
+  HistoricalPropertyOption,
+  HistoricalSnapshotRangeKey,
+  MsrSnapshot,
+} from '@/lib/historical/dashboardTypes';
 import { formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from '@/lib/historical/format';
 import { getPropertyOption } from '@/lib/propertyDirectory';
 import {
+  INTERNAL_DEFAULT_SNAPSHOT_RANGE,
+  INTERNAL_SNAPSHOT_RANGE_OPTIONS,
+  TOKEN_DEFAULT_SNAPSHOT_RANGE,
+  TOKEN_SNAPSHOT_RANGE_OPTIONS,
+  normalizeMonthIso,
+  sliceLaggedFinancialEntriesByRange,
+  sliceSnapshotEntriesByRange,
+  toMonthKey,
+} from '@/lib/historical/snapshotDashboard';
+import {
+  INTERNAL_DEFAULT_OVERVIEW_WIDGETS,
   OVERVIEW_WIDGET_OPTIONS,
   getOverviewWidgetsOrDefault,
   type OverviewWidgetKey,
 } from '@/lib/overviewWidgets';
 
-export type MsrSnapshot = {
-  monthIso?: string;
-  month?: string;
-  reportMonth?: string;
-  reportDate?: string;
-  asOfDate?: string | Date | { toDate?: () => Date };
-  propertyName?: string;
-  occupancy?: {
-    rsfOccPct?: number;
-    totalRsf?: number;
-    occupiedRsf?: number;
-    occupiedCount?: number;
-    totalCount?: number;
-  };
-  revenue?: {
-    economicOccupancy?: number;
-    netRevenueMtd?: number;
-    grossPotentialRevenue?: number;
-    totalOperatingExpense?: number;
-    totalOperatingExpenseMtd?: number;
-    operatingExpenseMtd?: number;
-    expensesMtd?: number;
-    noi?: number;
-    noiMtd?: number;
-    netOperatingIncome?: number;
-    netOperatingIncomeMtd?: number;
-    occupiedRateVariancePct?: number;
-  };
-  financials?: {
-    expenses?: number;
-    expensesMtd?: number;
-    totalOperatingExpense?: number;
-    totalOperatingExpenseMtd?: number;
-    noi?: number;
-    noiMtd?: number;
-    netOperatingIncome?: number;
-    netOperatingIncomeMtd?: number;
-  };
-  rentals?: {
-    moveInsMtd?: number;
-    moveOutsMtd?: number;
-    netMtd?: number;
-  };
-  ar?: {
-    totalPastDue?: number;
-    pastDue61Plus?: number;
-    delinquentTenantCount?: number;
-    overlockedUnitCount?: number;
-    overlockTotalBalance?: number;
-    overlockAvgDaysLate?: number;
-    agingBuckets?: {
-      days0to10?: number;
-      days11to30?: number;
-      days31to60?: number;
-      days61plus?: number;
-    };
-    aging?: {
-      days0to10?: number;
-      days11to30?: number;
-      days31to60?: number;
-      days61plus?: number;
-    };
-    overlockBucketShare?: Array<{ label: string; percent: number }>;
-    bucketShare?: Array<{ label: string; percent: number }>;
-    topDelinquencies?: Array<{
-      tenant?: string;
-      unit?: string;
-      daysLate?: number;
-      balance?: number;
-      startDate?: string;
-    }>;
-  };
-  leads?: {
-    totalMtd?: number;
-    byChannelMtd?: {
-      web?: number;
-      phone?: number;
-      walkIn?: number;
-      other?: number;
-    };
-  };
-  concessions?: {
-    promosDiscountsMtd?: number;
-    creditsAdjustmentsMtd?: number;
-    refundsWriteoffsMtd?: number;
-  };
-  autopay?: {
-    autopayPct?: number;
-    autopayCount?: number;
-  };
-  coverage?: {
-    enrolledPct?: number;
-    enrolledCount?: number;
-    premiumMtd?: number;
-  };
-  pricing?: {
-    avgSellRateOccupied?: number;
-    avgCurrentRentOccupied?: number;
-    avgSellRatePerSqftOccupied?: number;
-    avgCurrentRentPerSqftOccupied?: number;
-    occupiedRateVariancePct?: number;
-    occupiedRateVariance?: number;
-    rentChangeCountMtd?: number;
-    rentChangeCount?: number;
-    avgRentChangePct?: number;
-    noRentChange12MoCount?: number;
-    noRentChange12MoByType?: Record<string, number>;
-  };
-  unitMix?: {
-    occupiedRsfByType?: Record<string, number>;
-    totalOccupiedRsf?: number;
-    totalRsf?: number;
-  };
-  topDelinquencies?: Array<{
-    tenant?: string;
-    unit?: string;
-    daysLate?: number;
-    balance?: number;
-    startDate?: string;
-  }>;
-};
+type DashboardMode = 'token' | 'internal';
 
-type TokenDashboardViewProps = {
+type HistoricalSnapshotDashboardViewProps = {
+  mode?: DashboardMode;
   propertyId?: string;
   propertyName: string;
   snapshots: MsrSnapshot[];
   shareToken?: string;
   initialOverviewWidgets?: OverviewWidgetKey[];
+  propertyOptions?: HistoricalPropertyOption[];
+  initialRange?: HistoricalSnapshotRangeKey;
+  updatedAt?: string | null;
+  latestSnapshotMonth?: string | null;
+  showUploadLink?: boolean;
 };
 
-type RangeKey = '3M' | '6M';
+type RangeKey = HistoricalSnapshotRangeKey;
 
 type SectionKey = 'overview' | 'collections' | 'pricing' | 'drilldowns' | 'accounting';
 
@@ -176,15 +79,10 @@ type PrintMetricItem = {
   detail?: string;
 };
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; months: number }> = [
-  { key: '3M', months: 3 },
-  { key: '6M', months: 6 },
-];
-
 const SECTION_TABS: Array<{ id: SectionKey; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'collections', label: 'Delinquency' },
-  { id: 'pricing', label: 'Pricing & Revenue' },
+  { id: 'pricing', label: 'Revenue' },
   { id: 'drilldowns', label: 'Operations' },
   { id: 'accounting', label: 'Financials' },
 ];
@@ -198,7 +96,9 @@ const SECTION_MOBILE_LABELS: Record<SectionKey, string> = {
 };
 
 const UNIT_MIX_COLORS = ['#3B82F6', '#22D3EE', '#F97316', '#A78BFA', '#F472B6', '#FACC15'];
-const SECTION_STORAGE_KEY = 'token-dashboard:section';
+const TOKEN_SECTION_STORAGE_KEY = 'token-dashboard:section';
+const INTERNAL_SECTION_STORAGE_KEY = 'historical-dashboard:section';
+const INTERNAL_OVERVIEW_STORAGE_PREFIX = 'historical-dashboard:overview';
 
 const CHART_WIDTH = 620;
 const CHART_HEIGHT = 240;
@@ -342,27 +242,6 @@ const buildPathFromPoints = (points: Array<{ x: number; y: number } | null>): st
     started = true;
   });
   return path;
-};
-
-const normalizeMonthIso = (value: unknown): string | null => {
-  if (!value) return null;
-  if (value instanceof Date) return value.toISOString().slice(0, 7);
-  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate().toISOString().slice(0, 7);
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed.length >= 7) return trimmed.slice(0, 7);
-  }
-  return null;
-};
-
-const toMonthKey = (monthIso: string): number => {
-  const [yearStr, monthStr] = monthIso.split('-');
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-  if (!year || !month) return 0;
-  return year * 12 + (month - 1);
 };
 
 const getMonthFromSnapshot = (snapshot: MsrSnapshot): string | null =>
@@ -568,20 +447,38 @@ function LazyBlock({
   );
 }
 
-export function TokenDashboardView({
+export function HistoricalSnapshotDashboardView({
+  mode = 'token',
   propertyId,
   propertyName,
   snapshots,
   shareToken,
   initialOverviewWidgets,
-}: TokenDashboardViewProps): JSX.Element {
+  propertyOptions,
+  initialRange = mode === 'internal' ? INTERNAL_DEFAULT_SNAPSHOT_RANGE : TOKEN_DEFAULT_SNAPSHOT_RANGE,
+  showUploadLink,
+}: HistoricalSnapshotDashboardViewProps): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const initialWidgets = useMemo(
-    () => getOverviewWidgetsOrDefault(initialOverviewWidgets),
-    [initialOverviewWidgets],
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const resolvedPathname = pathname ?? '/historical-data';
+  const isInternal = mode === 'internal';
+  const rangeOptions = isInternal ? INTERNAL_SNAPSHOT_RANGE_OPTIONS : TOKEN_SNAPSHOT_RANGE_OPTIONS;
+  const sectionStorageKey = isInternal ? INTERNAL_SECTION_STORAGE_KEY : TOKEN_SECTION_STORAGE_KEY;
+  const overviewStorageKey = isInternal
+    ? `${INTERNAL_OVERVIEW_STORAGE_PREFIX}:${propertyId ?? propertyName ?? 'property'}`
+    : null;
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>(
+    propertyId ?? propertyOptions?.[0]?.id ?? '',
   );
-  const [range, setRange] = useState<RangeKey>('6M');
+  const fallbackOverviewWidgets = isInternal ? INTERNAL_DEFAULT_OVERVIEW_WIDGETS : undefined;
+  const initialWidgets = useMemo(
+    () => getOverviewWidgetsOrDefault(initialOverviewWidgets, fallbackOverviewWidgets),
+    [fallbackOverviewWidgets, initialOverviewWidgets],
+  );
+  const [range, setRange] = useState<RangeKey>(initialRange);
   const [section, setSection] = useState<SectionKey>('overview');
   const [overviewWidgets, setOverviewWidgets] = useState<OverviewWidgetKey[]>(initialWidgets);
   const [overviewDraftWidgets, setOverviewDraftWidgets] = useState<OverviewWidgetKey[]>(initialWidgets);
@@ -595,6 +492,32 @@ export function TokenDashboardView({
   const overviewCustomizeButtonRef = useRef<HTMLButtonElement | null>(null);
   const overviewModalRef = useRef<HTMLDivElement | null>(null);
   const overviewModalWasOpen = useRef(false);
+  const selectedPropertyOption = useMemo(
+    () => propertyOptions?.find((option) => option.id === propertyId) ?? propertyOptions?.[0] ?? null,
+    [propertyId, propertyOptions],
+  );
+
+  const updateInternalRoute = useCallback(
+    (nextPropertyId: string, nextRange: HistoricalSnapshotRangeKey) => {
+      if (!isInternal) return;
+
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+      if (nextPropertyId) {
+        params.set('propertyId', nextPropertyId);
+      } else {
+        params.delete('propertyId');
+      }
+      if (nextRange === INTERNAL_DEFAULT_SNAPSHOT_RANGE) {
+        params.delete('range');
+      } else {
+        params.set('range', nextRange);
+      }
+
+      const query = params.toString();
+      router.replace(query ? `${resolvedPathname}?${query}` : resolvedPathname, { scroll: false });
+    },
+    [isInternal, resolvedPathname, router, searchParams],
+  );
 
   const normalizedSnapshots = useMemo<SnapshotEntry[]>(
     () =>
@@ -614,16 +537,7 @@ export function TokenDashboardView({
     [normalizedSnapshots],
   );
 
-  const rangeSnapshots = useMemo(() => {
-    if (!sortedSnapshots.length) return [];
-    const rangeMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 6;
-    const latest = sortedSnapshots[sortedSnapshots.length - 1];
-    if (latest.monthKey !== null) {
-      const minKey = latest.monthKey - (rangeMonths - 1);
-      return sortedSnapshots.filter((entry) => entry.monthKey !== null && entry.monthKey >= minKey);
-    }
-    return sortedSnapshots.slice(-rangeMonths);
-  }, [sortedSnapshots, range]);
+  const rangeSnapshots = useMemo(() => sliceSnapshotEntriesByRange(sortedSnapshots, range), [sortedSnapshots, range]);
 
   const latestSnapshot = rangeSnapshots[rangeSnapshots.length - 1]?.snapshot ?? sortedSnapshots[sortedSnapshots.length - 1]?.snapshot ?? null;
   const latestDateLabel = latestSnapshot
@@ -635,35 +549,42 @@ export function TokenDashboardView({
   const resolvedPrintPropertyName = useMemo(() => {
     const snapshotName = normalizePrintPropertyName(latestSnapshot?.propertyName);
     const propName = normalizePrintPropertyName(propertyName);
-    const directoryName = propertyId ? normalizePrintPropertyName(getPropertyOption(propertyId).label) : null;
+    const directoryName = normalizePrintPropertyName(
+      selectedPropertyOption?.label ?? (propertyId ? getPropertyOption(propertyId).label : propertyName),
+    );
 
     if (snapshotName && !looksLikeOwnerLabel(snapshotName)) return snapshotName;
     if (propName && !looksLikeOwnerLabel(propName)) return propName;
     if (directoryName) return directoryName;
     return snapshotName ?? propName ?? directoryName ?? 'Property';
-  }, [latestSnapshot?.propertyName, propertyId, propertyName]);
+  }, [latestSnapshot?.propertyName, propertyId, propertyName, selectedPropertyOption?.label]);
   const printDocumentTitle = useMemo(() => {
     const safePropertyName = resolvedPrintPropertyName.replace(/[<>:"/\\|?*]+/g, '').trim() || 'Property';
     return `${safePropertyName} Historical Data ${printDateLabel}`;
   }, [printDateLabel, resolvedPrintPropertyName]);
+  const headerBadgeLabel = isInternal ? 'Historical data' : 'Investor dashboard';
+  const headerTitle = resolvedPrintPropertyName
+    ? isInternal
+      ? `${resolvedPrintPropertyName} historical performance`
+      : `${resolvedPrintPropertyName} performance`
+    : isInternal
+      ? 'Historical performance'
+      : 'Property performance';
+  const headerDescription = isInternal
+    ? 'Internal STORE dashboard with extended snapshot history, delinquency trends, operations, and lagged monthly financials.'
+    : 'Historical performance trends for investor-facing review.';
+  const overviewSubtitle = isInternal
+    ? 'Historical snapshots for the selected facility across the internal graph set.'
+    : 'Historical snapshots for the selected owner-view graphs.';
 
   const seriesEntries = useMemo(
     () => rangeSnapshots.filter((entry) => entry.monthIso),
     [rangeSnapshots],
   );
-  const laggedFinancialSeriesEntries = useMemo(() => {
-    if (!sortedSnapshots.length) return [];
-    const rangeMonths = RANGE_OPTIONS.find((option) => option.key === range)?.months ?? 6;
-    const latest = sortedSnapshots[sortedSnapshots.length - 1];
-    if (latest.monthKey !== null) {
-      const maxKey = latest.monthKey - 1;
-      const minKey = maxKey - (rangeMonths - 1);
-      return sortedSnapshots.filter(
-        (entry) => entry.monthKey !== null && entry.monthKey >= minKey && entry.monthKey <= maxKey && entry.monthIso,
-      );
-    }
-    return sortedSnapshots.slice(-(rangeMonths + 1), -1).filter((entry) => entry.monthIso);
-  }, [sortedSnapshots, range]);
+  const laggedFinancialSeriesEntries = useMemo(
+    () => sliceLaggedFinancialEntriesByRange(sortedSnapshots, range),
+    [sortedSnapshots, range],
+  );
 
   const overlayTop = isDark
     ? 'bg-[radial-gradient(circle_at_18%_10%,rgba(59,130,246,0.28),transparent_60%)]'
@@ -910,29 +831,59 @@ export function TokenDashboardView({
   }, [occupancyValues]);
 
   useEffect(() => {
+    setRange(initialRange);
+  }, [initialRange]);
+
+  useEffect(() => {
+    setSelectedPropertyId(propertyId ?? propertyOptions?.[0]?.id ?? '');
+  }, [propertyId, propertyOptions]);
+
+  useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(SECTION_STORAGE_KEY);
+      const stored = window.localStorage.getItem(sectionStorageKey);
       if (stored && SECTION_TABS.some((option) => option.id === stored)) {
         setSection(stored as SectionKey);
       }
     } catch {
       // ignore local storage errors
     }
-  }, []);
+  }, [sectionStorageKey]);
 
   useEffect(() => {
     try {
-      // Do not remove: keep the selected section on refresh for /dash/t/.
-      window.localStorage.setItem(SECTION_STORAGE_KEY, section);
+      window.localStorage.setItem(sectionStorageKey, section);
     } catch {
       // ignore local storage errors
     }
-  }, [section]);
+  }, [section, sectionStorageKey]);
 
   useEffect(() => {
-    setOverviewWidgets(initialWidgets);
-    setOverviewDraftWidgets(initialWidgets);
-  }, [initialWidgets]);
+    if (!isInternal) {
+      setOverviewWidgets(initialWidgets);
+      setOverviewDraftWidgets(initialWidgets);
+      return;
+    }
+
+    try {
+      const stored = overviewStorageKey ? window.localStorage.getItem(overviewStorageKey) : null;
+      const parsed = stored ? (JSON.parse(stored) as unknown) : null;
+      const nextWidgets = getOverviewWidgetsOrDefault(parsed, INTERNAL_DEFAULT_OVERVIEW_WIDGETS);
+      setOverviewWidgets(nextWidgets);
+      setOverviewDraftWidgets(nextWidgets);
+    } catch {
+      setOverviewWidgets(initialWidgets);
+      setOverviewDraftWidgets(initialWidgets);
+    }
+  }, [initialWidgets, isInternal, overviewStorageKey]);
+
+  useEffect(() => {
+    if (!isInternal || !overviewStorageKey) return;
+    try {
+      window.localStorage.setItem(overviewStorageKey, JSON.stringify(overviewWidgets));
+    } catch {
+      // ignore local storage errors
+    }
+  }, [isInternal, overviewStorageKey, overviewWidgets]);
 
   const toggleOverviewDraftWidget = (key: OverviewWidgetKey): void => {
     setOverviewDraftWidgets((current) => {
@@ -1039,7 +990,7 @@ export function TokenDashboardView({
 
     if (!shareToken) {
       setOverviewWidgets(overviewDraftWidgets);
-      setOverviewSaveStatus('Graph preferences updated.');
+      setOverviewSaveStatus(isInternal ? 'Graph preferences saved on this device.' : 'Graph preferences updated.');
       setIsOverviewModalOpen(false);
       return;
     }
@@ -1805,15 +1756,16 @@ export function TokenDashboardView({
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className={hideHeaderDetailsOnMobile ? 'hidden space-y-3 sm:block' : 'space-y-3'}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="ios-badge text-[10px]">Investor dashboard</span>
+                <span className="ios-badge text-[10px]">{headerBadgeLabel}</span>
                 <span className="ios-pill text-[10px]" data-tone="neutral">
-                  As of {latestDateLabel ?? 'N/A'}
+                  {isInternal ? `As of ${latestDateLabel ?? 'N/A'}` : `As of ${latestDateLabel ?? 'N/A'}`}
                 </span>
               </div>
               <div className="space-y-2">
                 <h1 className="text-xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-2xl lg:text-3xl">
-                  {resolvedPrintPropertyName ? `${resolvedPrintPropertyName} performance` : 'Property performance'}
+                  {headerTitle}
                 </h1>
+                <p className="max-w-3xl text-sm text-[color:var(--text-secondary)]">{headerDescription}</p>
               </div>
             </div>
             <div className="flex items-center gap-2" />
@@ -1827,7 +1779,9 @@ export function TokenDashboardView({
               <div className="text-xl font-semibold text-[color:var(--text-primary)]">
                 {formatMaybePercent(occupancyValue)}
               </div>
-              <div className="text-xs text-[color:var(--text-secondary)]">Latest MSR</div>
+              <div className="text-xs text-[color:var(--text-secondary)]">
+                {isInternal ? 'Latest snapshot' : 'Latest MSR'}
+              </div>
             </div>
             <div className="ios-list-card space-y-1 p-4">
               <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">
@@ -1856,12 +1810,12 @@ export function TokenDashboardView({
             </div>
           </div>
 
-          <div className="ios-list-card flex flex-wrap items-center justify-between gap-4 px-4 py-3 text-xs">
-            <div className="hidden flex-wrap items-center gap-3 sm:flex">
+          <div className="ios-list-card flex flex-col gap-3 px-4 py-3 text-xs xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3 xl:flex-nowrap">
               <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 Section
               </span>
-              <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
+              <div className="flex min-w-0 items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
                 {SECTION_TABS.map((sectionOption) => (
                   <button
                     key={sectionOption.id}
@@ -1880,19 +1834,46 @@ export function TokenDashboardView({
                   </button>
                 ))}
               </div>
+              {isInternal && propertyOptions?.length ? (
+                <label className="flex shrink-0 items-center gap-2 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-1 shadow-inner">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                    Property
+                  </span>
+                  <select
+                    className="max-w-[220px] bg-transparent text-[11px] font-semibold text-[color:var(--text-primary)] focus:outline-none"
+                    value={selectedPropertyId}
+                    onChange={(event) => {
+                      const nextPropertyId = event.target.value;
+                      setSelectedPropertyId(nextPropertyId);
+                      updateInternalRoute(nextPropertyId, range);
+                    }}
+                  >
+                    {propertyOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
-            <div className="flex w-full items-center gap-3 sm:w-auto">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
+              <div className="flex shrink-0 items-center gap-3">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                   Range
                 </span>
                 <div className="flex items-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-1 text-[11px] font-semibold text-[color:var(--text-secondary)] shadow-inner">
-                  {RANGE_OPTIONS.map((rangeOption) => (
+                  {rangeOptions.map((rangeOption) => (
                     <button
                       key={rangeOption.key}
                       type="button"
                       aria-pressed={range === rangeOption.key}
-                      onClick={() => setRange(rangeOption.key)}
+                      onClick={() => {
+                        setRange(rangeOption.key);
+                        if (isInternal) {
+                          updateInternalRoute(selectedPropertyId, rangeOption.key);
+                        }
+                      }}
                       className={[
                         'rounded-full px-3 py-1 transition-colors',
                         range === rangeOption.key
@@ -1900,15 +1881,20 @@ export function TokenDashboardView({
                           : 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]',
                       ].join(' ')}
                     >
-                      {rangeOption.key}
+                      {rangeOption.label}
                     </button>
                   ))}
                 </div>
               </div>
+              {isInternal && showUploadLink ? (
+                <Link href="/historical-data-upload" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
+                  Upload data
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={handlePrint}
-                className="ios-button ml-auto px-4 py-2 text-sm"
+                className="ios-button px-4 py-2 text-sm xl:ml-2"
                 data-variant="secondary"
                 title="Print dashboard"
               >
@@ -1924,7 +1910,7 @@ export function TokenDashboardView({
               <section className="space-y-4">
                 <SectionHeader
                   title="Core Financial Trends"
-                  subtitle={`Historical snapshots for the selected owner-view graphs.`}
+                  subtitle={overviewSubtitle}
                   actions={
                     <button
                       ref={overviewCustomizeButtonRef}
@@ -1988,8 +1974,16 @@ export function TokenDashboardView({
           />
         ) : null}
 
+        {isInternal ? (
+          <footer className="ios-card ios-animate-up mt-4 space-y-2 p-6 text-sm" data-tone="blue">
+            <p className="text-[color:var(--text-secondary)]">
+              Internal STORE dashboard. Snapshot metrics refresh from the historical pipeline; expenses and NOI intentionally lag the in-progress MSR by one month.
+            </p>
+            <p className="text-[color:var(--text-secondary)]">Copyright (c) {currentYear} STORE Management. All rights reserved.</p>
+          </footer>
+        ) : (
         <footer className="ios-card ios-animate-up mt-4 space-y-2 p-6 text-sm" data-tone="blue">
-          
+
           <p className="text-[color:var(--text-secondary)]">Copyright © {currentYear} STORE Management. All Rights Reserved.</p>
           <p className="text-[color:var(--text-secondary)]">
             By viewing this dashboard, you agree to our{' '}
@@ -2006,6 +2000,7 @@ export function TokenDashboardView({
             This dashboard is automatically generated and will expire after 24 hours for security purposes.
           </p>
         </footer>
+        )}
       </div>
       ) : null}
 
@@ -2021,7 +2016,11 @@ export function TokenDashboardView({
           />
           <PrintReportSection
             title="Overview"
-            subtitle="Selected owner-view graphs reformatted for paper output."
+            subtitle={
+              isInternal
+                ? 'Selected internal overview graphs reformatted for paper output.'
+                : 'Selected owner-view graphs reformatted for paper output.'
+            }
           >
             {printOverviewCards.length ? (
               <div className="print-report-grid-2">{printOverviewCards}</div>
@@ -2065,7 +2064,9 @@ export function TokenDashboardView({
                   Customize graphs
                 </h3>
                 <p id="overview-graphs-description" className="text-sm text-[color:var(--text-secondary)]">
-                  Choose which overview graphs appear for this dashboard. Your selection will be saved for this shared link.
+                  {isInternal
+                    ? 'Choose which overview graphs appear for this property. Your selection is saved on this device.'
+                    : 'Choose which overview graphs appear for this dashboard. Your selection will be saved for this shared link.'}
                 </p>
               </div>
               <button
@@ -2206,6 +2207,8 @@ export function TokenDashboardView({
     </div>
   );
 }
+
+export { HistoricalSnapshotDashboardView as TokenDashboardView };
 
 function OccupancyUnitMixSection({
   latestSnapshot,

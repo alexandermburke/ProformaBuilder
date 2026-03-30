@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import {
@@ -15,7 +15,10 @@ import {
   parsePropertyHistoricalInput,
   validatePropertyHistoricalPayload,
 } from '@/lib/historical/dataInput';
+import type { HistoricalPropertyOption } from '@/lib/historical/dashboardTypes';
+import { buildHistoricalPropertyOptions } from '@/lib/historical/snapshotDashboard';
 import { PROPERTY_OPTIONS } from '@/lib/propertyDirectory';
+import type { PropertyConfig } from '@/types/dailySummary';
 
 type MsrPreviewSnapshot = {
   propertyName?: string;
@@ -238,10 +241,10 @@ const normalizePropertyToken = (value: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const resolvePropertyIdFromLabel = (label: string): string | null => {
+const resolvePropertyIdFromLabel = (label: string, propertyOptions: HistoricalPropertyOption[]): string | null => {
   const normalized = normalizePropertyToken(label);
   if (!normalized) return null;
-  const match = PROPERTY_OPTIONS.find((option) => {
+  const match = propertyOptions.find((option) => {
     const optionLabel = normalizePropertyToken(option.label);
     const optionId = normalizePropertyToken(option.id);
     return (
@@ -262,20 +265,26 @@ const parseMsrFilename = (name: string): { propertyLabel?: string } => {
   return { propertyLabel: match[1]?.trim() };
 };
 
-const detectPropertyIdFromFile = (file: File | null): string | null => {
+const detectPropertyIdFromFile = (
+  file: File | null,
+  propertyOptions: HistoricalPropertyOption[],
+): string | null => {
   if (!file) return null;
   const { propertyLabel } = parseMsrFilename(file.name);
   if (propertyLabel) {
-    const fromLabel = resolvePropertyIdFromLabel(propertyLabel);
+    const fromLabel = resolvePropertyIdFromLabel(propertyLabel, propertyOptions);
     if (fromLabel) return fromLabel;
   }
   const normalizedName = normalizePropertyToken(file.name);
-  const match = PROPERTY_OPTIONS.find((option) => normalizedName.includes(normalizePropertyToken(option.id)));
+  const match = propertyOptions.find((option) => normalizedName.includes(normalizePropertyToken(option.id)));
   return match?.id ?? null;
 };
 export default function HistoricalDataUploadPage(): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const [historicalPropertyOptions, setHistoricalPropertyOptions] = useState<HistoricalPropertyOption[]>(
+    buildHistoricalPropertyOptions([], PROPERTY_OPTIONS),
+  );
   const [propertyId, setPropertyId] = useState('');
   const [dataInput, setDataInput] = useState('');
   const [dataError, setDataError] = useState<string | null>(null);
@@ -308,6 +317,28 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const [budgetExisting, setBudgetExisting] = useState(false);
   const [budgetFinancialsExisting, setBudgetFinancialsExisting] = useState(false);
   const [budgetUpdatedAt, setBudgetUpdatedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPropertyOptions = async () => {
+      try {
+        const response = await fetch('/api/daily-summary/properties');
+        if (!response.ok) return;
+        const data = (await response.json().catch(() => null)) as PropertyConfig[] | null;
+        if (!isMounted || !Array.isArray(data)) return;
+        setHistoricalPropertyOptions(buildHistoricalPropertyOptions(data, PROPERTY_OPTIONS));
+      } catch {
+        // keep static fallback options
+      }
+    };
+
+    void loadPropertyOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const templateString = useMemo(() => JSON.stringify(getHistoricalTemplatePayload(), null, 2), []);
 
@@ -662,6 +693,14 @@ export default function HistoricalDataUploadPage(): JSX.Element {
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
       <div className="relative mx-auto flex max-w-4xl flex-col gap-6 px-6 py-10">
+        <datalist id="historical-property-options">
+          {historicalPropertyOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </datalist>
+
         <header className="ios-card ios-animate-up space-y-4 p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
@@ -718,6 +757,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
           <div className="grid gap-3 sm:grid-cols-2">
             <input
               className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+              list="historical-property-options"
               placeholder="propertyId for MSR upload"
               value={msrPropertyId}
               onChange={(event) => {
@@ -748,7 +788,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 setMsrExisting(false);
                 setMsrOverwrite(false);
                 if (!msrPropertyId.trim()) {
-                  const detectedId = detectPropertyIdFromFile(file);
+                  const detectedId = detectPropertyIdFromFile(file, historicalPropertyOptions);
                   if (detectedId) {
                     setMsrPropertyId(detectedId);
                     setMsrStatus(`Detected propertyId ${detectedId} from file name.`);
@@ -1116,6 +1156,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
           <div className="grid gap-3 sm:grid-cols-2">
             <input
               className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+              list="historical-property-options"
               placeholder="propertyId for budget upload"
               value={budgetPropertyId}
               onChange={(event) => {
@@ -1150,7 +1191,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 setBudgetOverwrite(false);
                 setBudgetUpdatedAt(null);
                 if (!budgetPropertyId.trim()) {
-                  const detectedId = detectPropertyIdFromFile(file);
+                  const detectedId = detectPropertyIdFromFile(file, historicalPropertyOptions);
                   if (detectedId) {
                     setBudgetPropertyId(detectedId);
                     setBudgetStatus(`Detected propertyId ${detectedId} from file name.`);
@@ -1283,6 +1324,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
           <div className="grid gap-3 sm:grid-cols-2">
             <input
               className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+              list="historical-property-options"
               placeholder="propertyId"
               value={propertyId}
               onChange={(event) => setPropertyId(event.target.value)}
