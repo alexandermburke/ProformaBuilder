@@ -19,6 +19,7 @@ import { buildPlaceholderMoMSeries, type MoMSeries } from "@/lib/flash/momSeries
 import { DASHBOARD_BETA_INVESTOR_ID, resolveDashboardEmailPropertyId } from "@/lib/flash/dashboardEmailConfig";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { createShareLink } from "@/lib/shareLinks";
+import { formatFlashAsOfDate } from "@/lib/flash/asOfDate";
 import { firestore, storage } from "@/server/firebaseAdmin";
 
 export const runtime = "nodejs";
@@ -993,7 +994,7 @@ function buildTokenMap(msrSheet: ExcelJS.Worksheet, delinquenciesSheet: ExcelJS.
     PROPERTYDISPLAYNAME: propertyDisplayName,
     FACILITYCODE: facilityCode,
     FACILITYSHORTNAME: facilityShortName,
-    ASOFDATE: formatDate(asOfDateCell),
+    ASOFDATE: formatFlashAsOfDate(asOfDateCell),
     MTDRENTALS: mtdRentals,
     DAILYRENTALS: dailyRentals,
     DAILYRES: dailyReservations,
@@ -1226,13 +1227,6 @@ function excelSerialDateToJsDate(serial: number): Date {
   const epoch = new Date(Date.UTC(1899, 11, 30));
   const date = new Date(epoch.getTime() + serial * 24 * 60 * 60 * 1000);
   return date;
-}
-
-function formatDate(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${month}/${day}/${year}`;
 }
 
 function scrubHiddenCharactersFromZip(zip: PizZip): void {

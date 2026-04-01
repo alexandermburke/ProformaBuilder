@@ -7,6 +7,7 @@ import { recordFlashRunResult } from "@/lib/dailySummaryRuns";
 import { sendFlashEmail } from "@/lib/flash/sendFlashEmail";
 import { convertPptxRemote } from "@/lib/convertPptxRemote";
 import { convertPptxBufferToPdfLocal, convertPptxBufferToPngLocal, resolveSofficePath } from "@/lib/flash/convertPptxLocal";
+import { formatFlashAsOfDateFromIsoDate } from "@/lib/flash/asOfDate";
 
 export const runtime = "nodejs";
 
@@ -20,12 +21,6 @@ type MsrDoc = {
 };
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
-const formatReportDateDisplay = (value: string): string => {
-  if (!isValidDate(value)) return value;
-  const [year, month, day] = value.split("-");
-  return `${month}/${day}/${year}`;
-};
-
 const normalizeCode = (value: string | undefined | null): string => (value ?? "").toString().trim();
 const normalizeSlug = (value: string | undefined | null): string => normalizeCode(value).toLowerCase();
 const normalizeCompact = (value: string | undefined | null): string =>
@@ -304,7 +299,7 @@ export async function POST(req: NextRequest) {
         propertyCode,
         reportDate,
         propertyConfig: prop,
-        asOfDateOverride: formatReportDateDisplay(reportDate),
+        asOfDateOverride: formatFlashAsOfDateFromIsoDate(reportDate),
       });
 
       const flashPath = `flash_reports/${reportDate}/${generation.pptxFilename}`;
@@ -463,7 +458,7 @@ export async function POST(req: NextRequest) {
           slidePngBuffer,
           pngBuffer: slidePngBuffer,
           pngFilename,
-          reportDateDisplay: formatReportDateDisplay(reportDate),
+          reportDateDisplay: formatFlashAsOfDateFromIsoDate(reportDate),
           attachPptx: false,
           devModeOverride: flashDevMode,
           pdfUrl: pdfDownloadUrl,
