@@ -21,6 +21,22 @@ const SECTION_META: Record<PropertyAnalysisTokenSection, { title: string; descri
     title: "Market / Property Snapshot",
     description: "Core physical property metrics shown on slide 3.",
   },
+  incomeProforma: {
+    title: "Income Proforma",
+    description: "Slide 4 values copied directly from the Proforma income table.",
+  },
+  expenseProforma: {
+    title: "Expense Proforma",
+    description: "Slide 5 values copied directly from the Proforma expense table.",
+  },
+  dealEconomics: {
+    title: "Deal Economics",
+    description: "Slide 6 values copied directly from Valuation Sheet and Inputs & Drivers.",
+  },
+  exitSensitivity: {
+    title: "Exit / Sensitivity",
+    description: "Slide 7 hold-period and sensitivity values copied directly from Valuation Sheet.",
+  },
   manualInputs: {
     title: "Manual Inputs",
     description: "Template placeholders that stay editable until they have a defined workbook or external data source.",
@@ -43,6 +59,10 @@ function groupFields(fields: PropertyAnalysisTokenField[]): Record<PropertyAnaly
       reportHeader: [],
       returnProfile: [],
       marketSnapshot: [],
+      incomeProforma: [],
+      expenseProforma: [],
+      dealEconomics: [],
+      exitSensitivity: [],
       manualInputs: [],
     },
   );
@@ -209,7 +229,7 @@ export default function PropertyAnalysisPackageForm() {
                 <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--accent-strong)]">Step 2</div>
                 <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Review token values</h2>
                 <p className="text-sm text-[color:var(--text-secondary)]">
-                  The first 3 deck slides are driven from workbook-backed values where available. Unresolved placeholders stay editable and render blank if left empty.
+                  Slides 1-7 are driven from workbook-backed values where available. Unresolved placeholders stay editable and render blank if left empty.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
@@ -324,7 +344,7 @@ export default function PropertyAnalysisPackageForm() {
                 <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--accent-strong)]">Step 3</div>
                 <div className="mt-1 text-lg font-semibold text-[color:var(--text-primary)]">Generate PowerPoint</div>
                 <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-                  Generate the first 3-slide package deck as a templated <code>.pptx</code>. Any unresolved token left blank will stay blank in the deck.
+                  Generate the slides 1-7 package deck as a templated <code>.pptx</code>. Any unresolved token left blank will stay blank in the deck.
                 </p>
               </div>
               <button

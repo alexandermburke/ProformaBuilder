@@ -9,6 +9,10 @@ export type PropertyAnalysisTokenSection =
   | 'reportHeader'
   | 'returnProfile'
   | 'marketSnapshot'
+  | 'incomeProforma'
+  | 'expenseProforma'
+  | 'dealEconomics'
+  | 'exitSensitivity'
   | 'manualInputs';
 
 export type PropertyAnalysisWorkbookMetadata = {
@@ -47,6 +51,10 @@ type InternalTokenSection =
   | 'propertyProfile'
   | 'operatingMetrics'
   | 'stabilizedSummary'
+  | 'incomeProforma'
+  | 'expenseProforma'
+  | 'dealEconomics'
+  | 'exitSensitivity'
   | 'manualNarrative';
 
 type ExtractedTokenRecord = {
@@ -75,12 +83,67 @@ type PackageTokenDefinition = {
   aliases: string[];
 };
 
+type MatrixColumnSpec = {
+  index: number;
+  label: string;
+  formatter?: (value: string) => string;
+};
+
+type MatrixRowTokenSpec = {
+  sourceRow: string;
+  label: string;
+  section: InternalTokenSection;
+  tokenNumbers: number[];
+  columns: MatrixColumnSpec[];
+  sheetName: string;
+  labelColumnIndex: number;
+};
+
+type DirectRowSeriesSpec = {
+  rowLabel: string;
+  tokenStart: number;
+  label: string;
+  formatter?: (value: string) => string;
+};
+
+type HoldPeriodRowSpec = {
+  tokenNumbers: number[];
+  label: string;
+  sourceLabel: string;
+  formatter?: (value: string) => string;
+};
+
+type DirectCellSpec = {
+  token: string;
+  label: string;
+  rowLabel: string;
+  labelColumn: number;
+  valueColumn: number;
+};
+
+type CapRateColumnSpec = {
+  columnIndex: number;
+  suffix: string;
+  formatter?: (value: string) => string;
+};
+
+type KeyMetricSpec = {
+  token: string;
+  label: string;
+  sourceLabel: string;
+};
+
 const PACKAGE_TEMPLATE_PATH = path.join(process.cwd(), 'public', 'PackageTemplate.pptx');
 const WENTWORTH_REQUIRED_SHEETS = ['Property Data', '5 Year Summary', '5 Year Model', 'Stabilized Results'] as const;
 const PUBLIC_REQUIRED_SHEETS = ['Inputs & Drivers', '5 Year Proforma', 'Model2.0', 'Valuation Sheet'] as const;
 const MONTH_TOKEN_COUNT = 12;
 const XML_TAG_PATTERN = /<[^>]+>/g;
 const TOKEN_SPAN_PATTERN = /\{\{[\s\S]*?\}\}/g;
+const MALFORMED_OPEN_PAREN_TOKENS = new Set(
+  [...buildCellTokenRange(551, 560), ...buildCellTokenRange(591, 593)].map((tokenNumber) =>
+    normalizeTokenKey(buildCellToken(tokenNumber)) ?? buildCellToken(tokenNumber),
+  ),
+);
 const PACKAGE_TOKEN_DEFINITIONS: Record<string, PackageTokenDefinition> = {
   PUBLISHMONTHYEAR: {
     label: 'Publish Month / Year',
@@ -173,6 +236,427 @@ const PACKAGE_TOKEN_DEFINITIONS: Record<string, PackageTokenDefinition> = {
     aliases: ['SNAPSHOT_DESCRIPTION'],
   },
 };
+
+const PROFORMA_LABEL_COLUMN_INDEX = 3;
+const VALUATION_LABEL_COLUMN_INDEX = 0;
+const VALUATION_KEY_METRIC_LABEL_COLUMN_INDEX = 5;
+const VALUATION_KEY_METRIC_VALUE_COLUMN_INDEX = 6;
+
+const PROFORMA_VISIBLE_COLUMNS = {
+  t12Avg: { index: 4, label: 'T-12 Avg' },
+  t12: { index: 5, label: 'T-12' },
+  apr2026: { index: 6, label: 'Apr 2026' },
+  may2026: { index: 7, label: 'May 2026' },
+  jun2026: { index: 8, label: 'Jun 2026' },
+  jul2026: { index: 9, label: 'Jul 2026' },
+  aug2026: { index: 10, label: 'Aug 2026' },
+  sep2026: { index: 11, label: 'Sep 2026' },
+  oct2026: { index: 12, label: 'Oct 2026' },
+  nov2026: { index: 13, label: 'Nov 2026' },
+  dec2026: { index: 14, label: 'Dec 2026' },
+  jan2027: { index: 15, label: 'Jan 2027' },
+  feb2027: { index: 16, label: 'Feb 2027' },
+  mar2027: { index: 17, label: 'Mar 2027' },
+  store: { index: 18, label: 'STORE' },
+  currentMgmt: { index: 19, label: 'Current Mgmt' },
+  impact: { index: 20, label: 'Impact to N.O.I.' },
+} as const satisfies Record<string, MatrixColumnSpec>;
+
+function buildCellToken(tokenNumber: number): string {
+  return `CELL${String(tokenNumber).padStart(4, '0')}`;
+}
+
+function buildCellTokenRange(start: number, end: number): number[] {
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+function withFormatter(
+  column: MatrixColumnSpec,
+  formatter?: (value: string) => string,
+): MatrixColumnSpec {
+  return formatter ? { ...column, formatter } : { ...column };
+}
+
+function stripLeadingDollar(value: string): string {
+  return value.replace(/^\$\s*/, '').trim();
+}
+
+function stripOuterParens(value: string): string {
+  return value.replace(/^\((.*)\)$/, '$1').trim();
+}
+
+function stripTrailingX(value: string): string {
+  return value.replace(/x$/i, '').trim();
+}
+
+function percentToBasisPoints(value: string): string {
+  const numeric = parseNumberLike(value);
+  if (numeric == null) return value.trim();
+  const asPercent = value.includes('%') ? numeric : numeric * 100;
+  return String(Math.round(asPercent * 100));
+}
+
+function splitCombinedValue(value: string, separator: string): [string, string] {
+  const parts = value.split(separator).map((part) => part.trim());
+  return [parts[0] ?? '', parts[1] ?? ''];
+}
+
+const PROFORMA_ALL_COLUMNS: MatrixColumnSpec[] = [
+  PROFORMA_VISIBLE_COLUMNS.t12Avg,
+  PROFORMA_VISIBLE_COLUMNS.t12,
+  PROFORMA_VISIBLE_COLUMNS.apr2026,
+  PROFORMA_VISIBLE_COLUMNS.may2026,
+  PROFORMA_VISIBLE_COLUMNS.jun2026,
+  PROFORMA_VISIBLE_COLUMNS.jul2026,
+  PROFORMA_VISIBLE_COLUMNS.aug2026,
+  PROFORMA_VISIBLE_COLUMNS.sep2026,
+  PROFORMA_VISIBLE_COLUMNS.oct2026,
+  PROFORMA_VISIBLE_COLUMNS.nov2026,
+  PROFORMA_VISIBLE_COLUMNS.dec2026,
+  PROFORMA_VISIBLE_COLUMNS.jan2027,
+  PROFORMA_VISIBLE_COLUMNS.feb2027,
+  PROFORMA_VISIBLE_COLUMNS.mar2027,
+  PROFORMA_VISIBLE_COLUMNS.store,
+  PROFORMA_VISIBLE_COLUMNS.currentMgmt,
+  PROFORMA_VISIBLE_COLUMNS.impact,
+];
+
+const PROFORMA_MONTH_COLUMNS: MatrixColumnSpec[] = [
+  PROFORMA_VISIBLE_COLUMNS.apr2026,
+  PROFORMA_VISIBLE_COLUMNS.may2026,
+  PROFORMA_VISIBLE_COLUMNS.jun2026,
+  PROFORMA_VISIBLE_COLUMNS.jul2026,
+  PROFORMA_VISIBLE_COLUMNS.aug2026,
+  PROFORMA_VISIBLE_COLUMNS.sep2026,
+  PROFORMA_VISIBLE_COLUMNS.oct2026,
+  PROFORMA_VISIBLE_COLUMNS.nov2026,
+  PROFORMA_VISIBLE_COLUMNS.dec2026,
+  PROFORMA_VISIBLE_COLUMNS.jan2027,
+  PROFORMA_VISIBLE_COLUMNS.feb2027,
+  PROFORMA_VISIBLE_COLUMNS.mar2027,
+];
+
+const SLIDE4_PROFORMA_SPECS: MatrixRowTokenSpec[] = [
+  {
+    sourceRow: 'Rental Income',
+    label: 'Rental Income',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(3, 19),
+    columns: [
+      ...PROFORMA_ALL_COLUMNS.slice(0, 16),
+      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'STORE Rate Mgmt. Rev',
+    label: 'STORE Rate Management Revenue',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(20, 30),
+    columns: [
+      PROFORMA_VISIBLE_COLUMNS.jul2026,
+      PROFORMA_VISIBLE_COLUMNS.aug2026,
+      PROFORMA_VISIBLE_COLUMNS.sep2026,
+      PROFORMA_VISIBLE_COLUMNS.oct2026,
+      PROFORMA_VISIBLE_COLUMNS.nov2026,
+      PROFORMA_VISIBLE_COLUMNS.dec2026,
+      PROFORMA_VISIBLE_COLUMNS.jan2027,
+      PROFORMA_VISIBLE_COLUMNS.feb2027,
+      PROFORMA_VISIBLE_COLUMNS.mar2027,
+      PROFORMA_VISIBLE_COLUMNS.store,
+      PROFORMA_VISIBLE_COLUMNS.impact,
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Discounts',
+    label: 'Discounts',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(31, 44),
+    columns: [
+      ...PROFORMA_MONTH_COLUMNS.map((column) => withFormatter(column, stripLeadingDollar)),
+      withFormatter(PROFORMA_VISIBLE_COLUMNS.store, stripLeadingDollar),
+      withFormatter(PROFORMA_VISIBLE_COLUMNS.currentMgmt, stripLeadingDollar),
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Net Rental Income',
+    label: 'Net Rental Income',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(45, 61),
+    columns: PROFORMA_ALL_COLUMNS,
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Admin Fee Income',
+    label: 'Admin Fee Income',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(80, 95),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Late Fee Income',
+    label: 'Late Fee Income',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(96, 111),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Current Tenant Protection Split',
+    label: 'Current Tenant Protection Split',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(112, 126),
+    columns: [
+      ...PROFORMA_ALL_COLUMNS.slice(0, 14),
+      PROFORMA_VISIBLE_COLUMNS.currentMgmt,
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'STORE Tenant Protection Split',
+    label: 'STORE Tenant Protection Split',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(127, 140),
+    columns: [
+      ...PROFORMA_MONTH_COLUMNS,
+      PROFORMA_VISIBLE_COLUMNS.store,
+      PROFORMA_VISIBLE_COLUMNS.impact,
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Retail Sales Income',
+    label: 'Retail Sales Income',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(141, 156),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Total Operating Income',
+    label: 'Total Operating Income',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(157, 173),
+    columns: PROFORMA_ALL_COLUMNS,
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Projected Rate',
+    label: 'Rent ($/SF)',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(175, 186),
+    columns: PROFORMA_MONTH_COLUMNS,
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'General Vacancy',
+    label: 'Vacancy',
+    section: 'incomeProforma',
+    tokenNumbers: buildCellTokenRange(187, 198),
+    columns: PROFORMA_MONTH_COLUMNS,
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+];
+
+const SLIDE5_PROFORMA_SPECS: MatrixRowTokenSpec[] = [
+  {
+    sourceRow: 'Advertising & Marketing',
+    label: 'Advertising & Marketing',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(201, 216),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Current Payment Processing Fees',
+    label: 'Current Payment Processing Fees',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(217, 231),
+    columns: [
+      ...PROFORMA_ALL_COLUMNS.slice(0, 14),
+      PROFORMA_VISIBLE_COLUMNS.currentMgmt,
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'STORE Payment Processing Fees',
+    label: 'STORE Payment Processing Fees / Impact to N.O.I.',
+    section: 'expenseProforma',
+    tokenNumbers: [232],
+    columns: [PROFORMA_VISIBLE_COLUMNS.impact],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Current Mgmt. Fee',
+    label: 'Current Management Fee',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(233, 247),
+    columns: [
+      ...PROFORMA_ALL_COLUMNS.slice(0, 14),
+      PROFORMA_VISIBLE_COLUMNS.currentMgmt,
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'STORE Mgmt. Fee',
+    label: 'STORE Management Fee',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(248, 261),
+    columns: [
+      ...PROFORMA_MONTH_COLUMNS,
+      PROFORMA_VISIBLE_COLUMNS.store,
+      PROFORMA_VISIBLE_COLUMNS.impact,
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Payroll',
+    label: 'Payroll',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(262, 278),
+    columns: [
+      ...PROFORMA_ALL_COLUMNS.slice(0, 16),
+      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Office Supplies',
+    label: 'Office Supplies',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(279, 294),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Repairs & Maintenance',
+    label: 'Repairs & Maintenance',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(295, 310),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Security',
+    label: 'Security',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(311, 324),
+    columns: [
+      ...PROFORMA_MONTH_COLUMNS,
+      PROFORMA_VISIBLE_COLUMNS.store,
+      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Retail Products',
+    label: 'Retail Products',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(325, 340),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Telephone & Internet',
+    label: 'Telephone & Internet',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(341, 356),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Software',
+    label: 'Software',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(357, 373),
+    columns: [
+      ...PROFORMA_ALL_COLUMNS.slice(0, 16),
+      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    ],
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Prof Fees - Legal/Acctg',
+    label: 'Prof Fees - Legal/Acctg',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(374, 389),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Utilities',
+    label: 'Utilities',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(390, 405),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Insurance',
+    label: 'Insurance',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(406, 421),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Property Taxes',
+    label: 'Property Taxes',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(422, 437),
+    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Total Operating Expense',
+    label: 'Total Operating Expense',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(438, 454),
+    columns: PROFORMA_ALL_COLUMNS,
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+  {
+    sourceRow: 'Net Operating Income',
+    label: 'Net Operating Income',
+    section: 'expenseProforma',
+    tokenNumbers: buildCellTokenRange(473, 489),
+    columns: PROFORMA_ALL_COLUMNS,
+    sheetName: 'Proforma',
+    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+  },
+];
 
 function cleanCell(value: unknown): string {
   return String(value ?? '')
@@ -599,6 +1083,14 @@ function mapInternalSection(section: InternalTokenSection): PropertyAnalysisToke
   switch (section) {
     case 'propertyProfile':
       return 'marketSnapshot';
+    case 'incomeProforma':
+      return 'incomeProforma';
+    case 'expenseProforma':
+      return 'expenseProforma';
+    case 'dealEconomics':
+      return 'dealEconomics';
+    case 'exitSensitivity':
+      return 'exitSensitivity';
     case 'operatingMetrics':
     case 'stabilizedSummary':
       return 'returnProfile';
@@ -665,11 +1157,74 @@ function setRegisteredValue(
   alias: string,
   record: Omit<ExtractedTokenRecord, 'matchedKey'>,
 ): void {
+  setResolvedValue(map, alias, { ...record });
+}
+
+function setResolvedValue(
+  map: Map<string, ExtractedTokenRecord>,
+  alias: string,
+  record: Omit<ExtractedTokenRecord, 'matchedKey'> & { matchedKey?: string },
+): void {
   const normalized = normalizeTokenKey(alias);
   if (!normalized) return;
   map.set(normalized, {
     ...record,
-    matchedKey: normalized,
+    matchedKey: record.matchedKey ?? normalized,
+  });
+}
+
+function findRowIndexByColumnValue(
+  rows: string[][],
+  columnIndex: number,
+  label: string,
+  options?: { startRow?: number; endRow?: number },
+): number {
+  const target = normalizeLabel(label);
+  const start = options?.startRow ?? 0;
+  const end = Math.min(options?.endRow ?? rows.length - 1, rows.length - 1);
+
+  for (let rowIndex = start; rowIndex <= end; rowIndex += 1) {
+    const candidate = normalizeLabel(rows[rowIndex]?.[columnIndex] ?? '');
+    if (candidate && candidate === target) return rowIndex;
+  }
+
+  return -1;
+}
+
+function readMatrixCell(rows: string[][], rowIndex: number, columnIndex: number): string {
+  return cleanCell(rows[rowIndex]?.[columnIndex] ?? '');
+}
+
+function addMatrixRowTokenSpec(
+  map: Map<string, ExtractedTokenRecord>,
+  warnings: string[],
+  rows: string[][],
+  spec: MatrixRowTokenSpec,
+): void {
+  if (spec.tokenNumbers.length !== spec.columns.length) {
+    warnings.push(
+      `${spec.sheetName}: token/column count mismatch for ${spec.label} (${spec.tokenNumbers.length} tokens, ${spec.columns.length} columns).`,
+    );
+    return;
+  }
+
+  const rowIndex = findRowIndexByColumnValue(rows, spec.labelColumnIndex, spec.sourceRow);
+  if (rowIndex < 0) {
+    warnings.push(`${spec.sheetName}: unable to locate row "${spec.sourceRow}" for slide mapping.`);
+    return;
+  }
+
+  spec.tokenNumbers.forEach((tokenNumber, index) => {
+    const column = spec.columns[index];
+    const rawValue = readMatrixCell(rows, rowIndex, column.index);
+    const value = column.formatter ? column.formatter(rawValue) : rawValue;
+    setResolvedValue(map, buildCellToken(tokenNumber), {
+      label: `${spec.label} / ${column.label}`,
+      value,
+      section: spec.section,
+      source: 'extracted',
+      matchedKey: `${spec.sheetName}!R${rowIndex + 1}C${column.index + 1}`,
+    });
   });
 }
 
@@ -1205,6 +1760,473 @@ function addPublicComparisonCalloutAliases(
   return warnings;
 }
 
+function addDirectCellToken(
+  map: Map<string, ExtractedTokenRecord>,
+  token: string,
+  label: string,
+  section: InternalTokenSection,
+  sheetName: string,
+  rowIndex: number,
+  columnIndex: number,
+  rows: string[][],
+  formatter?: (value: string) => string,
+): void {
+  const rawValue = readMatrixCell(rows, rowIndex, columnIndex);
+  const value = formatter ? formatter(rawValue) : rawValue;
+  setResolvedValue(map, token, {
+    label,
+    value,
+    section,
+    source: 'extracted',
+    matchedKey: `${sheetName}!R${rowIndex + 1}C${columnIndex + 1}`,
+  });
+}
+
+function addPublicProformaSlideMappings(
+  map: Map<string, ExtractedTokenRecord>,
+  proformaRows: string[][],
+): string[] {
+  const warnings: string[] = [];
+  for (const spec of [...SLIDE4_PROFORMA_SPECS, ...SLIDE5_PROFORMA_SPECS]) {
+    addMatrixRowTokenSpec(map, warnings, proformaRows, spec);
+  }
+  return warnings;
+}
+
+function addPublicSlide6Mappings(
+  map: Map<string, ExtractedTokenRecord>,
+  valuationRows: string[][],
+  inputsRows: string[][],
+): string[] {
+  const warnings: string[] = [];
+
+  const keyMetricSpecs: KeyMetricSpec[] = [
+    { token: 'CELL0490', label: 'Purchase Price', sourceLabel: 'Purchase Price' },
+    { token: 'CELL0491', label: 'Going-In Cap Rate', sourceLabel: 'Going-In Cap Rate' },
+    { token: 'CELL0493', label: 'All-In Interest Rate', sourceLabel: 'All-In Interest Rate (SOFR+220bps)' },
+    { token: 'CELL0494', label: 'LTC', sourceLabel: 'LTC' },
+    { token: 'CELL0495', label: 'Loan Amount', sourceLabel: 'Loan Amount' },
+    { token: 'CELL0496', label: 'Equity Required', sourceLabel: 'Equity Required' },
+    { token: 'CELL0497', label: 'Total CapEx', sourceLabel: 'Total CapEx' },
+    { token: 'CELL0498', label: 'NRSF', sourceLabel: 'NRSF' },
+    { token: 'CELL0499', label: 'Price / SqFt', sourceLabel: 'Price / SqFt' },
+    { token: 'CELL0500', label: 'Asset Mgmt Fee', sourceLabel: 'Asset Mgmt Fee' },
+  ];
+
+  for (const spec of keyMetricSpecs) {
+    const rowIndex = findRowIndexByColumnValue(
+      valuationRows,
+      VALUATION_KEY_METRIC_LABEL_COLUMN_INDEX,
+      spec.sourceLabel,
+      { startRow: 0, endRow: 25 },
+    );
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate key metric "${spec.sourceLabel}".`);
+      continue;
+    }
+    addDirectCellToken(
+      map,
+      spec.token,
+      spec.label,
+      'dealEconomics',
+      'Valuation Sheet',
+      rowIndex,
+      VALUATION_KEY_METRIC_VALUE_COLUMN_INDEX,
+      valuationRows,
+    );
+  }
+
+  const spreadRowIndex = findRowIndexByColumnValue(inputsRows, 5, 'Spread (bps)', { startRow: 0, endRow: 30 });
+  if (spreadRowIndex < 0) {
+    warnings.push('Inputs & Drivers: unable to locate "Spread (bps)" for slide 6.');
+  } else {
+    addDirectCellToken(
+      map,
+      'CELL0492',
+      'Spread (bps)',
+      'dealEconomics',
+      'Inputs & Drivers',
+      spreadRowIndex,
+      7,
+      inputsRows,
+      percentToBasisPoints,
+    );
+  }
+
+  const debtServiceSeries: DirectRowSeriesSpec[] = [
+    { rowLabel: 'Beginning Balance', tokenStart: 506, label: 'Beginning Balance' },
+    { rowLabel: 'Annual Debt Service', tokenStart: 511, label: 'Annual Debt Service' },
+    { rowLabel: 'Interest Portion', tokenStart: 516, label: 'Interest Portion' },
+    { rowLabel: 'Principal Portion', tokenStart: 521, label: 'Principal Portion' },
+    { rowLabel: 'DSCR', tokenStart: 526, label: 'DSCR', formatter: stripTrailingX },
+    { rowLabel: 'Ending Balance', tokenStart: 531, label: 'Ending Balance' },
+  ];
+
+  for (const series of debtServiceSeries) {
+    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, series.rowLabel, {
+      startRow: 12,
+      endRow: 24,
+    });
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate debt service row "${series.rowLabel}".`);
+      continue;
+    }
+    for (let yearOffset = 0; yearOffset < 5; yearOffset += 1) {
+      addDirectCellToken(
+        map,
+        buildCellToken(series.tokenStart + yearOffset),
+        `Debt Service / ${series.label} / Year ${yearOffset + 1}`,
+        'dealEconomics',
+        'Valuation Sheet',
+        rowIndex,
+        yearOffset + 1,
+        valuationRows,
+        series.formatter,
+      );
+    }
+  }
+
+  const cashFlowSeries: DirectRowSeriesSpec[] = [
+    { rowLabel: 'Net Operating Income', tokenStart: 541, label: 'Net Operating Income' },
+    { rowLabel: 'Less: CapEx', tokenStart: 546, label: 'Less: CapEx' },
+    { rowLabel: 'Less: Debt Service', tokenStart: 551, label: 'Less: Debt Service', formatter: stripOuterParens },
+    { rowLabel: 'Less: Asset Mgmt Fee', tokenStart: 556, label: 'Less: Asset Mgmt Fee', formatter: stripOuterParens },
+    { rowLabel: 'Levered Cash Flow', tokenStart: 561, label: 'Levered Cash Flow' },
+  ];
+
+  for (const series of cashFlowSeries) {
+    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, series.rowLabel, {
+      startRow: 22,
+      endRow: 35,
+    });
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate cash flow row "${series.rowLabel}".`);
+      continue;
+    }
+    for (let yearOffset = 0; yearOffset < 5; yearOffset += 1) {
+      addDirectCellToken(
+        map,
+        buildCellToken(series.tokenStart + yearOffset),
+        `Cash Flow / ${series.label} / Year ${yearOffset + 1}`,
+        'dealEconomics',
+        'Valuation Sheet',
+        rowIndex,
+        yearOffset + 1,
+        valuationRows,
+        series.formatter,
+      );
+    }
+  }
+
+  const cashOnCashRowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, 'Cash-on-Cash Return', {
+    startRow: 28,
+    endRow: 34,
+  });
+  if (cashOnCashRowIndex >= 0) {
+    addDirectCellToken(
+      map,
+      'CELL0566',
+      'Cash-on-Cash Return / Year 1',
+      'dealEconomics',
+      'Valuation Sheet',
+      cashOnCashRowIndex,
+      1,
+      valuationRows,
+    );
+  } else {
+    warnings.push('Valuation Sheet: unable to locate "Cash-on-Cash Return" for slide 6.');
+  }
+
+  const yieldOnCostRowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, 'Yield on Cost', {
+    startRow: 28,
+    endRow: 34,
+  });
+  if (yieldOnCostRowIndex >= 0) {
+    addDirectCellToken(
+      map,
+      'CELL0567',
+      'Yield on Cost / Year 1',
+      'dealEconomics',
+      'Valuation Sheet',
+      yieldOnCostRowIndex,
+      1,
+      valuationRows,
+    );
+  } else {
+    warnings.push('Valuation Sheet: unable to locate "Yield on Cost" for slide 6.');
+  }
+
+  const sourceUseSpecs: DirectCellSpec[] = [
+    { token: 'CELL0568', label: 'Sources of Capital / Senior Debt', rowLabel: 'Senior Debt', labelColumn: 0, valueColumn: 1 },
+    { token: 'CELL0569', label: 'Sources of Capital / Equity', rowLabel: 'Equity', labelColumn: 0, valueColumn: 1 },
+    { token: 'CELL0570', label: 'Sources of Capital / Total Sources', rowLabel: 'Total Sources', labelColumn: 0, valueColumn: 1 },
+    { token: 'CELL0571', label: 'Uses of Capital / Purchase Price', rowLabel: 'Purchase Price', labelColumn: 2, valueColumn: 3 },
+    { token: 'CELL0572', label: 'Uses of Capital / Closing Costs', rowLabel: 'Closing Costs', labelColumn: 2, valueColumn: 3 },
+    { token: 'CELL0573', label: 'Uses of Capital / Upfront CapEx', rowLabel: 'Upfront CapEx', labelColumn: 2, valueColumn: 3 },
+    { token: 'CELL0574', label: 'Uses of Capital / Total Uses', rowLabel: 'Total Uses', labelColumn: 2, valueColumn: 3 },
+  ];
+
+  for (const spec of sourceUseSpecs) {
+    const rowIndex = findRowIndexByColumnValue(valuationRows, spec.labelColumn, spec.rowLabel, { startRow: 0, endRow: 15 });
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate sources/uses row "${spec.rowLabel}".`);
+      continue;
+    }
+    addDirectCellToken(
+      map,
+      spec.token,
+      spec.label,
+      'dealEconomics',
+      'Valuation Sheet',
+      rowIndex,
+      spec.valueColumn,
+      valuationRows,
+    );
+  }
+
+  return warnings;
+}
+
+function addPublicSlide7Mappings(
+  map: Map<string, ExtractedTokenRecord>,
+  valuationRows: string[][],
+): string[] {
+  const warnings: string[] = [];
+
+  const holdPeriodRows: HoldPeriodRowSpec[] = [
+    { tokenNumbers: [578, 579, 580], label: 'Exit Year NOI', sourceLabel: 'Exit Year NOI' },
+    { tokenNumbers: [582, 583, 584], label: 'Forward NOI', sourceLabel: 'Forward NOI (exit + 1 yr)' },
+    { tokenNumbers: [591, 592, 593], label: 'Disposition Costs', sourceLabel: 'Disposition Costs', formatter: stripOuterParens },
+    { tokenNumbers: [594, 595, 596], label: 'Net Sale Price', sourceLabel: 'Net Sale Price' },
+    { tokenNumbers: [597, 598, 599], label: 'Loan Balance at Exit', sourceLabel: 'Loan Balance at Exit' },
+    { tokenNumbers: [600, 601, 602], label: 'Net Equity Proceeds', sourceLabel: 'Net Equity Proceeds' },
+  ];
+
+  for (const rowSpec of holdPeriodRows) {
+    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, rowSpec.sourceLabel, {
+      startRow: 35,
+      endRow: 45,
+    });
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate hold-period row "${rowSpec.sourceLabel}".`);
+      continue;
+    }
+    rowSpec.tokenNumbers.forEach((tokenNumber, index) => {
+      addDirectCellToken(
+        map,
+        buildCellToken(tokenNumber),
+        `${rowSpec.label} / ${[3, 5, 7][index]}-Year Hold`,
+        'exitSensitivity',
+        'Valuation Sheet',
+        rowIndex,
+        index + 1,
+        valuationRows,
+        rowSpec.formatter,
+      );
+    });
+  }
+
+  const grossSaleRowIndex = findRowIndexByColumnValue(
+    valuationRows,
+    VALUATION_LABEL_COLUMN_INDEX,
+    'Gross Sale Price / Price Per Square Foot',
+    { startRow: 35, endRow: 45 },
+  );
+  if (grossSaleRowIndex < 0) {
+    warnings.push('Valuation Sheet: unable to locate "Gross Sale Price / Price Per Square Foot".');
+  } else {
+    const grossSaleTokens: Array<[string, string]> = [
+      ['CELL0585', '3-Year Hold / Gross Sale Price'],
+      ['CELL0586', '3-Year Hold / Price Per Square Foot'],
+      ['CELL0587', '5-Year Hold / Gross Sale Price'],
+      ['CELL0588', '5-Year Hold / Price Per Square Foot'],
+      ['CELL0589', '7-Year Hold / Gross Sale Price'],
+      ['CELL0590', '7-Year Hold / Price Per Square Foot'],
+    ];
+    [1, 2, 3].forEach((columnIndex, holdIndex) => {
+      const [grossSale, pricePerSquareFoot] = splitCombinedValue(readMatrixCell(valuationRows, grossSaleRowIndex, columnIndex), '/');
+      const pair = grossSaleTokens.slice(holdIndex * 2, holdIndex * 2 + 2);
+      setResolvedValue(map, pair[0][0], {
+        label: pair[0][1],
+        value: grossSale,
+        section: 'exitSensitivity',
+        source: 'extracted',
+        matchedKey: `Valuation Sheet!R${grossSaleRowIndex + 1}C${columnIndex + 1}`,
+      });
+      setResolvedValue(map, pair[1][0], {
+        label: pair[1][1],
+        value: pricePerSquareFoot,
+        section: 'exitSensitivity',
+        source: 'extracted',
+        matchedKey: `Valuation Sheet!R${grossSaleRowIndex + 1}C${columnIndex + 1}`,
+      });
+    });
+  }
+
+  const irrRowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, 'Levered IRR', {
+    startRow: 35,
+    endRow: 50,
+  });
+  if (irrRowIndex >= 0) {
+    addDirectCellToken(map, 'CELL0604', '3-Year IRR', 'exitSensitivity', 'Valuation Sheet', irrRowIndex, 1, valuationRows);
+    addDirectCellToken(map, 'CELL0606', '5-Year IRR', 'exitSensitivity', 'Valuation Sheet', irrRowIndex, 2, valuationRows);
+    addDirectCellToken(map, 'CELL0608', '7-Year IRR', 'exitSensitivity', 'Valuation Sheet', irrRowIndex, 3, valuationRows);
+  } else {
+    warnings.push('Valuation Sheet: unable to locate hold-period "Levered IRR".');
+  }
+
+  const equityMultipleRowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, 'Equity Multiple', {
+    startRow: 35,
+    endRow: 50,
+  });
+  if (equityMultipleRowIndex >= 0) {
+    addDirectCellToken(
+      map,
+      'CELL0610',
+      '3-Year Equity Multiple',
+      'exitSensitivity',
+      'Valuation Sheet',
+      equityMultipleRowIndex,
+      1,
+      valuationRows,
+      stripTrailingX,
+    );
+    addDirectCellToken(
+      map,
+      'CELL0612',
+      '5-Year Equity Multiple',
+      'exitSensitivity',
+      'Valuation Sheet',
+      equityMultipleRowIndex,
+      2,
+      valuationRows,
+      stripTrailingX,
+    );
+    addDirectCellToken(
+      map,
+      'CELL0614',
+      '7-Year Equity Multiple',
+      'exitSensitivity',
+      'Valuation Sheet',
+      equityMultipleRowIndex,
+      3,
+      valuationRows,
+      stripTrailingX,
+    );
+  } else {
+    warnings.push('Valuation Sheet: unable to locate hold-period "Equity Multiple".');
+  }
+
+  const interestSensitivityRowLabels = ['5.50%', '6.00%', '6.50%', '7.00%', '7.50%'];
+  const interestSensitivityTokenRows = [
+    buildCellTokenRange(621, 625),
+    buildCellTokenRange(627, 631),
+    buildCellTokenRange(633, 637),
+    buildCellTokenRange(639, 643),
+    buildCellTokenRange(645, 649),
+  ];
+  const interestHeaderRowIndex = findRowIndexByColumnValue(
+    valuationRows,
+    VALUATION_LABEL_COLUMN_INDEX,
+    'Exit Cap \\ All-In Rate',
+    { startRow: 84, endRow: 95 },
+  );
+  for (let rowOffset = 0; rowOffset < interestSensitivityRowLabels.length; rowOffset += 1) {
+    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, interestSensitivityRowLabels[rowOffset], {
+      startRow: 84,
+      endRow: 95,
+    });
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate interest sensitivity row "${interestSensitivityRowLabels[rowOffset]}".`);
+      continue;
+    }
+    interestSensitivityTokenRows[rowOffset]?.forEach((tokenNumber, columnOffset) => {
+      addDirectCellToken(
+        map,
+        buildCellToken(tokenNumber),
+        `Interest Rate Sensitivity / Exit Cap ${interestSensitivityRowLabels[rowOffset]} / All-In Rate ${
+          interestHeaderRowIndex >= 0 ? readMatrixCell(valuationRows, interestHeaderRowIndex, columnOffset + 1) : `Column ${columnOffset + 1}`
+        }`,
+        'exitSensitivity',
+        'Valuation Sheet',
+        rowIndex,
+        columnOffset + 1,
+        valuationRows,
+      );
+    });
+  }
+
+  const capRateSensitivityTitleRowIndex = findRowIndexByColumnValue(
+    valuationRows,
+    VALUATION_LABEL_COLUMN_INDEX,
+    'Cap Rate Sensitivity — Implied Value at Exit (Year 5 NOI)',
+    { startRow: 70, endRow: 80 },
+  );
+  const capRateYearMatch =
+    capRateSensitivityTitleRowIndex >= 0
+      ? readMatrixCell(valuationRows, capRateSensitivityTitleRowIndex, 0).match(/Year\s+(\d+)/i)
+      : null;
+  const capRateYearValue = capRateYearMatch?.[1] ?? '';
+  ['CELL0650', 'CELL_0651', 'CELL_0652', 'CELL_0653', 'CELL_0654'].forEach((token) => {
+    setResolvedValue(map, token, {
+      label: 'Cap Rate Sensitivity / Exit NOI Year',
+      value: capRateYearValue,
+      section: 'exitSensitivity',
+      source: 'extracted',
+      matchedKey:
+        capRateSensitivityTitleRowIndex >= 0
+          ? `Valuation Sheet!R${capRateSensitivityTitleRowIndex + 1}C1`
+          : 'Valuation Sheet / Cap Rate Sensitivity title',
+    });
+  });
+  if (!capRateYearValue) {
+    warnings.push('Valuation Sheet: unable to determine the cap rate sensitivity exit-year label.');
+  }
+
+  const capRateRowLabels = ['5.50%', '5.75%', '6.00%', '6.50%', '7.00%', '7.50%', '8.00%', '8.50%'];
+  const capRateTokenRows: string[][] = [
+    ['CELL0656', 'CELL0657', 'CELL0658', 'CELL0659'],
+    ['CELL0661', 'CELL0662', 'CELL0663', 'CELL0664'],
+    ['CELL0666', 'CELL0667', 'CELL0668', 'CELL0669'],
+    ['CELL0671', 'CELL0672', 'CELL0673', 'CELL0674'],
+    ['CELL0676', 'CELL0677', 'CELL0678', 'CELL0679'],
+    ['CELL0681', 'CELL0682', 'CELL0683', 'CELL0684'],
+    ['CELL0686', 'CELL0687', 'CELL0688', 'CELL0689'],
+    ['CELL0691', 'CELL0692', 'CELL0693', 'CELL0694'],
+  ];
+  const capRateColumnSpecs: CapRateColumnSpec[] = [
+    { columnIndex: 2, suffix: 'Net Proceeds' },
+    { columnIndex: 3, suffix: 'Equity Proceeds' },
+    { columnIndex: 4, suffix: 'Equity Multiple', formatter: stripTrailingX },
+    { columnIndex: 5, suffix: 'Levered IRR' },
+  ];
+  for (let rowOffset = 0; rowOffset < capRateRowLabels.length; rowOffset += 1) {
+    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, capRateRowLabels[rowOffset], {
+      startRow: 74,
+      endRow: 85,
+    });
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate cap rate sensitivity row "${capRateRowLabels[rowOffset]}".`);
+      continue;
+    }
+    capRateColumnSpecs.forEach((columnSpec, columnOffset) => {
+      addDirectCellToken(
+        map,
+        capRateTokenRows[rowOffset]?.[columnOffset] ?? '',
+        `Cap Rate Sensitivity / Exit Rate ${capRateRowLabels[rowOffset]} / ${columnSpec.suffix}`,
+        'exitSensitivity',
+        'Valuation Sheet',
+        rowIndex,
+        columnSpec.columnIndex,
+        valuationRows,
+        columnSpec.formatter,
+      );
+    });
+  }
+
+  return warnings;
+}
+
 function buildWentworthDefaults(workbook: XLSX.WorkBook, fileName: string): ParsedWorkbookBundle {
   const propertyRows = sheetToMatrix(workbook, 'Property Data');
   const summaryRows = sheetToMatrix(workbook, '5 Year Summary');
@@ -1256,6 +2278,7 @@ function buildWentworthDefaults(workbook: XLSX.WorkBook, fileName: string): Pars
 }
 
 function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string): ParsedWorkbookBundle {
+  const proformaRows = sheetToOptionalMatrix(workbook, 'Proforma');
   const inputsRows = sheetToMatrix(workbook, 'Inputs & Drivers');
   const summaryRows = sheetToMatrix(workbook, '5 Year Proforma');
   const modelRows = sheetToMatrix(workbook, 'Model2.0');
@@ -1322,6 +2345,13 @@ function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string):
 
   const warnings = addPublicHoldPeriodReturnAliases(defaults, valuationRows);
   warnings.push(...addPublicComparisonCalloutAliases(defaults, workbook, inputsRows));
+  if (proformaRows) {
+    warnings.push(...addPublicProformaSlideMappings(defaults, proformaRows));
+  } else {
+    warnings.push('Proforma sheet is missing direct table rows for slides 4 and 5.');
+  }
+  warnings.push(...addPublicSlide6Mappings(defaults, valuationRows, inputsRows));
+  warnings.push(...addPublicSlide7Mappings(defaults, valuationRows));
   if (summaryData.columns.length < 5) {
     warnings.push('5 Year Proforma sheet exposed fewer than five yearly summary columns.');
   }
@@ -1432,6 +2462,16 @@ function replaceTokensInContent(content: string, normalizedTokens: Record<string
   });
 }
 
+function repairMalformedTokenWrappers(content: string): string {
+  return content.replace(/\(\{\{\s*([^{}]+?)\s*\}\}(?!\))/g, (segment, rawKey) => {
+    const normalized = normalizeTokenKey(String(rawKey));
+    if (!normalized || !MALFORMED_OPEN_PAREN_TOKENS.has(normalized)) {
+      return segment;
+    }
+    return `${segment})`;
+  });
+}
+
 function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<string, string>): void {
   const embeddedPaths = Object.keys(zip.files).filter(
     (filePath) => filePath.startsWith('ppt/embeddings/') && filePath.endsWith('.xlsx'),
@@ -1483,7 +2523,7 @@ export async function renderPropertyAnalysisPackage(
   for (const filePath of pptXmlPaths) {
     const file = zip.file(filePath);
     if (!file) continue;
-    const normalizedXml = normalizeTemplateXml(file.asText());
+    const normalizedXml = repairMalformedTokenWrappers(normalizeTemplateXml(file.asText()));
     const replaced = replaceTokensInContent(normalizedXml, normalizedTokens);
     zip.file(filePath, replaced);
   }

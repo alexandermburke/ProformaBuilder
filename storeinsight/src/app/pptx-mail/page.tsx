@@ -33,7 +33,7 @@ export default function PptxMailPage(): JSX.Element {
                 Property Analysis Package
               </h1>
               <p className="max-w-3xl text-sm text-[color:var(--text-secondary)] sm:text-base">
-                Upload a supported proforma workbook, review the first 3 slides of extracted package tokens, and
+                Upload a supported proforma workbook, review slides 1-7 of extracted package tokens, and
                 generate a templated PowerPoint from the managed <code>PackageTemplate.pptx</code> asset.
               </p>
             </div>
