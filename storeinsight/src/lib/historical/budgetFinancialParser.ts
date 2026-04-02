@@ -19,7 +19,9 @@ export type BudgetFinancialParseResult = {
   warnings: string[];
   sourceSheet: string;
   sources: {
-    expenses: BudgetValueSource;
+    propertyExpenses: BudgetValueSource;
+    totalExpenses: BudgetValueSource;
+    otherExpenses?: BudgetValueSource;
     noi: BudgetValueSource;
   };
 };
@@ -145,6 +147,7 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
 
   const incomeToken = 'TOTALINCCM';
   const propertyExpenseToken = 'TOTALPROPCM';
+  const otherExpenseToken = 'TOTOTHEREXPCM';
   const expenseToken = 'TOTEXPCM';
   const incomeValue = extraction.tokens[incomeToken];
   if (!Number.isFinite(incomeValue)) {
@@ -158,14 +161,21 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
   if (!Number.isFinite(expenseValue)) {
     throw new Error('Unable to extract TOTAL EXPENSES from the PTD Actual column.');
   }
+  const otherExpenseRaw = extraction.tokens[otherExpenseToken];
+  const otherExpenseValue = Number.isFinite(otherExpenseRaw)
+    ? otherExpenseRaw
+    : Math.round((expenseValue - propertyExpenseValue) * 100) / 100;
 
   const noiToken = `${incomeToken} - ${propertyExpenseToken}`;
   const noiValue = Math.round((incomeValue - propertyExpenseValue) * 100) / 100;
   warnings.push('NOI is calculated from PTD Actual values: Total Income minus Total Property Expenses.');
+  warnings.push('Property Expenses exclude Other Expenses and match the expense basis used for NOI.');
+  warnings.push('Total Expenses include Other Expenses and are shown separately for reference only.');
 
   const expenseDetail = extraction.details[expenseToken];
   const incomeDetail = extraction.details[incomeToken];
   const propertyExpenseDetail = extraction.details[propertyExpenseToken];
+  const otherExpenseDetail = extraction.details[otherExpenseToken];
   const propertyName = parsePropertyName(located.grid);
 
   return {
@@ -174,10 +184,16 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
       reportMonthIso,
       monthIso: reportMonthIso,
       financials: {
-        totalOperatingExpenseMtd: expenseValue,
-        expensesMtd: expenseValue,
-        totalOperatingExpense: expenseValue,
-        expenses: expenseValue,
+        totalOperatingExpenseMtd: propertyExpenseValue,
+        expensesMtd: propertyExpenseValue,
+        totalOperatingExpense: propertyExpenseValue,
+        expenses: propertyExpenseValue,
+        propertyExpensesMtd: propertyExpenseValue,
+        propertyExpenses: propertyExpenseValue,
+        totalExpensesMtd: expenseValue,
+        totalExpenses: expenseValue,
+        otherExpensesMtd: otherExpenseValue,
+        otherExpenses: otherExpenseValue,
         noiMtd: noiValue,
         noi: noiValue,
         netOperatingIncomeMtd: noiValue,
@@ -187,11 +203,27 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
     warnings,
     sourceSheet: located.name,
     sources: {
-      expenses: {
+      propertyExpenses: {
+        token: propertyExpenseToken,
+        cell: propertyExpenseDetail?.cell ?? null,
+        sheet: propertyExpenseDetail?.sheet ?? located.name,
+      },
+      totalExpenses: {
         token: expenseToken,
         cell: expenseDetail?.cell ?? null,
         sheet: expenseDetail?.sheet ?? located.name,
       },
+      ...(Number.isFinite(otherExpenseValue)
+        ? {
+            otherExpenses: {
+              token: otherExpenseToken,
+              cell: otherExpenseDetail?.cell ?? null,
+              sheet: otherExpenseDetail?.sheet ?? located.name,
+              fallback: !otherExpenseDetail,
+              formula: otherExpenseDetail ? undefined : 'Other Expenses = Total Expenses - Total Property Expenses',
+            },
+          }
+        : {}),
       noi: {
         token: noiToken,
         cell:

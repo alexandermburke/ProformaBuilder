@@ -30,7 +30,6 @@ import {
   TOKEN_DEFAULT_SNAPSHOT_RANGE,
   TOKEN_SNAPSHOT_RANGE_OPTIONS,
   normalizeMonthIso,
-  sliceLaggedFinancialEntriesByRange,
   sliceSnapshotEntriesByRange,
   toMonthKey,
 } from '@/lib/historical/snapshotDashboard';
@@ -200,6 +199,11 @@ const getSnapshotNumber = (snapshot: MsrSnapshot, paths: ReadonlyArray<readonly 
   }
   return null;
 };
+
+const hasFinancialSeriesData = (snapshot: MsrSnapshot): boolean =>
+  isFiniteNumber(getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS)) ||
+  isFiniteNumber(getSnapshotNumber(snapshot, NOI_VALUE_PATHS)) ||
+  isFiniteNumber(getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS));
 
 const buildLinePathWithGaps = (
   values: Array<number | null>,
@@ -582,9 +586,9 @@ export function HistoricalSnapshotDashboardView({
     () => rangeSnapshots.filter((entry) => entry.monthIso),
     [rangeSnapshots],
   );
-  const laggedFinancialSeriesEntries = useMemo(
-    () => sliceLaggedFinancialEntriesByRange(sortedSnapshots, range),
-    [sortedSnapshots, range],
+  const financialSeriesEntries = useMemo(
+    () => rangeSnapshots.filter((entry) => entry.monthIso && hasFinancialSeriesData(entry.snapshot)),
+    [rangeSnapshots],
   );
 
   const overlayTop = isDark
@@ -637,7 +641,7 @@ export function HistoricalSnapshotDashboardView({
   );
   const laggedFinancialTrendRows = useMemo(
     () =>
-      laggedFinancialSeriesEntries
+      financialSeriesEntries
         .map((entry) => {
           if (!entry.monthIso) return null;
           const netRevenue = getSnapshotNumber(entry.snapshot, NET_REVENUE_VALUE_PATHS);
@@ -656,7 +660,7 @@ export function HistoricalSnapshotDashboardView({
           };
         })
         .filter((row): row is { monthIso: string; expenses: number | null; noi: number | null } => Boolean(row)),
-    [laggedFinancialSeriesEntries],
+    [financialSeriesEntries],
   );
 
   const occupancyCoreSeries = useMemo(
@@ -697,11 +701,11 @@ export function HistoricalSnapshotDashboardView({
   );
   const expensesCoreEmpty = getSeriesEmptyMessage(
     expensesCoreSeries.map((point) => point.value),
-    laggedFinancialSeriesEntries.length,
+    financialSeriesEntries.length,
   );
   const noiCoreEmpty = getSeriesEmptyMessage(
     noiCoreSeries.map((point) => point.value),
-    laggedFinancialSeriesEntries.length,
+    financialSeriesEntries.length,
   );
   const totalPastDueSeries = buildSeries(seriesEntries, (snapshot) => snapshot.ar?.totalPastDue);
   const totalPastDueEmpty = getSeriesEmptyMessage(
@@ -1972,7 +1976,7 @@ export function HistoricalSnapshotDashboardView({
           <MemoFinancialsSection
             latestSnapshot={latestSnapshot}
             seriesEntries={seriesEntries}
-            laggedFinancialSeriesEntries={laggedFinancialSeriesEntries}
+            laggedFinancialSeriesEntries={financialSeriesEntries}
             isDark={isDark}
           />
         ) : null}
@@ -2040,7 +2044,7 @@ export function HistoricalSnapshotDashboardView({
           <PrintFinancialsReport
             latestSnapshot={latestSnapshot}
             seriesEntries={seriesEntries}
-            laggedFinancialSeriesEntries={laggedFinancialSeriesEntries}
+            laggedFinancialSeriesEntries={financialSeriesEntries}
           />
         </div>
       </div>

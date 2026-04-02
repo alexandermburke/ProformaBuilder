@@ -41,6 +41,12 @@ export type MsrSnapshotPayload = {
     expensesMtd?: number;
     totalOperatingExpense?: number;
     totalOperatingExpenseMtd?: number;
+    propertyExpenses?: number;
+    propertyExpensesMtd?: number;
+    totalExpenses?: number;
+    totalExpensesMtd?: number;
+    otherExpenses?: number;
+    otherExpensesMtd?: number;
     noi?: number;
     noiMtd?: number;
     netOperatingIncome?: number;

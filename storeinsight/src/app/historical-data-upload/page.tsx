@@ -185,6 +185,12 @@ type BudgetFinancialPreviewSnapshot = {
     expensesMtd?: number;
     totalOperatingExpense?: number;
     totalOperatingExpenseMtd?: number;
+    propertyExpenses?: number;
+    propertyExpensesMtd?: number;
+    totalExpenses?: number;
+    totalExpensesMtd?: number;
+    otherExpenses?: number;
+    otherExpensesMtd?: number;
     noi?: number;
     noiMtd?: number;
     netOperatingIncome?: number;
@@ -205,7 +211,9 @@ type BudgetFinancialPreviewResponse = {
   warnings: string[];
   sourceSheet?: string | null;
   sources?: {
-    expenses?: BudgetFinancialPreviewSource;
+    propertyExpenses?: BudgetFinancialPreviewSource;
+    totalExpenses?: BudgetFinancialPreviewSource;
+    otherExpenses?: BudgetFinancialPreviewSource;
     noi?: BudgetFinancialPreviewSource;
   } | null;
   exists: boolean;
@@ -217,6 +225,14 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
   maximumFractionDigits: 0,
+});
+
+const budgetCurrencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  currencySign: 'accounting',
 });
 
 const numberFormatter = new Intl.NumberFormat('en-US');
@@ -231,6 +247,12 @@ const formatPreviewValue = (value: unknown, kind: 'currency' | 'percent' | 'numb
   }
   if (kind === 'number' && typeof value === 'number') return numberFormatter.format(Math.round(value));
   return String(value);
+};
+
+const formatBudgetPreviewCurrency = (value: unknown): string => {
+  if (value == null || value === '') return 'N/A';
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'N/A';
+  return budgetCurrencyFormatter.format(value);
 };
 
 const normalizePropertyToken = (value: string): string =>
@@ -354,6 +376,16 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const msrDataSources = msrPreview?.dataSources ?? null;
   const msrTableDiagnostics = msrPreview?.msrTableDiagnostics ?? null;
   const budgetSources = budgetPreview?.sources ?? null;
+  const budgetPropertyExpensesValue =
+    budgetSnapshot?.financials?.propertyExpensesMtd ??
+    budgetSnapshot?.financials?.totalOperatingExpenseMtd ??
+    budgetSnapshot?.financials?.expensesMtd;
+  const budgetTotalExpensesValue =
+    budgetSnapshot?.financials?.totalExpensesMtd ?? budgetSnapshot?.financials?.totalExpenses;
+  const budgetOtherExpensesValue =
+    budgetSnapshot?.financials?.otherExpensesMtd ?? budgetSnapshot?.financials?.otherExpenses;
+  const budgetNoiValue =
+    budgetSnapshot?.financials?.netOperatingIncomeMtd ?? budgetSnapshot?.financials?.noiMtd;
   const occupancyHeaderRow =
     occupancyDiagnostics?.headerRowIndex != null ? occupancyDiagnostics.headerRowIndex + 1 : null;
   const occupancySummarySourceLabel =
@@ -1129,7 +1161,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 Upload Budget Comparison Spreadsheet (.xlsx)
               </div>
               <p className="max-w-2xl text-xs text-[color:var(--text-secondary)]">
-                Parse the budget comparison workbook and preview the monthly Expenses and NOI values before upload.
+                Parse the budget comparison workbook and preview monthly Property Expenses, Total Expenses, and NOI before upload.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1241,37 +1273,46 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="ios-list-card space-y-2 p-4 text-[color:var(--text-secondary)]">
-                  <div className="text-[color:var(--text-primary)]">Expenses</div>
+                  <div className="text-[color:var(--text-primary)]">Property Expenses</div>
                   <div>
                     Value:{' '}
-                    {formatPreviewValue(
-                      budgetSnapshot?.financials?.totalOperatingExpenseMtd ?? budgetSnapshot?.financials?.expensesMtd,
-                      'currency',
-                    )}
+                    {formatBudgetPreviewCurrency(budgetPropertyExpensesValue)}
                   </div>
-                  <div>Token: {formatPreviewValue(budgetSources?.expenses?.token)}</div>
-                  <div>Source: {formatPreviewValue(budgetSources?.expenses?.sheet)}</div>
-                  <div>Cell: {formatPreviewValue(budgetSources?.expenses?.cell)}</div>
+                  <div>Definition: Total Property Expenses</div>
+                  <div>Used in NOI: Yes</div>
+                  <div>Token: {formatPreviewValue(budgetSources?.propertyExpenses?.token)}</div>
+                  <div>Source: {formatPreviewValue(budgetSources?.propertyExpenses?.sheet)}</div>
+                  <div>Cell: {formatPreviewValue(budgetSources?.propertyExpenses?.cell)}</div>
+                </div>
+                <div className="ios-list-card space-y-2 p-4 text-[color:var(--text-secondary)]">
+                  <div className="text-[color:var(--text-primary)]">Total Expenses</div>
+                  <div>Value: {formatBudgetPreviewCurrency(budgetTotalExpensesValue)}</div>
+                  <div>Definition: Total Property Expenses + Other Expenses</div>
+                  <div>Other Expenses: {formatBudgetPreviewCurrency(budgetOtherExpensesValue)}</div>
+                  <div>Used in NOI: No</div>
+                  <div>Token: {formatPreviewValue(budgetSources?.totalExpenses?.token)}</div>
+                  <div>Source: {formatPreviewValue(budgetSources?.totalExpenses?.sheet)}</div>
+                  <div>Cell: {formatPreviewValue(budgetSources?.totalExpenses?.cell)}</div>
                 </div>
                 <div className="ios-list-card space-y-2 p-4 text-[color:var(--text-secondary)]">
                   <div className="text-[color:var(--text-primary)]">NOI</div>
                   <div>
-                    Value:{' '}
-                    {formatPreviewValue(
-                      budgetSnapshot?.financials?.netOperatingIncomeMtd ?? budgetSnapshot?.financials?.noiMtd,
-                      'currency',
-                    )}
+                    Value: {formatBudgetPreviewCurrency(budgetNoiValue)}
                   </div>
                   <div>Method: {formatPreviewValue(budgetSources?.noi?.formula ?? 'Calculated')}</div>
+                  <div>Expense basis: Property Expenses only</div>
                   <div>Inputs: {formatPreviewValue(budgetSources?.noi?.token)}</div>
                   <div>Source: {formatPreviewValue(budgetSources?.noi?.sheet)}</div>
                   <div>Cell(s): {formatPreviewValue(budgetSources?.noi?.cell)}</div>
                 </div>
               </div>
 
-              <div className="text-[color:var(--text-secondary)]">
+              <div className="space-y-1 text-[color:var(--text-secondary)]">
+                <div>
+                  Preview math: NOI = Total Income - Total Property Expenses. Other Expenses stay out of NOI and are only included in Total Expenses.
+                </div>
                 {budgetExisting
                   ? budgetFinancialsExisting
                     ? 'Upload will replace the existing financials for this month if overwrite is enabled.'
