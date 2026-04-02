@@ -90,7 +90,10 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
     });
   }
 
-  const historicalRecord = await loadHistoricalPropertyRecord(propertyOption, { syncLatest: true }).catch(() => null);
+  const historicalRecord = await loadHistoricalPropertyRecord(propertyOption, {
+    syncLatest: true,
+    canonicalAlias: validation.record.propertyId,
+  }).catch(() => null);
   if (!historicalRecord?.snapshots.length) {
     return renderStatus({
       title: 'Data not available yet',

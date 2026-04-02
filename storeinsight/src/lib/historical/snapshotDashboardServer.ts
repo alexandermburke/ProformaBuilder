@@ -23,6 +23,49 @@ type HistoricalDocCandidate = {
   latestSnapshotMonth: string | null;
 };
 
+const normalizeAliasKey = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase();
+
+const deepMergeSnapshotValues = (base: unknown, overlay: unknown): unknown => {
+  if (overlay === undefined) return base;
+  if (overlay === null) return base ?? null;
+  if (Array.isArray(overlay)) return overlay;
+  if (Array.isArray(base)) return overlay ?? base;
+  if (
+    base &&
+    overlay &&
+    typeof base === 'object' &&
+    typeof overlay === 'object' &&
+    !(base instanceof Date) &&
+    !(overlay instanceof Date)
+  ) {
+    const merged: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+    for (const [key, value] of Object.entries(overlay as Record<string, unknown>)) {
+      merged[key] = key in merged ? deepMergeSnapshotValues(merged[key], value) : value;
+    }
+    return merged;
+  }
+  return overlay;
+};
+
+const mergeSnapshotsByMonth = (
+  baseSnapshots: MsrSnapshot[],
+  overlayCandidates: HistoricalDocCandidate[],
+): MsrSnapshot[] => {
+  return baseSnapshots.map((snapshot) => {
+    const monthIso = normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate);
+    if (!monthIso) return snapshot;
+
+    return overlayCandidates.reduce<MsrSnapshot>((current, candidate) => {
+      const matchingSnapshot = candidate.snapshots.find((entry) => {
+        const entryMonth = normalizeMonthIso(entry.monthIso ?? entry.month ?? entry.reportMonth ?? entry.asOfDate);
+        return entryMonth === monthIso;
+      });
+      if (!matchingSnapshot) return current;
+      return deepMergeSnapshotValues(current, matchingSnapshot) as MsrSnapshot;
+    }, snapshot);
+  });
+};
+
 export type LoadedHistoricalPropertyRecord = {
   matchedAlias: string | null;
   propertyName: string;
@@ -84,7 +127,7 @@ const sortCandidates = (left: HistoricalDocCandidate, right: HistoricalDocCandid
 
 export async function loadHistoricalPropertyRecord(
   option: HistoricalPropertyOption,
-  params?: { syncLatest?: boolean },
+  params?: { syncLatest?: boolean; canonicalAlias?: string | null },
 ): Promise<LoadedHistoricalPropertyRecord> {
   if (params?.syncLatest) {
     await maybeSyncProperty(option);
@@ -127,6 +170,31 @@ export async function loadHistoricalPropertyRecord(
   const candidates = snapshotsByAlias
     .filter((entry): entry is HistoricalDocCandidate => entry !== null)
     .sort(sortCandidates);
+  const canonicalAlias = normalizeAliasKey(params?.canonicalAlias);
+  const canonicalCandidate =
+    canonicalAlias.length > 0 ? candidates.find((candidate) => normalizeAliasKey(candidate.alias) === canonicalAlias) : null;
+
+  if (canonicalCandidate) {
+    const overlayCandidates = candidates
+      .filter((candidate) => normalizeAliasKey(candidate.alias) !== canonicalAlias)
+      .sort((left, right) => (left.updatedAt ?? '').localeCompare(right.updatedAt ?? ''));
+    const mergedSnapshots = mergeSnapshotsByMonth(canonicalCandidate.snapshots, overlayCandidates);
+    const freshestUpdatedAt = candidates.reduce<string | null>(
+      (latest, candidate) => ((candidate.updatedAt ?? '') > (latest ?? '') ? candidate.updatedAt : latest),
+      canonicalCandidate.updatedAt,
+    );
+
+    return {
+      matchedAlias: canonicalCandidate.alias,
+      propertyName: canonicalCandidate.propertyName,
+      snapshots: mergedSnapshots,
+      updatedAt: freshestUpdatedAt,
+      latestSnapshotMonth: getLatestSnapshotMonth(mergedSnapshots),
+      historicalByRange: canonicalCandidate.historicalByRange,
+      momSeries: canonicalCandidate.momSeries,
+    };
+  }
+
   const best = candidates[0];
 
   if (!best) {
