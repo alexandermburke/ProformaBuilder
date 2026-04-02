@@ -1,3 +1,4 @@
+import https from "node:https";
 import admin from "firebase-admin";
 import type { PropertyConfig } from "@/types/dailySummary";
 import { firestore, storage } from "@/server/firebaseAdmin";
@@ -12,6 +13,147 @@ export type IngestedMsr = {
   folderId: string;
   docId: string;
   emailDate?: string;
+};
+
+type ManualRequestResult = {
+  status: number;
+  statusText: string;
+  headers: Headers;
+  bodyText: string;
+};
+
+const MAX_REDIRECTS = 8;
+
+const isRedirectStatus = (status: number): boolean => status >= 300 && status < 400;
+
+const isDnsResolutionError = (error: unknown): boolean => {
+  const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: { code?: string } }).cause : null;
+  if (cause?.code === "ENOTFOUND") return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /ENOTFOUND/i.test(message);
+};
+
+const resolveHostnameViaDoh = async (hostname: string): Promise<string[]> => {
+  const dnsUrl = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=A`;
+  const res = await fetch(dnsUrl, {
+    headers: { accept: "application/dns-json" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(`DNS-over-HTTPS lookup failed (${res.status} ${res.statusText}) for ${hostname}`);
+  }
+  const json = (await res.json()) as { Answer?: Array<{ data?: string; type?: number }> };
+  const ips = (json.Answer ?? [])
+    .filter((answer) => answer.type === 1 && typeof answer.data === "string" && answer.data.length > 0)
+    .map((answer) => answer.data as string);
+  if (!ips.length) {
+    throw new Error(`No A records returned for ${hostname}`);
+  }
+  return ips;
+};
+
+const requestViaResolvedIp = async (urlStr: string): Promise<ManualRequestResult> => {
+  const url = new URL(urlStr);
+  const ips = await resolveHostnameViaDoh(url.hostname);
+  let lastError: unknown = null;
+
+  for (const ip of ips) {
+    try {
+      return await new Promise<ManualRequestResult>((resolve, reject) => {
+        const req = https.request(
+          {
+            host: ip,
+            servername: url.hostname,
+            port: url.port ? Number(url.port) : 443,
+            method: "GET",
+            path: `${url.pathname}${url.search}`,
+            headers: {
+              Host: url.host,
+              Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+              "User-Agent": "store-msr-ingest/1.0",
+            },
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+            res.on("end", () => {
+              const headers = new Headers();
+              for (const [key, value] of Object.entries(res.headers)) {
+                if (Array.isArray(value)) {
+                  headers.set(key, value.join(", "));
+                } else if (typeof value === "string") {
+                  headers.set(key, value);
+                }
+              }
+              resolve({
+                status: res.statusCode ?? 0,
+                statusText: res.statusMessage ?? "",
+                headers,
+                bodyText: Buffer.concat(chunks).toString("utf8"),
+              });
+            });
+          },
+        );
+        req.on("error", reject);
+        req.end();
+      });
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError ?? new Error(`Unable to request ${url.hostname} via resolved IPs`);
+};
+
+const requestUrlManual = async (urlStr: string): Promise<ManualRequestResult> => {
+  try {
+    const res = await fetch(urlStr, {
+      method: "GET",
+      redirect: "manual",
+      cache: "no-store",
+    });
+    return {
+      status: res.status,
+      statusText: res.statusText,
+      headers: res.headers,
+      bodyText: await res.text(),
+    };
+  } catch (err) {
+    if (!isDnsResolutionError(err)) {
+      throw err;
+    }
+    const hostname = new URL(urlStr).hostname;
+    console.warn("[msr-ingest] retrying request with DNS fallback", { url: urlStr, hostname });
+    return requestViaResolvedIp(urlStr);
+  }
+};
+
+const resolveViewerRequest = async (startUrl: string): Promise<{ finalUrl: string; bodyText: string }> => {
+  let currentUrl = startUrl;
+
+  for (let redirectCount = 0; redirectCount < MAX_REDIRECTS; redirectCount += 1) {
+    const response = await requestUrlManual(currentUrl);
+    if (isRedirectStatus(response.status)) {
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new Error(`Redirect missing location header for ${currentUrl}`);
+      }
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+    if (response.status < 200 || response.status >= 300) {
+      console.error("[msr-ingest] failed to resolve viewer URL", {
+        viewerUrl: startUrl,
+        currentUrl,
+        status: response.status,
+        statusText: response.statusText,
+      });
+      throw new Error(`Failed to resolve viewer URL (${response.status} ${response.statusText})`);
+    }
+    return { finalUrl: currentUrl, bodyText: response.bodyText };
+  }
+
+  throw new Error(`Too many redirects while resolving viewer URL: ${startUrl}`);
 };
 
 const parseMetaFromUrl = (urlStr: string) => {
@@ -55,15 +197,9 @@ export async function ingestManagementSummariesFromViewer(
     return propertyMap.get(key);
   };
 
-  const resolveRes = await fetch(viewerUrl, { method: "GET", redirect: "follow", cache: "no-store" });
-  if (!resolveRes.ok) {
-    console.error("[msr-ingest] failed to resolve viewer URL", { viewerUrl, status: resolveRes.status, statusText: resolveRes.statusText });
-    throw new Error(`Failed to resolve viewer URL (${resolveRes.status} ${resolveRes.statusText})`);
-  }
-  const finalUrl = resolveRes.url || viewerUrl;
-  const initialHtml = await resolveRes.text().catch(() => "");
+  const { finalUrl, bodyText: initialHtml } = await resolveViewerRequest(viewerUrl);
 
-  const cookieProbe = await fetch(finalUrl, { method: "GET", redirect: "manual", cache: "no-store" });
+  const cookieProbe = await requestUrlManual(finalUrl);
   const setCookie = cookieProbe.headers.get("set-cookie");
   if (setCookie) {
     const cookiePreview = setCookie.split(";")[0] ?? "";

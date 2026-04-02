@@ -25,6 +25,13 @@ test("extractViewerUrlFromHtml unwraps Outlook safelinks to the Tenant viewer UR
   assert.equal(extractViewerUrlFromHtml(html), canonicalViewerUrl);
 });
 
+test("extractViewerUrlFromHtml unwraps tracked Postmark links to the renter shortlink when no direct viewer URL exists", () => {
+  const tracked = "https://track.pstmrk.it/3s/renter.link%2FLpdTT/fyQBAQ/sGzEAQ/Aw/token/5/hash";
+  const html = `<a href="${tracked}">View and Download Reports</a>`;
+
+  assert.equal(extractViewerUrlFromHtml(html), "https://renter.link/LpdTT");
+});
+
 test("isTenantViewerUrl rejects tracking links and accepts canonical viewer URLs", () => {
   assert.equal(isTenantViewerUrl(canonicalViewerUrl), true);
   assert.equal(

@@ -21,6 +21,7 @@ type GraphMessage = {
 
 const viewerRegex =
   /https:\/\/reportviewer\.tenantinc\.com\/shared-reports\/owners\/[^\s"'<>]+\/folders\/[^\s"'<>]+/i;
+const shortViewerRegex = /https:\/\/renter\.link\/[^\s"'<>]+/i;
 const trackingRegex = /https:\/\/track\.pstmrk\.it\/[^\s"'<>]+/i;
 const safeLinksRegex = /https:\/\/[^\s"'<>]*safelinks\.protection\.outlook\.com\/[^\s"'<>]+/i;
 const hrefRegex = /href=["']([^"']+)["']/gi;
@@ -36,6 +37,7 @@ const decodeHtmlEntities = (value: string): string =>
     .replace(/&gt;/gi, ">");
 
 const extractDirectViewerUrl = (value: string): string | null => value.match(viewerRegex)?.[0] ?? null;
+const extractShortViewerUrl = (value: string): string | null => value.match(shortViewerRegex)?.[0] ?? null;
 
 export const isTenantViewerUrl = (value: string | null | undefined): boolean =>
   Boolean(value && viewerRegex.test(decodeHtmlEntities(value.trim())));
@@ -47,11 +49,15 @@ const unwrapViewerUrl = (rawUrl: string, depth = 0): string | null => {
   const normalized = decodeHtmlEntities(rawUrl.trim());
   const directViewerUrl = extractDirectViewerUrl(normalized);
   if (directViewerUrl) return directViewerUrl;
+  const shortViewerUrl = extractShortViewerUrl(normalized);
+  if (shortViewerUrl) return shortViewerUrl;
 
   try {
     const decoded = decodeURIComponent(normalized);
     const decodedViewerUrl = extractDirectViewerUrl(decoded);
     if (decodedViewerUrl) return decodedViewerUrl;
+    const decodedShortViewerUrl = extractShortViewerUrl(decoded);
+    if (decodedShortViewerUrl) return decodedShortViewerUrl;
   } catch {
     // ignore undecodable URLs
   }
