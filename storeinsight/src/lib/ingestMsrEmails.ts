@@ -23,6 +23,9 @@ const viewerRegex =
   /https:\/\/reportviewer\.tenantinc\.com\/shared-reports\/owners\/[^\s"'<>]+\/folders\/[^\s"'<>]+/i;
 const trackingRegex = /https:\/\/track\.pstmrk\.it\/[^\s"'<>]+/i;
 const safeLinksRegex = /https:\/\/[^\s"'<>]*safelinks\.protection\.outlook\.com\/[^\s"'<>]+/i;
+const hrefRegex = /href=["']([^"']+)["']/gi;
+const looseUrlRegex = /https:\/\/[^\s"'<>]+/gi;
+const wrappedViewerParamKeys = ["url", "u", "target", "redirect", "redirectUrl"] as const;
 
 const decodeHtmlEntities = (value: string): string =>
   value
@@ -32,21 +35,54 @@ const decodeHtmlEntities = (value: string): string =>
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">");
 
-const unwrapViewerUrl = (rawUrl: string): string | null => {
+const extractDirectViewerUrl = (value: string): string | null => value.match(viewerRegex)?.[0] ?? null;
+
+export const isTenantViewerUrl = (value: string | null | undefined): boolean =>
+  Boolean(value && viewerRegex.test(decodeHtmlEntities(value.trim())));
+
+const unwrapViewerUrl = (rawUrl: string, depth = 0): string | null => {
   if (!rawUrl) return null;
+  if (depth > 5) return null;
 
   const normalized = decodeHtmlEntities(rawUrl.trim());
-  if (viewerRegex.test(normalized) || trackingRegex.test(normalized)) {
-    return normalized.match(viewerRegex)?.[0] ?? normalized.match(trackingRegex)?.[0] ?? normalized;
+  const directViewerUrl = extractDirectViewerUrl(normalized);
+  if (directViewerUrl) return directViewerUrl;
+
+  try {
+    const decoded = decodeURIComponent(normalized);
+    const decodedViewerUrl = extractDirectViewerUrl(decoded);
+    if (decodedViewerUrl) return decodedViewerUrl;
+  } catch {
+    // ignore undecodable URLs
   }
 
   try {
     const parsed = new URL(normalized);
-    const wrappedUrl = parsed.searchParams.get("url") ?? parsed.searchParams.get("u");
-    if (wrappedUrl) {
-      const decodedWrapped = decodeURIComponent(wrappedUrl);
-      if (viewerRegex.test(decodedWrapped) || trackingRegex.test(decodedWrapped)) {
-        return decodedWrapped.match(viewerRegex)?.[0] ?? decodedWrapped.match(trackingRegex)?.[0] ?? decodedWrapped;
+    for (const key of wrappedViewerParamKeys) {
+      const wrappedUrl = parsed.searchParams.get(key);
+      if (!wrappedUrl) continue;
+      const resolvedWrapped = unwrapViewerUrl(wrappedUrl, depth + 1);
+      if (resolvedWrapped) {
+        return resolvedWrapped;
+      }
+    }
+
+    if (parsed.hostname.toLowerCase() === "track.pstmrk.it") {
+      const pathSegments = parsed.pathname.split("/").filter(Boolean);
+      const encodedTarget =
+        (pathSegments[0] === "3s" ? pathSegments[1] : pathSegments[0]) ??
+        parsed.searchParams.get("url") ??
+        parsed.searchParams.get("u");
+      if (encodedTarget) {
+        const decodedTarget = decodeURIComponent(encodedTarget);
+        const targetUrl =
+          decodedTarget.startsWith("http://") || decodedTarget.startsWith("https://")
+            ? decodedTarget
+            : `https://${decodedTarget}`;
+        const resolvedTracked = unwrapViewerUrl(targetUrl, depth + 1);
+        if (resolvedTracked) {
+          return resolvedTracked;
+        }
       }
     }
   } catch {
@@ -56,31 +92,27 @@ const unwrapViewerUrl = (rawUrl: string): string | null => {
   return null;
 };
 
-const extractViewerUrlFromHtml = (html: string): string | null => {
+export const extractViewerUrlFromHtml = (html: string): string | null => {
   if (!html) return null;
 
   const normalizedHtml = decodeHtmlEntities(html);
+  const directViewerUrl = extractDirectViewerUrl(normalizedHtml);
+  if (directViewerUrl) return directViewerUrl;
 
-  // Do not tighten this matcher. Tenant/Outlook delivery has changed wrappers repeatedly
-  // between direct reportviewer links, pstmrk tracking links, and Safe Links URLs.
-  const directCandidate =
-    normalizedHtml.match(viewerRegex)?.[0] ??
-    normalizedHtml.match(trackingRegex)?.[0] ??
-    normalizedHtml.match(safeLinksRegex)?.[0] ??
-    "";
-  const directUrl = unwrapViewerUrl(directCandidate);
-  if (directUrl) return directUrl;
-
-  const hrefMatches = [...normalizedHtml.matchAll(/href=["']([^"']+)["']/gi)];
+  const hrefMatches = [...normalizedHtml.matchAll(hrefRegex)];
   for (const match of hrefMatches) {
     const candidate = unwrapViewerUrl(match[1] ?? "");
     if (candidate) return candidate;
   }
 
-  const looseUrlMatches = normalizedHtml.match(/https:\/\/[^\s"'<>]+/gi) ?? [];
+  const looseUrlMatches = normalizedHtml.match(looseUrlRegex) ?? [];
   for (const candidateRaw of looseUrlMatches) {
     const candidate = unwrapViewerUrl(candidateRaw);
     if (candidate) return candidate;
+  }
+
+  if (trackingRegex.test(normalizedHtml) || safeLinksRegex.test(normalizedHtml)) {
+    console.warn("[msr-email] unable to unwrap viewer URL from wrapped email HTML");
   }
 
   return null;
@@ -99,6 +131,14 @@ const mstDateString = (date: Date): string => {
   }, {});
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
+
+function getMailboxUserId(userId?: string): string {
+  const mailboxUser = userId ?? process.env.MSR_MAILBOX_USER_ID ?? process.env.MS_GRAPH_USER_ID;
+  if (!mailboxUser) {
+    throw new Error("Missing mailbox user id (set MSR_MAILBOX_USER_ID or MS_GRAPH_USER_ID).");
+  }
+  return mailboxUser;
+}
 
 async function getGraphAccessToken(): Promise<string> {
   const tenantId = process.env.MS_GRAPH_TENANT_ID;
@@ -140,10 +180,7 @@ async function fetchMsrMessages(params: {
   accessToken: string;
 }): Promise<GraphMessage[]> {
   const { userId, maxMessages = 50, accessToken } = params;
-  const mailboxUser = userId ?? process.env.MSR_MAILBOX_USER_ID ?? process.env.MS_GRAPH_USER_ID;
-  if (!mailboxUser) {
-    throw new Error("Missing mailbox user id (set MSR_MAILBOX_USER_ID or MS_GRAPH_USER_ID).");
-  }
+  const mailboxUser = getMailboxUserId(userId);
 
   const query = new URLSearchParams({
     $top: Math.min(Math.max(maxMessages, 1), 200).toString(),
@@ -166,6 +203,30 @@ async function fetchMsrMessages(params: {
 
   const json = (await res.json()) as { value?: GraphMessage[] };
   return Array.isArray(json.value) ? json.value : [];
+}
+
+export async function fetchMsrMessageHtmlById(params: { messageId: string; userId?: string }): Promise<string | null> {
+  const accessToken = await getGraphAccessToken();
+  const mailboxUser = getMailboxUserId(params.userId);
+  const query = new URLSearchParams({ $select: "body" });
+  const res = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailboxUser)}/messages/${encodeURIComponent(params.messageId)}?${query}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Prefer: 'outlook.body-content-type="html"',
+      },
+    },
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Graph message fetch failed (${res.status} ${res.statusText}): ${text.slice(0, 300)}`);
+  }
+
+  const json = (await res.json()) as { body?: { content?: string } };
+  return typeof json.body?.content === "string" ? json.body.content : null;
 }
 
 export async function ingestMsrEmails(options: {

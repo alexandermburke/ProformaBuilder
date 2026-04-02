@@ -8,6 +8,7 @@ import { sendFlashEmail } from "@/lib/flash/sendFlashEmail";
 import { convertPptxRemote } from "@/lib/convertPptxRemote";
 import { convertPptxBufferToPdfLocal, convertPptxBufferToPngLocal, resolveSofficePath } from "@/lib/flash/convertPptxLocal";
 import { formatFlashAsOfDateFromIsoDate } from "@/lib/flash/asOfDate";
+import { runDailyMsrIngestion } from "@/lib/runDailyMsrIngestion";
 
 export const runtime = "nodejs";
 
@@ -101,6 +102,23 @@ const loadMsrDocs = async (
   return { source: "none", docs: [] };
 };
 
+const runMsrIngestionFallback = async (reportDate: string): Promise<void> => {
+  const senderEmail = process.env.MSR_DEV_DEFAULT_SENDER || "reports@tenantinc.com";
+  const subjectPhrase = process.env.MSR_DEV_DEFAULT_SUBJECT || "Reports Delivery";
+  const allowedSenders = (process.env.MSR_ALLOWED_SENDERS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  console.info("[flash-report/auto] attempting MSR ingestion fallback", { reportDate, senderEmail, subjectPhrase });
+  await runDailyMsrIngestion({
+    senderEmail,
+    subjectPhrase,
+    processingDate: new Date(`${reportDate}T12:00:00-07:00`),
+    allowedSenders,
+  });
+};
+
 export async function POST(req: NextRequest) {
   if (!firestore || !storage) {
     return NextResponse.json({ error: "Firebase is not initialized (firestore/storage missing)." }, { status: 500 });
@@ -177,20 +195,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No properties matched the request." }, { status: 404 });
   }
 
-  const { source: msrSource, docs: msrDocs } = await loadMsrDocs(reportDate);
+  let { source: msrSource, docs: msrDocs } = await loadMsrDocs(reportDate);
   if (msrDocs.length === 0) {
-    console.warn("[flash-report/auto] no msr found for reportDate", { reportDate });
-    return NextResponse.json(
-      {
-        error: "MSR not found for reportDate",
-        reportDate,
-        propertiesProcessed: [],
-        propertiesSkipped: baseProps.map((prop) => ({ propertyCode: resolvePropertyCode(prop), propertyId: prop.propertyId, reason: "msr_missing" })),
-        sendEmails,
-        mode: respectSendTime ? "scheduled" : "manual",
-      },
-      { status: 404 },
-    );
+    try {
+      await runMsrIngestionFallback(reportDate);
+      ({ source: msrSource, docs: msrDocs } = await loadMsrDocs(reportDate));
+    } catch (err) {
+      console.warn("[flash-report/auto] MSR ingestion fallback failed", { reportDate }, err);
+    }
+    if (msrDocs.length === 0) {
+      console.warn("[flash-report/auto] no msr found for reportDate", { reportDate });
+      return NextResponse.json(
+        {
+          error: "MSR not found for reportDate",
+          reportDate,
+          propertiesProcessed: [],
+          propertiesSkipped: baseProps.map((prop) => ({ propertyCode: resolvePropertyCode(prop), propertyId: prop.propertyId, reason: "msr_missing" })),
+          sendEmails,
+          mode: respectSendTime ? "scheduled" : "manual",
+        },
+        { status: 404 },
+      );
+    }
   }
   const propertyBySlug = new Map(baseProps.map((prop) => [normalizeSlug(resolvePropertyCode(prop)), prop] as const));
   const propertyByCompactName = new Map(

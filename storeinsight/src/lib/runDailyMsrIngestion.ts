@@ -2,7 +2,7 @@ import admin from "firebase-admin";
 import { firestore, storage } from "@/server/firebaseAdmin";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
-import { ingestMsrEmails } from "./ingestMsrEmails";
+import { extractViewerUrlFromHtml, fetchMsrMessageHtmlById, ingestMsrEmails, isTenantViewerUrl } from "./ingestMsrEmails";
 import { ingestManagementSummariesFromViewer, type IngestedMsr } from "./ingestManagementSummary";
 
 export type DailyIngestionSummary = {
@@ -108,6 +108,29 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
     console.warn("[msr-daily] unable to load property configs (non-fatal)", err);
   }
 
+  const repairViewerUrl = async (messageId: string): Promise<string | null> => {
+    try {
+      const html = await fetchMsrMessageHtmlById({ messageId, userId: options.userId });
+      const repaired = html ? extractViewerUrlFromHtml(html) : null;
+      if (!repaired) {
+        console.warn("[msr-daily] unable to repair viewer URL from message body", { messageId });
+        return null;
+      }
+      await firestore.collection("msrEmails").doc(messageId).set(
+        {
+          viewerUrl: repaired,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      console.info("[msr-daily] repaired viewer URL from Graph message body", { messageId });
+      return repaired;
+    } catch (err) {
+      console.warn("[msr-daily] viewer URL repair failed", { messageId }, err);
+      return null;
+    }
+  };
+
   for (const doc of pendingSnap.docs) {
     const data = doc.data() as {
       messageId?: string;
@@ -129,11 +152,17 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
     targetEmailsSeen += 1;
 
     const messageId = data.messageId ?? doc.id;
-    const viewerUrl = data.viewerUrl;
+    let viewerUrl = data.viewerUrl;
     if (!viewerUrl) {
       console.warn("[msr-daily] skipping email missing viewerUrl", { id: messageId });
       emailsWithErrors.push(messageId);
       continue;
+    }
+    if (!isTenantViewerUrl(viewerUrl)) {
+      const repairedViewerUrl = await repairViewerUrl(messageId);
+      if (repairedViewerUrl) {
+        viewerUrl = repairedViewerUrl;
+      }
     }
 
     try {
@@ -158,6 +187,35 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
       });
       emailsProcessed += 1;
     } catch (err) {
+      const errorText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      if (!isTenantViewerUrl(viewerUrl) || /ENOTFOUND|fetch failed/i.test(errorText)) {
+        const repairedViewerUrl = await repairViewerUrl(messageId);
+        if (repairedViewerUrl && repairedViewerUrl !== viewerUrl) {
+          try {
+            const ingested: IngestedMsr[] = await ingestManagementSummariesFromViewer(repairedViewerUrl, {
+              propertyConfigs,
+              emailDate: receivedDateMst ?? targetDate,
+            });
+            if (!ingested.length) {
+              throw new Error("No XLSX URLs discovered from repaired viewer page");
+            }
+            for (const item of ingested) {
+              const propertyCode = item.propertyCode.toLowerCase();
+              properties.add(propertyCode);
+              reportsIngested.push({ propertyCode, reportDate: item.reportDate });
+            }
+            await doc.ref.update({
+              processed: true,
+              processedAt: admin.firestore.FieldValue.serverTimestamp(),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            emailsProcessed += 1;
+            continue;
+          } catch (retryErr) {
+            console.error("[msr-daily] ingestion retry after viewer repair failed", { messageId, subject: data.subject }, retryErr);
+          }
+        }
+      }
       console.error("[msr-daily] ingestion failed", { messageId, subject: data.subject, viewerUrl }, err);
       emailsWithErrors.push(messageId);
     }

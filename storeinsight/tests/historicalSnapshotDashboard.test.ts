@@ -123,5 +123,5 @@ test('sliceLaggedFinancialEntriesByRange excludes the latest snapshot for lagged
 
 test('getOverviewWidgetsOrDefault uses broader internal defaults when no preferences are saved', () => {
   const widgets = getOverviewWidgetsOrDefault(undefined, INTERNAL_DEFAULT_OVERVIEW_WIDGETS);
-  assert.deepEqual(widgets, INTERNAL_DEFAULT_OVERVIEW_WIDGETS);
+  assert.deepEqual(widgets, ['noi', 'expenses', 'occupancy', 'netRevenue', 'pastDue', 'rateVariance']);
 });
