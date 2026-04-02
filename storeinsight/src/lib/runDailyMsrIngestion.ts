@@ -48,6 +48,7 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
   if (!firestore) {
     throw new Error("Firebase is not initialized (firestore missing). Check environment variables.");
   }
+  const db = firestore;
 
   const cronDate = options.processingDate ?? new Date();
   // Keep the ingestion target pinned to the mailbox email's actual received date in MST.
@@ -59,7 +60,7 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
   // Step 1: pull latest emails into msrEmails collection
   await ingestMsrEmails(options);
 
-  const existingTargetEmailSnap = await firestore
+  const existingTargetEmailSnap = await db
     .collection("msrEmails")
     .where("receivedDateMst", "==", targetDate)
     .limit(1)
@@ -68,18 +69,16 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
 
   // Step 1a: prune stale msrReports and msrEmails older than cutoff
   try {
-    if (firestore) {
-      const staleReportsSnap = await firestore.collection("msrReports").where("emailDate", "<", cutoffOld).get();
-      for (const doc of staleReportsSnap.docs) {
-        const data = doc.data() as { storagePath?: string; emailDate?: string; reportDate?: string };
-        console.info("[msr-ingest] pruning stale MSR", { emailDate: data.emailDate, reportDate: data.reportDate, id: doc.id });
-        if (data.storagePath && storage) {
-          await storage.file(data.storagePath).delete({ ignoreNotFound: true }).catch((err) => {
-            console.warn("[msr-ingest] unable to delete stale blob", { path: data.storagePath }, err);
-          });
-        }
-        await doc.ref.delete().catch((err) => console.warn("[msr-ingest] unable to delete stale msrReport", { id: doc.id }, err));
+    const staleReportsSnap = await db.collection("msrReports").where("emailDate", "<", cutoffOld).get();
+    for (const doc of staleReportsSnap.docs) {
+      const data = doc.data() as { storagePath?: string; emailDate?: string; reportDate?: string };
+      console.info("[msr-ingest] pruning stale MSR", { emailDate: data.emailDate, reportDate: data.reportDate, id: doc.id });
+      if (data.storagePath && storage) {
+        await storage.file(data.storagePath).delete({ ignoreNotFound: true }).catch((err) => {
+          console.warn("[msr-ingest] unable to delete stale blob", { path: data.storagePath }, err);
+        });
       }
+      await doc.ref.delete().catch((err) => console.warn("[msr-ingest] unable to delete stale msrReport", { id: doc.id }, err));
     }
   } catch (err) {
     console.warn("[msr-ingest] prune stale msrReports failed", err);
@@ -88,7 +87,7 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
   // Step 2: find unprocessed emails (filter to targetDate)
   // Step 2: find unprocessed emails
   const limit = options.maxEmailsToProcess && options.maxEmailsToProcess > 0 ? options.maxEmailsToProcess : 200;
-  const pendingSnap = await firestore
+  const pendingSnap = await db
     .collection("msrEmails")
     .where("processed", "==", false)
     .orderBy("receivedAt", "desc")
@@ -116,7 +115,7 @@ export async function runDailyMsrIngestion(options: IngestionOptions): Promise<D
         console.warn("[msr-daily] unable to repair viewer URL from message body", { messageId });
         return null;
       }
-      await firestore.collection("msrEmails").doc(messageId).set(
+      await db.collection("msrEmails").doc(messageId).set(
         {
           viewerUrl: repaired,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
