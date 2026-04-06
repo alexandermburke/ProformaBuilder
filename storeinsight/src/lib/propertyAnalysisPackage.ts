@@ -2546,5 +2546,5 @@ export function buildFinalTokenMap(
 
 export function buildPackageFileName(propertyName: string, now = new Date()): string {
   const safeProperty = propertyName.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-  return `Property Analysis Package - ${safeProperty || 'Property'}_${formatIsoDate(now)}.pptx`;
+  return `Property_Analysis_Package - ${safeProperty || 'Property'}_${formatIsoDate(now)}.pptx`;
 }

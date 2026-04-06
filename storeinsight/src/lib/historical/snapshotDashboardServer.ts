@@ -116,7 +116,10 @@ export const filterSnapshotsByPinnedMonth = (
 
   return snapshots.filter((snapshot) => {
     const monthIso = getSnapshotMonthIso(snapshot);
-    return Boolean(monthIso) && monthIso <= normalizedPinnedMonth;
+    if (!monthIso) {
+      return false;
+    }
+    return monthIso <= normalizedPinnedMonth;
   });
 };
 
