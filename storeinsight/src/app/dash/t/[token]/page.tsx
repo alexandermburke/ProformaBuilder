@@ -6,7 +6,7 @@ import {
   buildHistoricalPropertyOptions,
   findHistoricalPropertyOption,
 } from '@/lib/historical/snapshotDashboard';
-import { loadHistoricalPropertyRecord } from '@/lib/historical/snapshotDashboardServer';
+import { filterSnapshotsByPinnedMonth, loadHistoricalPropertyRecord } from '@/lib/historical/snapshotDashboardServer';
 import { validateShareToken } from '@/lib/shareLinks';
 
 export const dynamic = 'force-dynamic';
@@ -102,11 +102,7 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
   }
 
   const pinnedMonthIso = validation.record.snapshotMonthIso;
-  const visibleSnapshots = pinnedMonthIso
-    ? historicalRecord.snapshots.filter(
-        (snapshot) => typeof snapshot.monthIso === 'string' && snapshot.monthIso <= pinnedMonthIso,
-      )
-    : historicalRecord.snapshots;
+  const visibleSnapshots = filterSnapshotsByPinnedMonth(historicalRecord.snapshots, pinnedMonthIso);
 
   if (!visibleSnapshots.length) {
     return renderStatus({

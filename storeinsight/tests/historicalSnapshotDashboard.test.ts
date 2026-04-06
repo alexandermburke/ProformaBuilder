@@ -11,6 +11,11 @@ import {
   sliceSnapshotEntriesByRange,
   toMonthKey,
 } from '../src/lib/historical/snapshotDashboard';
+import {
+  filterSnapshotsByPinnedMonth,
+  mergeHistoricalSnapshotsByMonth,
+  type HistoricalSnapshotAliasBundle,
+} from '../src/lib/historical/snapshotDashboardServer';
 import { INTERNAL_DEFAULT_OVERVIEW_WIDGETS, getOverviewWidgetsOrDefault } from '../src/lib/overviewWidgets';
 
 test('normalizeHistoricalSnapshots normalizes month iso values from mixed raw snapshot shapes', () => {
@@ -124,4 +129,100 @@ test('sliceLaggedFinancialEntriesByRange excludes the latest snapshot for lagged
 test('getOverviewWidgetsOrDefault uses broader internal defaults when no preferences are saved', () => {
   const widgets = getOverviewWidgetsOrDefault(undefined, INTERNAL_DEFAULT_OVERVIEW_WIDGETS);
   assert.deepEqual(widgets, ['noi', 'expenses', 'occupancy', 'netRevenue', 'pastDue', 'rateVariance']);
+});
+
+test('mergeHistoricalSnapshotsByMonth unions newer sibling-only months for canonical token dashboards', () => {
+  const canonicalSnapshots = [
+    {
+      monthIso: '2026-02',
+      reportDate: '2026-02-28',
+      financials: { noiMtd: 70000, expensesMtd: 29000 },
+    },
+    {
+      monthIso: '2026-03',
+      reportDate: '2026-03-31',
+      financials: { noiMtd: -2434.42, expensesMtd: 5584.42 },
+    },
+  ];
+  const overlayCandidates: HistoricalSnapshotAliasBundle[] = [
+    {
+      alias: 'W002',
+      updatedAt: '2026-04-06T15:00:00.000Z',
+      snapshots: [
+        {
+          monthIso: '2026-03',
+          reportDate: '2026-03-31',
+          occupancy: { rsfOccPct: 85.72 },
+        },
+        {
+          monthIso: '2026-04',
+          reportDate: '2026-04-05',
+          occupancy: { rsfOccPct: 86.7 },
+          rentals: { netMtd: 13 },
+        },
+      ],
+    },
+  ];
+
+  const merged = mergeHistoricalSnapshotsByMonth(canonicalSnapshots, overlayCandidates);
+
+  assert.deepEqual(
+    merged.map((snapshot) => snapshot.monthIso),
+    ['2026-02', '2026-03', '2026-04'],
+  );
+  assert.equal(merged.at(-1)?.reportDate, '2026-04-05');
+  assert.equal(merged.at(-1)?.occupancy?.rsfOccPct, 86.7);
+  assert.equal(merged.at(-1)?.rentals?.netMtd, 13);
+});
+
+test('mergeHistoricalSnapshotsByMonth preserves canonical financials while overlaying fresher shared-month operations', () => {
+  const canonicalSnapshots = [
+    {
+      monthIso: '2026-03',
+      reportDate: '2026-03-29',
+      financials: { noiMtd: -2434.42, expensesMtd: 5584.42 },
+      occupancy: { rsfOccPct: 84.1 },
+    },
+  ];
+  const overlayCandidates: HistoricalSnapshotAliasBundle[] = [
+    {
+      alias: 'W002',
+      updatedAt: '2026-04-06T15:00:00.000Z',
+      snapshots: [
+        {
+          monthIso: '2026-03',
+          reportDate: '2026-03-31',
+          occupancy: { rsfOccPct: 85.72 },
+          rentals: { netMtd: 13 },
+        },
+      ],
+    },
+  ];
+
+  const merged = mergeHistoricalSnapshotsByMonth(canonicalSnapshots, overlayCandidates);
+  const march = merged[0];
+
+  assert.equal(merged.length, 1);
+  assert.equal(march?.reportDate, '2026-03-31');
+  assert.equal(march?.occupancy?.rsfOccPct, 85.72);
+  assert.equal(march?.rentals?.netMtd, 13);
+  assert.equal(march?.financials?.noiMtd, -2434.42);
+  assert.equal(march?.financials?.expensesMtd, 5584.42);
+});
+
+test('filterSnapshotsByPinnedMonth keeps unpinned links floating and caps pinned links', () => {
+  const snapshots = [
+    { monthIso: '2026-02', reportDate: '2026-02-28' },
+    { monthIso: '2026-03', reportDate: '2026-03-31' },
+    { monthIso: '2026-04', reportDate: '2026-04-05' },
+  ];
+
+  assert.deepEqual(
+    filterSnapshotsByPinnedMonth(snapshots, null).map((snapshot) => snapshot.monthIso),
+    ['2026-02', '2026-03', '2026-04'],
+  );
+  assert.deepEqual(
+    filterSnapshotsByPinnedMonth(snapshots, '2026-03').map((snapshot) => snapshot.monthIso),
+    ['2026-02', '2026-03'],
+  );
 });

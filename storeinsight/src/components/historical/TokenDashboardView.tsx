@@ -5040,6 +5040,8 @@ function LineChartWithMonths({
   const trendDelta = values.length > 1 ? values[values.length - 1] - values[0] : 0;
   const trendUp = values.length > 1 ? trendDelta >= 0 : false;
   const lastPoint = points[points.length - 1] ?? null;
+  const plotBottomY = SMALL_CHART_HEIGHT - SMALL_CHART_PADDING;
+  const monthLabelY = SMALL_CHART_HEIGHT - 6;
 
   return (
     <div className="relative rounded-[22px] border border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 shadow-inner">
@@ -5082,6 +5084,13 @@ function LineChartWithMonths({
             />
           );
         })}
+        <line
+          x1={SMALL_CHART_PADDING}
+          x2={SMALL_CHART_WIDTH - SMALL_CHART_PADDING}
+          y1={plotBottomY}
+          y2={plotBottomY}
+          stroke="rgba(148,163,255,0.24)"
+        />
         <path
           d={linePath}
           fill="none"
@@ -5126,14 +5135,25 @@ function LineChartWithMonths({
             </g>
           );
         })}
+        {points.map((point, index) => {
+          const monthIso = series[index]?.monthIso;
+          if (!monthIso) return null;
+          const isFirstPoint = index === 0;
+          const isLastPoint = index === points.length - 1;
+          return (
+            <text
+              key={`${monthIso}-axis`}
+              x={point.x}
+              y={monthLabelY}
+              fontSize={11}
+              textAnchor={isFirstPoint ? 'start' : isLastPoint ? 'end' : 'middle'}
+              fill="rgba(71,85,105,0.78)"
+            >
+              {formatMonthLabel(monthIso)}
+            </text>
+          );
+        })}
       </svg>
-      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[color:var(--text-muted)]">
-        {series.map((row, index) => (
-          <span key={row.monthIso} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
-            {formatMonthLabel(row.monthIso)}
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

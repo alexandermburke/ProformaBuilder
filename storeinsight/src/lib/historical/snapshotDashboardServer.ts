@@ -23,6 +23,12 @@ type HistoricalDocCandidate = {
   latestSnapshotMonth: string | null;
 };
 
+export type HistoricalSnapshotAliasBundle = {
+  alias: string;
+  snapshots: MsrSnapshot[];
+  updatedAt: string | null;
+};
+
 const normalizeAliasKey = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase();
 
 const deepMergeSnapshotValues = (base: unknown, overlay: unknown): unknown => {
@@ -47,22 +53,67 @@ const deepMergeSnapshotValues = (base: unknown, overlay: unknown): unknown => {
   return overlay;
 };
 
-const mergeSnapshotsByMonth = (
-  baseSnapshots: MsrSnapshot[],
-  overlayCandidates: HistoricalDocCandidate[],
-): MsrSnapshot[] => {
-  return baseSnapshots.map((snapshot) => {
-    const monthIso = normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate);
-    if (!monthIso) return snapshot;
+const getSnapshotMonthIso = (snapshot: MsrSnapshot): string | null =>
+  normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate);
 
-    return overlayCandidates.reduce<MsrSnapshot>((current, candidate) => {
-      const matchingSnapshot = candidate.snapshots.find((entry) => {
-        const entryMonth = normalizeMonthIso(entry.monthIso ?? entry.month ?? entry.reportMonth ?? entry.asOfDate);
-        return entryMonth === monthIso;
-      });
-      if (!matchingSnapshot) return current;
-      return deepMergeSnapshotValues(current, matchingSnapshot) as MsrSnapshot;
-    }, snapshot);
+export const mergeHistoricalSnapshotsByMonth = (
+  canonicalSnapshots: MsrSnapshot[],
+  overlayCandidates: HistoricalSnapshotAliasBundle[],
+): MsrSnapshot[] => {
+  const monthMap = new Map<string, { canonical: MsrSnapshot | null; overlays: MsrSnapshot[] }>();
+
+  canonicalSnapshots.forEach((snapshot) => {
+    const monthIso = getSnapshotMonthIso(snapshot);
+    if (!monthIso) return;
+    const existing = monthMap.get(monthIso);
+    monthMap.set(monthIso, {
+      canonical: snapshot,
+      overlays: existing?.overlays ?? [],
+    });
+  });
+
+  overlayCandidates.forEach((candidate) => {
+    candidate.snapshots.forEach((snapshot) => {
+      const monthIso = getSnapshotMonthIso(snapshot);
+      if (!monthIso) return;
+      const existing = monthMap.get(monthIso) ?? { canonical: null, overlays: [] };
+      existing.overlays.push(snapshot);
+      monthMap.set(monthIso, existing);
+    });
+  });
+
+  return Array.from(monthMap.entries())
+    .sort(([leftMonth], [rightMonth]) => leftMonth.localeCompare(rightMonth))
+    .map(([monthIso, group]) => {
+      const seed = group.canonical ?? group.overlays[0] ?? null;
+      if (!seed) return null;
+
+      const overlays = group.canonical ? group.overlays : group.overlays.slice(1);
+      const merged = overlays.reduce<MsrSnapshot>(
+        (current, overlay) => deepMergeSnapshotValues(current, overlay) as MsrSnapshot,
+        seed,
+      );
+
+      return {
+        ...merged,
+        monthIso: getSnapshotMonthIso(merged) ?? monthIso,
+      } satisfies MsrSnapshot;
+    })
+    .filter((snapshot): snapshot is MsrSnapshot => snapshot !== null);
+};
+
+export const filterSnapshotsByPinnedMonth = (
+  snapshots: MsrSnapshot[],
+  pinnedMonthIso: string | null | undefined,
+): MsrSnapshot[] => {
+  const normalizedPinnedMonth = normalizeMonthIso(pinnedMonthIso);
+  if (!normalizedPinnedMonth) {
+    return snapshots;
+  }
+
+  return snapshots.filter((snapshot) => {
+    const monthIso = getSnapshotMonthIso(snapshot);
+    return Boolean(monthIso) && monthIso <= normalizedPinnedMonth;
   });
 };
 
@@ -178,7 +229,7 @@ export async function loadHistoricalPropertyRecord(
     const overlayCandidates = candidates
       .filter((candidate) => normalizeAliasKey(candidate.alias) !== canonicalAlias)
       .sort((left, right) => (left.updatedAt ?? '').localeCompare(right.updatedAt ?? ''));
-    const mergedSnapshots = mergeSnapshotsByMonth(canonicalCandidate.snapshots, overlayCandidates);
+    const mergedSnapshots = mergeHistoricalSnapshotsByMonth(canonicalCandidate.snapshots, overlayCandidates);
     const freshestUpdatedAt = candidates.reduce<string | null>(
       (latest, candidate) => ((candidate.updatedAt ?? '') > (latest ?? '') ? candidate.updatedAt : latest),
       canonicalCandidate.updatedAt,
