@@ -84,9 +84,11 @@ export const mergeHistoricalSnapshotsByMonth = (
 
   return Array.from(monthMap.entries())
     .sort(([leftMonth], [rightMonth]) => leftMonth.localeCompare(rightMonth))
-    .map(([monthIso, group]) => {
+    .reduce<MsrSnapshot[]>((mergedSnapshots, [monthIso, group]) => {
       const seed = group.canonical ?? group.overlays[0] ?? null;
-      if (!seed) return null;
+      if (!seed) {
+        return mergedSnapshots;
+      }
 
       const overlays = group.canonical ? group.overlays : group.overlays.slice(1);
       const merged = overlays.reduce<MsrSnapshot>(
@@ -94,12 +96,13 @@ export const mergeHistoricalSnapshotsByMonth = (
         seed,
       );
 
-      return {
+      mergedSnapshots.push({
         ...merged,
         monthIso: getSnapshotMonthIso(merged) ?? monthIso,
-      } satisfies MsrSnapshot;
-    })
-    .filter((snapshot): snapshot is MsrSnapshot => snapshot !== null);
+      } satisfies MsrSnapshot);
+
+      return mergedSnapshots;
+    }, []);
 };
 
 export const filterSnapshotsByPinnedMonth = (

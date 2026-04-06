@@ -3180,18 +3180,19 @@ function PricingSection({
         <section className="ios-card ios-animate-up space-y-6 p-6">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
         <ChartCard
-          title="Set Rate vs Sell Rate"
-          subtitle="Set and sell rates ($/sqft)"
-          info="Set rate = MSR!N27 and sell rate = MSR!K27 from the uploaded MSR; values shown as $/sqft."
+          title="GPR Rate vs Sell Rate"
+          subtitle="GPR and sell rates ($/sqft)"
+          info="GPR rate = MSR!N27 and sell rate = MSR!K27 from the uploaded MSR; values shown as $/sqft. GPR is Gross Potential Rate."
         >
             <KpiRow
               items={[
-                { label: 'Set rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
+                { label: 'GPR rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
                 { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
                 { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
               ]}
               columns={3}
             />
+          <div className="mt-3 text-[11px] text-[color:var(--text-muted)]">GPR is Gross Potential Rate.</div>
           {rateEmptyMessage ? (
             <div className="ios-list-card border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface)] p-4 text-sm text-[color:var(--text-secondary)] shadow-inner">
               {rateEmptyMessage}
@@ -3311,7 +3312,7 @@ function PricingSection({
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-[rgba(37,99,235,0.8)]" />
-                    Set rate
+                    GPR rate
                   </span>
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.8)]" />
@@ -3349,11 +3350,11 @@ function PricingSection({
 
         <ChartCard
           title="Rent Analysis"
-          subtitle="Set rate vs sell rate delta"
-          info="Computed from the MSR Rent Analysis block: set rate minus sell rate."
+          subtitle="GPR rate vs sell rate delta"
+          info="Computed from the MSR Rent Analysis block: GPR rate minus sell rate. GPR is Gross Potential Rate."
         >
           <div className="ios-list-card space-y-2 p-4 text-sm">
-            <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">Set - Sell</div>
+            <div className="text-[11px] uppercase tracking-wide text-[color:var(--text-muted)]">GPR - Sell</div>
             <div className="text-lg font-semibold text-[color:var(--text-primary)]">
               {isFiniteNumber(spreadPct)
                 ? formatMaybePercent(spreadPct, 1)
@@ -4594,19 +4595,20 @@ function PrintPricingReport({
     >
       <div className="print-report-grid-2">
         {setSeries.length && sellSeries.length ? (
-          <PrintBlock title="Set rate vs sell rate" subtitle="Rate comparison over time">
+          <PrintBlock title="GPR rate vs sell rate" subtitle="Rate comparison over time">
             <div className="mt-3">
               <PrintMetricGrid
                 items={[
-                  { label: 'Set rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
+                  { label: 'GPR rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
                   { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
                   { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
                 ]}
                 columns={3}
               />
             </div>
+            <div className="mt-2 text-[11px] text-slate-500">GPR is Gross Potential Rate.</div>
             <div className="mt-3 print-report-grid-2">
-              <PrintLineChart series={setSeries} color="rgba(37,99,235,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="Set rate" />
+              <PrintLineChart series={setSeries} color="rgba(37,99,235,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="GPR rate" />
               <PrintLineChart series={sellSeries} color="rgba(14,165,233,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="Sell rate" />
             </div>
           </PrintBlock>
@@ -4629,9 +4631,9 @@ function PrintPricingReport({
         <PrintBlock title="Rent analysis" subtitle="Rate spread summary">
           <PrintMetricGrid
             items={[
-              { label: 'Set - sell (%)', value: formatMaybePercent(spreadPct, 1), detail: 'Relative spread from current rates' },
+              { label: 'GPR - sell (%)', value: formatMaybePercent(spreadPct, 1), detail: 'Relative spread from current rates' },
               {
-                label: 'Set - sell ($)',
+                label: 'GPR - sell ($)',
                 value: isFiniteNumber(setRate) && isFiniteNumber(sellRate) ? formatMaybeCurrency(setRate - sellRate) : 'N/A',
                 detail: 'Absolute spread between rate metrics',
               },
