@@ -239,12 +239,12 @@ export const workflowCategories: WorkflowCategory[] = [
       {
         id: 'property-analysis-package',
         title: 'Property Analysis Package',
-        description: 'Generate templated PowerPoint packages directly from Wentworth-format proforma workbooks.',
+        description: 'Generate templated PowerPoint packages directly from STORE proforma workbooks.',
         status: 'Active',
         tone: 'green',
         icon: 'globe',
         highlights: [
-          'Upload a single Wentworth-format workbook and parse package-ready values.',
+          'Upload a single STORE proforma workbook and parse package-ready values.',
           'Review extracted and manual token fields before export.',
           'Generate a PPTX from the managed PackageTemplate asset.',
         ],
