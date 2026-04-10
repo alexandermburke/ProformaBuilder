@@ -5,6 +5,7 @@ import test from "node:test";
 import PizZip from "pizzip";
 import * as XLSX from "xlsx";
 import {
+  buildFinalTokenMap,
   buildPackageFileName,
   parsePropertyAnalysisWorkbook,
   renderPropertyAnalysisPackage,
@@ -202,11 +203,11 @@ function buildTemplateBuffer(): Buffer {
   );
   zip.file(
     "ppt/slides/slide4.xml",
-    "<a:t>{{CELL0003}}</a:t><a:t>{{CELL0031}}</a:t><a:t>{{CELL0175}}</a:t><a:t>{{CELL0187}}</a:t>",
+    "<a:t>{{CELL0003}}</a:t><a:t>{{CELL0031}}</a:t><a:t>{{CELL0171}}</a:t><a:t>{{CELL0175}}</a:t><a:t>{{CELL0187}}</a:t>",
   );
   zip.file(
     "ppt/slides/slide5.xml",
-    "<a:t>{{CELL0201}}</a:t><a:t>{{CELL0438}}</a:t><a:t>{{CELL0454}}</a:t><a:t>{{CELL0473}}</a:t>",
+    "<a:t>{{CELL0201}}</a:t><a:t>{{CELL0438}}</a:t><a:t>{{CELL0452}}</a:t><a:t>{{CELL0454}}</a:t><a:t>{{CELL0473}}</a:t><a:t>{{CELL0487}}</a:t>",
   );
   zip.file(
     "ppt/slides/slide6.xml",
@@ -237,12 +238,15 @@ test("scanPackageTemplateTokens returns the managed token set including direct s
     "ASSETVALUE",
     "CELL0003",
     "CELL0031",
+    "CELL0171",
     "CELL0175",
     "CELL0187",
     "CELL0201",
     "CELL0438",
+    "CELL0452",
     "CELL0454",
     "CELL0473",
+    "CELL0487",
     "CELL0490",
     "CELL0492",
     "CELL0506",
@@ -322,6 +326,9 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   const totalOperatingExpenseT12Avg = parsed.tokenFields.find((field) => field.token === "CELL0438");
   const totalOperatingExpenseImpact = parsed.tokenFields.find((field) => field.token === "CELL0454");
   const netOperatingIncomeT12Avg = parsed.tokenFields.find((field) => field.token === "CELL0473");
+  const totalOperatingIncomeYear1 = parsed.tokenFields.find((field) => field.token === "CELL0171");
+  const totalOperatingExpenseYear1 = parsed.tokenFields.find((field) => field.token === "CELL0452");
+  const netOperatingIncomeYear1 = parsed.tokenFields.find((field) => field.token === "CELL0487");
   const purchasePriceMetric = parsed.tokenFields.find((field) => field.token === "CELL0490");
   const spreadBps = parsed.tokenFields.find((field) => field.token === "CELL0492");
   const debtBalanceYear1 = parsed.tokenFields.find((field) => field.token === "CELL0506");
@@ -341,14 +348,14 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   assert.equal(threeYearIrr?.defaultValue, "8.7%");
   assert.equal(fiveYearMultiple?.defaultValue, "1.49x");
   assert.equal(sevenYearIrr?.defaultValue, "9.0%");
-  assert.equal(assetValue?.defaultValue, "1.7M");
+  assert.equal(assetValue?.defaultValue, "3.3M");
   assert.equal(assetValue?.source, "derived");
-  assert.equal(expenseReduction?.defaultValue, "3%");
-  assert.equal(expenseReduction?.source, "extracted");
-  assert.equal(noiIncrease?.defaultValue, "18");
-  assert.equal(noiIncrease?.source, "extracted");
-  assert.equal(revenueLift?.defaultValue, "93");
-  assert.equal(revenueLift?.source, "extracted");
+  assert.equal(expenseReduction?.defaultValue, "2%");
+  assert.equal(expenseReduction?.source, "derived");
+  assert.equal(noiIncrease?.defaultValue, "43");
+  assert.equal(noiIncrease?.source, "derived");
+  assert.equal(revenueLift?.defaultValue, "217");
+  assert.equal(revenueLift?.source, "derived");
   assert.equal(occupancy?.defaultValue, "86.97%");
   assert.equal(region?.defaultValue, "Southwest");
   assert.equal(region?.source, "derived");
@@ -364,6 +371,9 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   assert.equal(totalOperatingExpenseT12Avg?.defaultValue, "$29,675");
   assert.equal(totalOperatingExpenseImpact?.defaultValue, "$12,827");
   assert.equal(netOperatingIncomeT12Avg?.defaultValue, "$40,717");
+  assert.equal(totalOperatingIncomeYear1?.defaultValue, "$1,061,466");
+  assert.equal(totalOperatingExpenseYear1?.defaultValue, "$363,822");
+  assert.equal(netOperatingIncomeYear1?.defaultValue, "$697,644");
   assert.equal(purchasePriceMetric?.defaultValue, "$12,000,000");
   assert.equal(purchasePriceMetric?.section, "dealEconomics");
   assert.equal(spreadBps?.defaultValue, "220");
@@ -383,7 +393,36 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   assert.equal(snapshotDescription?.defaultValue, "N/A ERROR");
 });
 
-test("parsePropertyAnalysisWorkbook leaves comparison callouts manual and warns when Public workbook comparison data is missing", async () => {
+test("parsePropertyAnalysisWorkbook derives slide 2 callouts from T-12 and STORE values instead of comparison columns", async () => {
+  await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
+  await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
+
+  const parsed = await parsePropertyAnalysisWorkbook(buildPublicTemplateWorkbookBuffer(), "PublicProformaTemplate3.18.xlsx", {
+    templatePath: TEST_TEMPLATE_PATH,
+  });
+
+  const revenueLift = parsed.tokenFields.find((field) => field.token === "REVENUELIFT");
+  const expenseReduction = parsed.tokenFields.find((field) => field.token === "EXPREDPERC");
+  const noiIncrease = parsed.tokenFields.find((field) => field.token === "NOIPERCENT");
+  const assetValue = parsed.tokenFields.find((field) => field.token === "ASSETVALUE");
+  const totalOperatingIncomeYear1 = parsed.tokenFields.find((field) => field.token === "CELL0171");
+  const totalOperatingExpenseYear1 = parsed.tokenFields.find((field) => field.token === "CELL0452");
+  const netOperatingIncomeYear1 = parsed.tokenFields.find((field) => field.token === "CELL0487");
+
+  assert.equal(totalOperatingIncomeYear1?.defaultValue, "$1,061,466");
+  assert.equal(totalOperatingExpenseYear1?.defaultValue, "$363,822");
+  assert.equal(netOperatingIncomeYear1?.defaultValue, "$697,644");
+  assert.equal(revenueLift?.defaultValue, "217");
+  assert.equal(expenseReduction?.defaultValue, "2%");
+  assert.equal(noiIncrease?.defaultValue, "43");
+  assert.equal(assetValue?.defaultValue, "3.3M");
+  assert.notEqual(revenueLift?.defaultValue, "93");
+  assert.notEqual(expenseReduction?.defaultValue, "3%");
+  assert.notEqual(noiIncrease?.defaultValue, "18");
+  assert.notEqual(assetValue?.defaultValue, "1.7M");
+});
+
+test("parsePropertyAnalysisWorkbook leaves comparison callouts manual and warns when Public workbook proforma data is missing", async () => {
   await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
   await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
 
@@ -401,7 +440,7 @@ test("parsePropertyAnalysisWorkbook leaves comparison callouts manual and warns 
   assert.equal(expenseReduction?.source, "manual");
   assert.equal(noiIncrease?.source, "manual");
   assert.equal(revenueLift?.source, "manual");
-  assert.match(parsed.warnings.join(" "), /comparison rows/i);
+  assert.match(parsed.warnings.join(" "), /proforma sheet is missing/i);
 });
 
 test("parsePropertyAnalysisWorkbook rejects unsupported workbooks", async () => {
@@ -464,7 +503,35 @@ test("renderPropertyAnalysisPackage replaces provided tokens and blanks missing 
   assert.doesNotMatch(slide7Xml, /\{\{CELL0578\}\}/);
 });
 
+test("real workbook and managed template reconcile slide 2 and slide 4/5 values to the same proforma source of truth", async () => {
+  const workbookBuffer = await fs.readFile(path.join(process.cwd(), "templates", "PublicProformaTemplate3.18.xlsx"));
+  const templatePath = path.join(process.cwd(), "public", "PackageTemplate.pptx");
+  const parsed = await parsePropertyAnalysisWorkbook(workbookBuffer, "PublicProformaTemplate3.18.xlsx", {
+    templatePath,
+  });
+  const rendered = await renderPropertyAnalysisPackage(buildFinalTokenMap(parsed, {}), { templatePath });
+  const zip = new PizZip(rendered);
+  const slide2Xml = zip.file("ppt/slides/slide2.xml")?.asText() ?? "";
+  const slide4Xml = zip.file("ppt/slides/slide4.xml")?.asText() ?? "";
+  const slide5Xml = zip.file("ppt/slides/slide5.xml")?.asText() ?? "";
+
+  assert.match(slide2Xml, /43%/);
+  assert.match(slide2Xml, /2%/);
+  assert.match(slide2Xml, /\$217K\+/);
+  assert.match(slide2Xml, /\$3\.3M/);
+  assert.match(slide4Xml, /\$844,708/);
+  assert.match(slide4Xml, /\$1,061,466/);
+  assert.match(slide5Xml, /\$356,103/);
+  assert.match(slide5Xml, /\$363,822/);
+  assert.match(slide5Xml, /\$488,605/);
+  assert.match(slide5Xml, /\$697,644/);
+  assert.doesNotMatch(slide2Xml, /\$93K\+/);
+  assert.doesNotMatch(slide2Xml, /18% NOI Increase/);
+  assert.doesNotMatch(slide2Xml, /3% Expense Reduction/);
+  assert.doesNotMatch(slide2Xml, /\$1\.7M/);
+});
+
 test("buildPackageFileName creates a stable export name", () => {
   const fileName = buildPackageFileName("Roseville CA (Baseline Rd)", new Date("2026-03-25T12:00:00Z"));
-  assert.equal(fileName, "Property-Analysis-Package_Roseville_CA_Baseline_Rd_2026-03-25.pptx");
+  assert.equal(fileName, "Property_Analysis_Package - Roseville_CA_Baseline_Rd_2026-03-25.pptx");
 });

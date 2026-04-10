@@ -133,6 +133,25 @@ type KeyMetricSpec = {
   sourceLabel: string;
 };
 
+type PublicProformaSummaryMetricKey =
+  | 'totalOperatingIncome'
+  | 'totalOperatingExpense'
+  | 'netOperatingIncome';
+
+type PublicProformaSummaryMetricValue = {
+  displayValue: string;
+  numericValue: number;
+  matchedKey: string;
+};
+
+type PublicProformaSummaryMetric = {
+  label: string;
+  t12: PublicProformaSummaryMetricValue;
+  year1: PublicProformaSummaryMetricValue;
+};
+
+type PublicProformaSummaryValues = Record<PublicProformaSummaryMetricKey, PublicProformaSummaryMetric>;
+
 const PACKAGE_TEMPLATE_PATH = path.join(process.cwd(), 'public', 'PackageTemplate.pptx');
 const WENTWORTH_REQUIRED_SHEETS = ['Property Data', '5 Year Summary', '5 Year Model', 'Stabilized Results'] as const;
 const PUBLIC_REQUIRED_SHEETS = ['Inputs & Drivers', '5 Year Proforma', 'Model2.0', 'Valuation Sheet'] as const;
@@ -757,6 +776,10 @@ function formatThousandsToken(value: number): string {
 
 function formatMillionsToken(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}M`;
+}
+
+function formatPublicMetricLogValue(value: PublicProformaSummaryMetricValue): string {
+  return `${value.displayValue} (${value.matchedKey})`;
 }
 
 function parseAddressLocation(address: string): { city: string; state: string } {
@@ -1648,30 +1671,6 @@ function addPublicComparisonCalloutAliases(
     return warnings;
   }
 
-  const headerRow = proformaRows.find((row) => {
-    const labels = row.map(normalizeLabel);
-    return labels.includes('current mgmt') && labels.includes('impact to n o i');
-  });
-
-  if (!headerRow) {
-    warnings.push('Proforma sheet is missing the Current Mgmt / Impact to N.O.I comparison header.');
-    return warnings;
-  }
-
-  const impactValueIndex = headerRow.findIndex((value) => normalizeLabel(value) === 'impact to n o i');
-  const impactPercentIndex = impactValueIndex >= 0 ? impactValueIndex + 1 : -1;
-  if (impactValueIndex < 0 || impactPercentIndex < 0) {
-    warnings.push('Proforma sheet comparison columns could not be located.');
-    return warnings;
-  }
-
-  const findComparisonRow = (label: string): string[] | undefined =>
-    proformaRows.find((row) => normalizeLabel(firstNonEmpty(row)) === normalizeLabel(label));
-
-  const revenueRow = findComparisonRow('Total Operating Income');
-  const expenseRow = findComparisonRow('Total Operating Expense');
-  const noiRow = findComparisonRow('Net Operating Income');
-
   const exitCapRaw = findValueForLabel(inputsRows, ['Exit Cap Rate']);
   const exitCapValue = parseNumberLike(exitCapRaw);
   const exitCapRate = exitCapValue === null ? null : exitCapValue > 1 ? exitCapValue / 100 : exitCapValue;
@@ -1679,72 +1678,114 @@ function addPublicComparisonCalloutAliases(
     warnings.push('Inputs & Drivers is missing a usable Exit Cap Rate for Asset Value Added.');
   }
 
-  if (!revenueRow) {
-    warnings.push('Proforma sheet is missing the Total Operating Income comparison row.');
-  } else {
-    const revenueLift = parseNumberLike(revenueRow[impactValueIndex] ?? '');
-    if (revenueLift === null) {
-      warnings.push('Proforma sheet is missing the Total Operating Income impact value.');
-    } else {
-      registerValue(
-        map,
-        ['REVENUE_LIFT_THOUSANDS'],
-        {
-          label: 'Revenue Lift',
-          value: formatThousandsToken(revenueLift),
-          section: 'stabilizedSummary',
-          source: 'extracted',
-        },
-      );
-    }
-  }
-
-  if (!expenseRow) {
-    warnings.push('Proforma sheet is missing the Total Operating Expense comparison row.');
-  } else {
-    const expenseReductionPercent = parseNumberLike(expenseRow[impactPercentIndex] ?? '');
-    if (expenseReductionPercent === null) {
-      warnings.push('Proforma sheet is missing the Total Operating Expense impact percent.');
-    } else {
-      registerValue(
-        map,
-        ['EXPENSE_REDUCTION_PERCENT'],
-        {
-          label: 'Expense Reduction',
-          value: formatWholePercentWithSymbol(expenseReductionPercent),
-          section: 'stabilizedSummary',
-          source: 'extracted',
-        },
-      );
-    }
-  }
-
-  if (!noiRow) {
-    warnings.push('Proforma sheet is missing the Net Operating Income comparison row.');
+  const summaryValues = extractPublicProformaSummaryValues(proformaRows, warnings);
+  if (!summaryValues) {
     return warnings;
   }
 
-  const noiDelta = parseNumberLike(noiRow[impactValueIndex] ?? '');
-  const noiIncreasePercent = parseNumberLike(noiRow[impactPercentIndex] ?? '');
+  console.info('[property-analysis-package] extracted proforma summary values', {
+    totalOperatingIncomeT12: formatPublicMetricLogValue(summaryValues.totalOperatingIncome.t12),
+    totalOperatingIncomeYear1: formatPublicMetricLogValue(summaryValues.totalOperatingIncome.year1),
+    totalOperatingExpenseT12: formatPublicMetricLogValue(summaryValues.totalOperatingExpense.t12),
+    totalOperatingExpenseYear1: formatPublicMetricLogValue(summaryValues.totalOperatingExpense.year1),
+    netOperatingIncomeT12: formatPublicMetricLogValue(summaryValues.netOperatingIncome.t12),
+    netOperatingIncomeYear1: formatPublicMetricLogValue(summaryValues.netOperatingIncome.year1),
+  });
 
-  if (noiIncreasePercent === null) {
-    warnings.push('Proforma sheet is missing the Net Operating Income impact percent.');
-  } else {
-    registerValue(
-      map,
-      ['NOI_INCREASE_PERCENT'],
-      {
-        label: 'NOI Increase',
-        value: formatWholePercentToken(noiIncreasePercent),
-        section: 'stabilizedSummary',
-        source: 'extracted',
-      },
-    );
-  }
+  setResolvedValue(map, 'PROFORMA_T12_TOTAL_OPERATING_INCOME', {
+    label: 'Proforma T-12 Total Operating Income',
+    value: summaryValues.totalOperatingIncome.t12.displayValue,
+    section: 'stabilizedSummary',
+    source: 'extracted',
+    matchedKey: summaryValues.totalOperatingIncome.t12.matchedKey,
+  });
+  setResolvedValue(map, 'PROFORMA_YEAR1_TOTAL_OPERATING_INCOME', {
+    label: 'Proforma Year 1 Total Operating Income',
+    value: summaryValues.totalOperatingIncome.year1.displayValue,
+    section: 'stabilizedSummary',
+    source: 'extracted',
+    matchedKey: summaryValues.totalOperatingIncome.year1.matchedKey,
+  });
+  setResolvedValue(map, 'PROFORMA_T12_TOTAL_OPERATING_EXPENSE', {
+    label: 'Proforma T-12 Total Operating Expense',
+    value: summaryValues.totalOperatingExpense.t12.displayValue,
+    section: 'stabilizedSummary',
+    source: 'extracted',
+    matchedKey: summaryValues.totalOperatingExpense.t12.matchedKey,
+  });
+  setResolvedValue(map, 'PROFORMA_YEAR1_TOTAL_OPERATING_EXPENSE', {
+    label: 'Proforma Year 1 Total Operating Expense',
+    value: summaryValues.totalOperatingExpense.year1.displayValue,
+    section: 'stabilizedSummary',
+    source: 'extracted',
+    matchedKey: summaryValues.totalOperatingExpense.year1.matchedKey,
+  });
+  setResolvedValue(map, 'PROFORMA_T12_NET_OPERATING_INCOME', {
+    label: 'Proforma T-12 Net Operating Income',
+    value: summaryValues.netOperatingIncome.t12.displayValue,
+    section: 'stabilizedSummary',
+    source: 'extracted',
+    matchedKey: summaryValues.netOperatingIncome.t12.matchedKey,
+  });
+  setResolvedValue(map, 'PROFORMA_YEAR1_NET_OPERATING_INCOME', {
+    label: 'Proforma Year 1 Net Operating Income',
+    value: summaryValues.netOperatingIncome.year1.displayValue,
+    section: 'stabilizedSummary',
+    source: 'extracted',
+    matchedKey: summaryValues.netOperatingIncome.year1.matchedKey,
+  });
 
-  if (noiDelta === null) {
-    warnings.push('Proforma sheet is missing the Net Operating Income impact value.');
-  } else if (exitCapRate !== null && exitCapRate !== 0) {
+  const revenueLift =
+    summaryValues.totalOperatingIncome.year1.numericValue - summaryValues.totalOperatingIncome.t12.numericValue;
+  const expenseChangePercent =
+    ((summaryValues.totalOperatingExpense.year1.numericValue - summaryValues.totalOperatingExpense.t12.numericValue) /
+      summaryValues.totalOperatingExpense.t12.numericValue) *
+    100;
+  const noiDelta = summaryValues.netOperatingIncome.year1.numericValue - summaryValues.netOperatingIncome.t12.numericValue;
+  const noiIncreasePercent =
+    (noiDelta / summaryValues.netOperatingIncome.t12.numericValue) * 100;
+
+  console.info('[property-analysis-package] computed summary metrics', {
+    revenueLift,
+    expenseChangePercent,
+    noiIncreasePercent,
+    assetValueAdded: exitCapRate ? noiDelta / exitCapRate : null,
+  });
+
+  registerValue(
+    map,
+    ['REVENUE_LIFT_THOUSANDS'],
+    {
+      label: 'Revenue Lift',
+      value: formatThousandsToken(revenueLift),
+      section: 'stabilizedSummary',
+      source: 'derived',
+    },
+  );
+
+  registerValue(
+    map,
+    ['EXPENSE_REDUCTION_PERCENT'],
+    {
+      label: 'Expense Change',
+      value: formatWholePercentWithSymbol(expenseChangePercent),
+      section: 'stabilizedSummary',
+      source: 'derived',
+    },
+  );
+
+  registerValue(
+    map,
+    ['NOI_INCREASE_PERCENT'],
+    {
+      label: 'NOI Increase',
+      value: formatWholePercentToken(noiIncreasePercent),
+      section: 'stabilizedSummary',
+      source: 'derived',
+    },
+  );
+
+  if (exitCapRate !== null && exitCapRate !== 0) {
     registerValue(
       map,
       ['ASSET_VALUE_ADDED'],
@@ -1758,6 +1799,74 @@ function addPublicComparisonCalloutAliases(
   }
 
   return warnings;
+}
+
+function extractPublicProformaSummaryValues(
+  proformaRows: string[][],
+  warnings: string[],
+): PublicProformaSummaryValues | null {
+  const summarySpecs: Array<{
+    key: PublicProformaSummaryMetricKey;
+    rowLabel: string;
+    label: string;
+  }> = [
+    {
+      key: 'totalOperatingIncome',
+      rowLabel: 'Total Operating Income',
+      label: 'Total Operating Income',
+    },
+    {
+      key: 'totalOperatingExpense',
+      rowLabel: 'Total Operating Expense',
+      label: 'Total Operating Expense',
+    },
+    {
+      key: 'netOperatingIncome',
+      rowLabel: 'Net Operating Income',
+      label: 'Net Operating Income',
+    },
+  ];
+
+  const extracted = {} as PublicProformaSummaryValues;
+
+  for (const spec of summarySpecs) {
+    const rowIndex = findRowIndexByColumnValue(proformaRows, PROFORMA_LABEL_COLUMN_INDEX, spec.rowLabel);
+    if (rowIndex < 0) {
+      warnings.push(`Proforma sheet is missing the ${spec.label} summary row.`);
+      return null;
+    }
+
+    const t12DisplayValue = readMatrixCell(proformaRows, rowIndex, PROFORMA_VISIBLE_COLUMNS.t12.index);
+    const year1DisplayValue = readMatrixCell(proformaRows, rowIndex, PROFORMA_VISIBLE_COLUMNS.store.index);
+    const t12NumericValue = parseNumberLike(t12DisplayValue);
+    const year1NumericValue = parseNumberLike(year1DisplayValue);
+
+    if (t12NumericValue === null) {
+      warnings.push(`Proforma sheet is missing a usable T-12 value for ${spec.label}.`);
+      return null;
+    }
+
+    if (year1NumericValue === null) {
+      warnings.push(`Proforma sheet is missing a usable Year 1 / STORE value for ${spec.label}.`);
+      return null;
+    }
+
+    extracted[spec.key] = {
+      label: spec.label,
+      t12: {
+        displayValue: t12DisplayValue,
+        numericValue: t12NumericValue,
+        matchedKey: `Proforma!R${rowIndex + 1}C${PROFORMA_VISIBLE_COLUMNS.t12.index + 1}`,
+      },
+      year1: {
+        displayValue: year1DisplayValue,
+        numericValue: year1NumericValue,
+        matchedKey: `Proforma!R${rowIndex + 1}C${PROFORMA_VISIBLE_COLUMNS.store.index + 1}`,
+      },
+    };
+  }
+
+  return extracted;
 }
 
 function addDirectCellToken(
@@ -2541,6 +2650,15 @@ export function buildFinalTokenMap(
     const override = overrides[field.token];
     output[field.token] = typeof override === 'string' ? override : field.defaultValue;
   }
+  console.info('[property-analysis-package] final resolved template tokens', {
+    NOIPERCENT: output.NOIPERCENT ?? '',
+    EXPREDPERC: output.EXPREDPERC ?? '',
+    REVENUELIFT: output.REVENUELIFT ?? '',
+    ASSETVALUE: output.ASSETVALUE ?? '',
+    CELL0171: output.CELL0171 ?? '',
+    CELL0452: output.CELL0452 ?? '',
+    CELL0487: output.CELL0487 ?? '',
+  });
   return output;
 }
 
