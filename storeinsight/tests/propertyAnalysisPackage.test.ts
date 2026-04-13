@@ -190,6 +190,222 @@ function buildPublicTemplateWorkbookBuffer(options?: { includeProforma?: boolean
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
+type LegacyProformaRowInput = {
+  label: string;
+  t12Avg: string;
+  t12: string;
+  months: string[];
+  store: string;
+  currentMgmt: string;
+  impact: string;
+  impactPercent?: string;
+};
+
+function buildLegacyProformaRow(input: LegacyProformaRowInput): string[] {
+  const row = Array.from({ length: 24 }, () => "");
+  row[3] = input.label;
+  row[4] = input.t12Avg;
+  row[5] = input.t12;
+  input.months.forEach((value, index) => {
+    row[6 + index] = value;
+  });
+  row[18] = input.store;
+  row[19] = input.currentMgmt;
+  row[20] = input.impact;
+  if (input.impactPercent) {
+    row[21] = input.impactPercent;
+  }
+  return row;
+}
+
+function buildExpandedLegacyPublicTemplateWorkbookBuffer(): Buffer {
+  const workbook = XLSX.read(buildPublicTemplateWorkbookBuffer(), { type: "buffer" });
+  const proformaRows = XLSX.utils.sheet_to_json(workbook.Sheets["Proforma"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+
+  const setRow = (rowIndex: number, input: LegacyProformaRowInput): void => {
+    proformaRows[rowIndex] = buildLegacyProformaRow(input);
+  };
+
+  setRow(9, {
+    label: "STORE Rate Mgmt. Rev",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$-", "$-", "$-", "$4,468", "$7,293", "$9,578", "$11,889", "$14,226", "$16,590", "$18,981", "$21,398", "$23,843"],
+    store: "$128,266",
+    currentMgmt: "$-",
+    impact: "$128,266",
+  });
+  setRow(13, {
+    label: "Admin Fee Income",
+    t12Avg: "$1,136",
+    t12: "$13,630",
+    months: ["$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160", "$1,160"],
+    store: "$13,920",
+    currentMgmt: "$13,920",
+    impact: "$-",
+  });
+  setRow(14, {
+    label: "Late Fee Income",
+    t12Avg: "$2,198",
+    t12: "$26,377",
+    months: ["$2,371", "$2,324", "$2,277", "$2,232", "$2,187", "$2,143", "$2,100", "$2,058", "$2,017", "$1,977", "$1,937", "$1,898"],
+    store: "$25,521",
+    currentMgmt: "$25,521",
+    impact: "$-",
+  });
+  setRow(15, {
+    label: "Current Tenant Protection Split",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-"],
+    store: "$-",
+    currentMgmt: "$-",
+    impact: "$-",
+  });
+  setRow(16, {
+    label: "STORE Tenant Protection Split",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$3,074", "$3,182", "$3,292", "$3,402", "$3,512", "$3,623", "$3,735", "$3,847", "$3,960", "$4,074", "$4,086", "$4,098"],
+    store: "$43,886",
+    currentMgmt: "$-",
+    impact: "$43,886",
+  });
+  setRow(17, {
+    label: "Other Tenant Income",
+    t12Avg: "$49",
+    t12: "$583",
+    months: ["$49", "$49", "$49", "$49", "$49", "$49", "$49", "$49", "$49", "$50", "$50", "$50"],
+    store: "$590",
+    currentMgmt: "$590",
+    impact: "$-",
+  });
+  setRow(23, {
+    label: "Advertising & Marketing",
+    t12Avg: "$2,757",
+    t12: "$33,082",
+    months: ["$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000"],
+    store: "$36,000",
+    currentMgmt: "$33,412",
+    impact: "$(2,588)",
+  });
+  setRow(24, {
+    label: "Current Payment Processing Fees",
+    t12Avg: "$2,020",
+    t12: "$24,242",
+    months: ["$2,193", "$2,218", "$2,243", "$2,354", "$2,435", "$2,505", "$2,575", "$2,647", "$2,720", "$2,793", "$2,865", "$2,938"],
+    store: "$-",
+    currentMgmt: "$30,485",
+    impact: "$-",
+  });
+  setRow(25, {
+    label: "STORE Payment Processing Fees",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-"],
+    store: "$-",
+    currentMgmt: "$-",
+    impact: "$30,485",
+  });
+  setRow(26, {
+    label: "Fire Prevention",
+    t12Avg: "$21",
+    t12: "$253",
+    months: ["$21", "$21", "$21", "$21", "$21", "$21", "$21", "$21", "$21", "$21", "$21", "$21"],
+    store: "$253",
+    currentMgmt: "$253",
+    impact: "$-",
+  });
+  setRow(27, {
+    label: "Licenses & Permits",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-"],
+    store: "$-",
+    currentMgmt: "$-",
+    impact: "$-",
+  });
+  setRow(28, {
+    label: "Current Mgmt. Fee",
+    t12Avg: "$5,212",
+    t12: "$62,539",
+    months: ["$5,289", "$5,350", "$5,411", "$5,696", "$5,900", "$6,077", "$6,257", "$6,438", "$6,622", "$6,807", "$6,995", "$7,184"],
+    store: "$-",
+    currentMgmt: "$74,026",
+    impact: "$-",
+  });
+  setRow(29, {
+    label: "STORE Mgmt. Fee",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$4,230", "$4,278", "$4,327", "$4,555", "$4,718", "$4,860", "$5,003", "$5,149", "$5,295", "$5,444", "$5,593", "$5,745"],
+    store: "$59,197",
+    currentMgmt: "$-",
+    impact: "$14,829",
+  });
+  setRow(30, {
+    label: "Payroll",
+    t12Avg: "$8,785",
+    t12: "$105,423",
+    months: ["$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027", "$9,027"],
+    store: "$108,324",
+    currentMgmt: "$106,477",
+    impact: "$(1,847)",
+  });
+  setRow(31, {
+    label: "Office Supplies",
+    t12Avg: "$196",
+    t12: "$2,352",
+    months: ["$196", "$196", "$196", "$196", "$196", "$196", "$196", "$196", "$196", "$196", "$196", "$196"],
+    store: "$2,352",
+    currentMgmt: "$2,352",
+    impact: "$-",
+  });
+  setRow(32, {
+    label: "Repairs & Maintenance",
+    t12Avg: "$1,158",
+    t12: "$13,898",
+    months: ["$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158", "$1,158"],
+    store: "$13,898",
+    currentMgmt: "$13,898",
+    impact: "$-",
+  });
+  setRow(33, {
+    label: "Security",
+    t12Avg: "$219",
+    t12: "$2,624",
+    months: ["$220", "$220", "$220", "$220", "$220", "$220", "$220", "$220", "$220", "$220", "$220", "$220"],
+    store: "$2,640",
+    currentMgmt: "$2,640",
+    impact: "$-",
+  });
+  setRow(37, {
+    label: "Bank Charges",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-"],
+    store: "$-",
+    currentMgmt: "$-",
+    impact: "$-",
+  });
+  setRow(42, {
+    label: "Other Expense",
+    t12Avg: "$-",
+    t12: "$-",
+    months: ["$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-"],
+    store: "$-",
+    currentMgmt: "$-",
+    impact: "$-",
+  });
+
+  workbook.Sheets["Proforma"] = XLSX.utils.aoa_to_sheet(proformaRows);
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 function buildNewLayoutPublicTemplateWorkbookBuffer(): Buffer {
   const workbook = XLSX.utils.book_new();
 
@@ -570,6 +786,41 @@ test("parsePropertyAnalysisWorkbook adapts to newer public-template layouts dyna
   assert.doesNotMatch(warningsText, /unable to locate "Spread \(bps\)"/i);
   assert.doesNotMatch(warningsText, /interest sensitivity row/i);
   assert.doesNotMatch(warningsText, /cap rate sensitivity row/i);
+});
+
+test("parsePropertyAnalysisWorkbook resolves expanded slide 4 and 5 package-table tokens", async () => {
+  const templatePath = path.join(process.cwd(), "public", "PackageTemplate.pptx");
+  const parsed = await parsePropertyAnalysisWorkbook(
+    buildExpandedLegacyPublicTemplateWorkbookBuffer(),
+    "ABQYaleProformaApr26.xlsx",
+    { templatePath },
+  );
+
+  const storeRateMgmtT12Avg = parsed.tokenFields.find((field) => field.token === "CELL1000");
+  const storeRateMgmtCurrent = parsed.tokenFields.find((field) => field.token === "CELL1005");
+  const discountImpact = parsed.tokenFields.find((field) => field.token === "CELL1008");
+  const adminFeeImpact = parsed.tokenFields.find((field) => field.token === "CELL1011");
+  const storeTenantProtectionCurrent = parsed.tokenFields.find((field) => field.token === "CELL1014");
+  const otherTenantT12Avg = parsed.tokenFields.find((field) => field.token === "CELL1015");
+  const advertisingImpact = parsed.tokenFields.find((field) => field.token === "CELL1030");
+  const currentPaymentProcessingStore = parsed.tokenFields.find((field) => field.token === "CELL1063");
+  const storeMgmtT12Avg = parsed.tokenFields.find((field) => field.token === "CELL1098");
+  const securityT12Avg = parsed.tokenFields.find((field) => field.token === "CELL1100");
+  const bankChargesT12Avg = parsed.tokenFields.find((field) => field.token === "CELL1102");
+  const otherExpenseT12Avg = parsed.tokenFields.find((field) => field.token === "CELL1135");
+
+  assert.equal(storeRateMgmtT12Avg?.defaultValue, "$-");
+  assert.equal(storeRateMgmtCurrent?.defaultValue, "$-");
+  assert.equal(discountImpact?.defaultValue, "$-");
+  assert.equal(adminFeeImpact?.defaultValue, "$-");
+  assert.equal(storeTenantProtectionCurrent?.defaultValue, "$-");
+  assert.equal(otherTenantT12Avg?.defaultValue, "$49");
+  assert.equal(advertisingImpact?.defaultValue, "$(2,588)");
+  assert.equal(currentPaymentProcessingStore?.defaultValue, "$-");
+  assert.equal(storeMgmtT12Avg?.defaultValue, "$-");
+  assert.equal(securityT12Avg?.defaultValue, "$219");
+  assert.equal(bankChargesT12Avg?.defaultValue, "$-");
+  assert.equal(otherExpenseT12Avg?.defaultValue, "$-");
 });
 
 test("parsePropertyAnalysisWorkbook derives slide 2 callouts from T-12 and STORE values instead of comparison columns", async () => {
