@@ -296,7 +296,7 @@ export default function PropertyAnalysisPackageForm() {
                   <p className="mt-1 text-sm text-[color:var(--text-secondary)]">{SECTION_META[section].description}</p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid max-h-[40rem] gap-4 overflow-y-auto pr-2 md:grid-cols-2">
                   {fields.map((field) => (
                     <label
                       key={field.token}

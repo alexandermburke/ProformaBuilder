@@ -99,6 +99,27 @@ type MatrixRowTokenSpec = {
   labelColumnIndex: number;
 };
 
+type DynamicMatrixRowTokenSpec = Omit<MatrixRowTokenSpec, 'columns' | 'sheetName' | 'labelColumnIndex'> & {
+  columns: (layout: PublicProformaLayout) => MatrixColumnSpec[];
+};
+
+type PublicProformaLayout = {
+  headerRowIndex: number;
+  labelColumnIndex: number;
+  t12Avg: MatrixColumnSpec;
+  t12: MatrixColumnSpec;
+  monthColumns: MatrixColumnSpec[];
+  store: MatrixColumnSpec;
+  currentMgmt: MatrixColumnSpec;
+  impact: MatrixColumnSpec;
+};
+
+type PublicSensitivityTable = {
+  titleRowIndex: number;
+  headerRowIndex: number;
+  rowIndices: number[];
+};
+
 type DirectRowSeriesSpec = {
   rowLabel: string;
   tokenStart: number;
@@ -158,6 +179,7 @@ const PUBLIC_REQUIRED_SHEETS = ['Inputs & Drivers', '5 Year Proforma', 'Model2.0
 const MONTH_TOKEN_COUNT = 12;
 const XML_TAG_PATTERN = /<[^>]+>/g;
 const TOKEN_SPAN_PATTERN = /\{\{[\s\S]*?\}\}/g;
+const SHORT_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 const MALFORMED_OPEN_PAREN_TOKENS = new Set(
   [...buildCellTokenRange(551, 560), ...buildCellTokenRange(591, 593)].map((tokenNumber) =>
     normalizeTokenKey(buildCellToken(tokenNumber)) ?? buildCellToken(tokenNumber),
@@ -256,30 +278,9 @@ const PACKAGE_TOKEN_DEFINITIONS: Record<string, PackageTokenDefinition> = {
   },
 };
 
-const PROFORMA_LABEL_COLUMN_INDEX = 3;
 const VALUATION_LABEL_COLUMN_INDEX = 0;
 const VALUATION_KEY_METRIC_LABEL_COLUMN_INDEX = 5;
 const VALUATION_KEY_METRIC_VALUE_COLUMN_INDEX = 6;
-
-const PROFORMA_VISIBLE_COLUMNS = {
-  t12Avg: { index: 4, label: 'T-12 Avg' },
-  t12: { index: 5, label: 'T-12' },
-  apr2026: { index: 6, label: 'Apr 2026' },
-  may2026: { index: 7, label: 'May 2026' },
-  jun2026: { index: 8, label: 'Jun 2026' },
-  jul2026: { index: 9, label: 'Jul 2026' },
-  aug2026: { index: 10, label: 'Aug 2026' },
-  sep2026: { index: 11, label: 'Sep 2026' },
-  oct2026: { index: 12, label: 'Oct 2026' },
-  nov2026: { index: 13, label: 'Nov 2026' },
-  dec2026: { index: 14, label: 'Dec 2026' },
-  jan2027: { index: 15, label: 'Jan 2027' },
-  feb2027: { index: 16, label: 'Feb 2027' },
-  mar2027: { index: 17, label: 'Mar 2027' },
-  store: { index: 18, label: 'STORE' },
-  currentMgmt: { index: 19, label: 'Current Mgmt' },
-  impact: { index: 20, label: 'Impact to N.O.I.' },
-} as const satisfies Record<string, MatrixColumnSpec>;
 
 function buildCellToken(tokenNumber: number): string {
   return `CELL${String(tokenNumber).padStart(4, '0')}`;
@@ -311,8 +312,10 @@ function stripTrailingX(value: string): string {
 function percentToBasisPoints(value: string): string {
   const numeric = parseNumberLike(value);
   if (numeric == null) return value.trim();
-  const asPercent = value.includes('%') ? numeric : numeric * 100;
-  return String(Math.round(asPercent * 100));
+  if (value.includes('%')) return String(Math.round(numeric * 100));
+  if (Math.abs(numeric) > 10) return String(Math.round(numeric));
+  if (Math.abs(numeric) > 1) return String(Math.round(numeric * 100));
+  return String(Math.round(numeric * 10_000));
 }
 
 function splitCombinedValue(value: string, separator: string): [string, string] {
@@ -320,360 +323,236 @@ function splitCombinedValue(value: string, separator: string): [string, string] 
   return [parts[0] ?? '', parts[1] ?? ''];
 }
 
-const PROFORMA_ALL_COLUMNS: MatrixColumnSpec[] = [
-  PROFORMA_VISIBLE_COLUMNS.t12Avg,
-  PROFORMA_VISIBLE_COLUMNS.t12,
-  PROFORMA_VISIBLE_COLUMNS.apr2026,
-  PROFORMA_VISIBLE_COLUMNS.may2026,
-  PROFORMA_VISIBLE_COLUMNS.jun2026,
-  PROFORMA_VISIBLE_COLUMNS.jul2026,
-  PROFORMA_VISIBLE_COLUMNS.aug2026,
-  PROFORMA_VISIBLE_COLUMNS.sep2026,
-  PROFORMA_VISIBLE_COLUMNS.oct2026,
-  PROFORMA_VISIBLE_COLUMNS.nov2026,
-  PROFORMA_VISIBLE_COLUMNS.dec2026,
-  PROFORMA_VISIBLE_COLUMNS.jan2027,
-  PROFORMA_VISIBLE_COLUMNS.feb2027,
-  PROFORMA_VISIBLE_COLUMNS.mar2027,
-  PROFORMA_VISIBLE_COLUMNS.store,
-  PROFORMA_VISIBLE_COLUMNS.currentMgmt,
-  PROFORMA_VISIBLE_COLUMNS.impact,
-];
+function buildPublicProformaAllColumns(layout: PublicProformaLayout): MatrixColumnSpec[] {
+  return [layout.t12Avg, layout.t12, ...layout.monthColumns, layout.store, layout.currentMgmt, layout.impact];
+}
 
-const PROFORMA_MONTH_COLUMNS: MatrixColumnSpec[] = [
-  PROFORMA_VISIBLE_COLUMNS.apr2026,
-  PROFORMA_VISIBLE_COLUMNS.may2026,
-  PROFORMA_VISIBLE_COLUMNS.jun2026,
-  PROFORMA_VISIBLE_COLUMNS.jul2026,
-  PROFORMA_VISIBLE_COLUMNS.aug2026,
-  PROFORMA_VISIBLE_COLUMNS.sep2026,
-  PROFORMA_VISIBLE_COLUMNS.oct2026,
-  PROFORMA_VISIBLE_COLUMNS.nov2026,
-  PROFORMA_VISIBLE_COLUMNS.dec2026,
-  PROFORMA_VISIBLE_COLUMNS.jan2027,
-  PROFORMA_VISIBLE_COLUMNS.feb2027,
-  PROFORMA_VISIBLE_COLUMNS.mar2027,
-];
-
-const SLIDE4_PROFORMA_SPECS: MatrixRowTokenSpec[] = [
+const SLIDE4_PROFORMA_SPECS: DynamicMatrixRowTokenSpec[] = [
   {
     sourceRow: 'Rental Income',
     label: 'Rental Income',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(3, 19),
-    columns: [
-      ...PROFORMA_ALL_COLUMNS.slice(0, 16),
-      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    columns: (layout) => [
+      ...buildPublicProformaAllColumns(layout).slice(0, 16),
+      withFormatter(layout.impact, stripLeadingDollar),
     ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
   },
   {
     sourceRow: 'STORE Rate Mgmt. Rev',
     label: 'STORE Rate Management Revenue',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(20, 30),
-    columns: [
-      PROFORMA_VISIBLE_COLUMNS.jul2026,
-      PROFORMA_VISIBLE_COLUMNS.aug2026,
-      PROFORMA_VISIBLE_COLUMNS.sep2026,
-      PROFORMA_VISIBLE_COLUMNS.oct2026,
-      PROFORMA_VISIBLE_COLUMNS.nov2026,
-      PROFORMA_VISIBLE_COLUMNS.dec2026,
-      PROFORMA_VISIBLE_COLUMNS.jan2027,
-      PROFORMA_VISIBLE_COLUMNS.feb2027,
-      PROFORMA_VISIBLE_COLUMNS.mar2027,
-      PROFORMA_VISIBLE_COLUMNS.store,
-      PROFORMA_VISIBLE_COLUMNS.impact,
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...layout.monthColumns.slice(3), layout.store, layout.impact],
   },
   {
     sourceRow: 'Discounts',
     label: 'Discounts',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(31, 44),
-    columns: [
-      ...PROFORMA_MONTH_COLUMNS.map((column) => withFormatter(column, stripLeadingDollar)),
-      withFormatter(PROFORMA_VISIBLE_COLUMNS.store, stripLeadingDollar),
-      withFormatter(PROFORMA_VISIBLE_COLUMNS.currentMgmt, stripLeadingDollar),
+    columns: (layout) => [
+      ...layout.monthColumns.map((column) => withFormatter(column, stripLeadingDollar)),
+      withFormatter(layout.store, stripLeadingDollar),
+      withFormatter(layout.currentMgmt, stripLeadingDollar),
     ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
   },
   {
     sourceRow: 'Net Rental Income',
     label: 'Net Rental Income',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(45, 61),
-    columns: PROFORMA_ALL_COLUMNS,
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout),
   },
   {
     sourceRow: 'Admin Fee Income',
     label: 'Admin Fee Income',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(80, 95),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Late Fee Income',
     label: 'Late Fee Income',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(96, 111),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Current Tenant Protection Split',
     label: 'Current Tenant Protection Split',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(112, 126),
-    columns: [
-      ...PROFORMA_ALL_COLUMNS.slice(0, 14),
-      PROFORMA_VISIBLE_COLUMNS.currentMgmt,
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...buildPublicProformaAllColumns(layout).slice(0, 14), layout.currentMgmt],
   },
   {
     sourceRow: 'STORE Tenant Protection Split',
     label: 'STORE Tenant Protection Split',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(127, 140),
-    columns: [
-      ...PROFORMA_MONTH_COLUMNS,
-      PROFORMA_VISIBLE_COLUMNS.store,
-      PROFORMA_VISIBLE_COLUMNS.impact,
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...layout.monthColumns, layout.store, layout.impact],
   },
   {
     sourceRow: 'Retail Sales Income',
     label: 'Retail Sales Income',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(141, 156),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Total Operating Income',
     label: 'Total Operating Income',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(157, 173),
-    columns: PROFORMA_ALL_COLUMNS,
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout),
   },
   {
     sourceRow: 'Projected Rate',
     label: 'Rent ($/SF)',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(175, 186),
-    columns: PROFORMA_MONTH_COLUMNS,
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => layout.monthColumns,
   },
   {
     sourceRow: 'General Vacancy',
     label: 'Vacancy',
     section: 'incomeProforma',
     tokenNumbers: buildCellTokenRange(187, 198),
-    columns: PROFORMA_MONTH_COLUMNS,
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => layout.monthColumns,
   },
 ];
 
-const SLIDE5_PROFORMA_SPECS: MatrixRowTokenSpec[] = [
+const SLIDE5_PROFORMA_SPECS: DynamicMatrixRowTokenSpec[] = [
   {
     sourceRow: 'Advertising & Marketing',
     label: 'Advertising & Marketing',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(201, 216),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Current Payment Processing Fees',
     label: 'Current Payment Processing Fees',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(217, 231),
-    columns: [
-      ...PROFORMA_ALL_COLUMNS.slice(0, 14),
-      PROFORMA_VISIBLE_COLUMNS.currentMgmt,
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...buildPublicProformaAllColumns(layout).slice(0, 14), layout.currentMgmt],
   },
   {
     sourceRow: 'STORE Payment Processing Fees',
     label: 'STORE Payment Processing Fees / Impact to N.O.I.',
     section: 'expenseProforma',
     tokenNumbers: [232],
-    columns: [PROFORMA_VISIBLE_COLUMNS.impact],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [layout.impact],
   },
   {
     sourceRow: 'Current Mgmt. Fee',
     label: 'Current Management Fee',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(233, 247),
-    columns: [
-      ...PROFORMA_ALL_COLUMNS.slice(0, 14),
-      PROFORMA_VISIBLE_COLUMNS.currentMgmt,
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...buildPublicProformaAllColumns(layout).slice(0, 14), layout.currentMgmt],
   },
   {
     sourceRow: 'STORE Mgmt. Fee',
     label: 'STORE Management Fee',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(248, 261),
-    columns: [
-      ...PROFORMA_MONTH_COLUMNS,
-      PROFORMA_VISIBLE_COLUMNS.store,
-      PROFORMA_VISIBLE_COLUMNS.impact,
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...layout.monthColumns, layout.store, layout.impact],
   },
   {
     sourceRow: 'Payroll',
     label: 'Payroll',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(262, 278),
-    columns: [
-      ...PROFORMA_ALL_COLUMNS.slice(0, 16),
-      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    columns: (layout) => [
+      ...buildPublicProformaAllColumns(layout).slice(0, 16),
+      withFormatter(layout.impact, stripLeadingDollar),
     ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
   },
   {
     sourceRow: 'Office Supplies',
     label: 'Office Supplies',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(279, 294),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Repairs & Maintenance',
     label: 'Repairs & Maintenance',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(295, 310),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Security',
     label: 'Security',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(311, 324),
-    columns: [
-      ...PROFORMA_MONTH_COLUMNS,
-      PROFORMA_VISIBLE_COLUMNS.store,
-      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
-    ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => [...layout.monthColumns, layout.store, withFormatter(layout.impact, stripLeadingDollar)],
   },
   {
     sourceRow: 'Retail Products',
     label: 'Retail Products',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(325, 340),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Telephone & Internet',
     label: 'Telephone & Internet',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(341, 356),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Software',
     label: 'Software',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(357, 373),
-    columns: [
-      ...PROFORMA_ALL_COLUMNS.slice(0, 16),
-      withFormatter(PROFORMA_VISIBLE_COLUMNS.impact, stripLeadingDollar),
+    columns: (layout) => [
+      ...buildPublicProformaAllColumns(layout).slice(0, 16),
+      withFormatter(layout.impact, stripLeadingDollar),
     ],
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
   },
   {
     sourceRow: 'Prof Fees - Legal/Acctg',
     label: 'Prof Fees - Legal/Acctg',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(374, 389),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Utilities',
     label: 'Utilities',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(390, 405),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Insurance',
     label: 'Insurance',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(406, 421),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Property Taxes',
     label: 'Property Taxes',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(422, 437),
-    columns: PROFORMA_ALL_COLUMNS.slice(0, 16),
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout).slice(0, 16),
   },
   {
     sourceRow: 'Total Operating Expense',
     label: 'Total Operating Expense',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(438, 454),
-    columns: PROFORMA_ALL_COLUMNS,
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout),
   },
   {
     sourceRow: 'Net Operating Income',
     label: 'Net Operating Income',
     section: 'expenseProforma',
     tokenNumbers: buildCellTokenRange(473, 489),
-    columns: PROFORMA_ALL_COLUMNS,
-    sheetName: 'Proforma',
-    labelColumnIndex: PROFORMA_LABEL_COLUMN_INDEX,
+    columns: (layout) => buildPublicProformaAllColumns(layout),
   },
 ];
 
@@ -711,6 +590,216 @@ function normalizeLabel(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function parseMonthHeader(value: string): { ordinal: number; label: string } | null {
+  const raw = cleanCell(value);
+  if (!raw) return null;
+  const match = raw.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s-]?(\d{2,4})$/i);
+  if (!match) return null;
+  const monthIndex = SHORT_MONTHS.indexOf(match[1].slice(0, 3).toLowerCase() as (typeof SHORT_MONTHS)[number]);
+  if (monthIndex < 0) return null;
+  const yearPart = match[2] ?? '';
+  const year = yearPart.length === 2 ? 2000 + Number(yearPart) : Number(yearPart);
+  if (!Number.isFinite(year)) return null;
+  return { ordinal: year * 12 + monthIndex, label: raw };
+}
+
+function isLikelyTextLabel(value: string): boolean {
+  const raw = cleanCell(value);
+  if (!raw) return false;
+  if (parseMonthHeader(raw)) return false;
+  if (parseNumberLike(raw) !== null) return false;
+  return /[A-Za-z]/.test(raw);
+}
+
+function detectContiguousMonthColumns(row: string[]): MatrixColumnSpec[] | null {
+  for (let startIndex = 0; startIndex <= row.length - MONTH_TOKEN_COUNT; startIndex += 1) {
+    const monthColumns: MatrixColumnSpec[] = [];
+    let previousOrdinal: number | null = null;
+    let valid = true;
+    for (let offset = 0; offset < MONTH_TOKEN_COUNT; offset += 1) {
+      const parsed = parseMonthHeader(row[startIndex + offset] ?? '');
+      if (!parsed) {
+        valid = false;
+        break;
+      }
+      if (previousOrdinal !== null && parsed.ordinal !== previousOrdinal + 1) {
+        valid = false;
+        break;
+      }
+      previousOrdinal = parsed.ordinal;
+      monthColumns.push({ index: startIndex + offset, label: parsed.label });
+    }
+    if (valid) return monthColumns;
+  }
+  return null;
+}
+
+function findHeaderColumnIndex(
+  row: string[],
+  matcher: (normalized: string) => boolean,
+  options?: { beforeIndex?: number },
+): number {
+  const endIndex = Math.min(options?.beforeIndex ?? row.length - 1, row.length - 1);
+  for (let index = 0; index <= endIndex; index += 1) {
+    if (matcher(normalizeLabel(row[index] ?? ''))) return index;
+  }
+  return -1;
+}
+
+function detectPublicProformaLabelColumn(
+  rows: string[][],
+  headerRowIndex: number,
+  monthStartIndex: number,
+): number {
+  const headerRow = rows[headerRowIndex] ?? [];
+  for (let columnIndex = monthStartIndex - 1; columnIndex >= 0; columnIndex -= 1) {
+    const normalized = normalizeLabel(headerRow[columnIndex] ?? '');
+    if (normalized === 'income' || normalized === 'expenses') return columnIndex;
+  }
+
+  for (let columnIndex = monthStartIndex - 1; columnIndex >= 0; columnIndex -= 1) {
+    let textHits = 0;
+    for (let rowIndex = headerRowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+      if (isLikelyTextLabel(rows[rowIndex]?.[columnIndex] ?? '')) {
+        textHits += 1;
+        if (textHits >= 3) return columnIndex;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function detectPublicProformaLayout(rows: string[][]): PublicProformaLayout | null {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex] ?? [];
+    const monthColumns = detectContiguousMonthColumns(row);
+    if (!monthColumns) continue;
+
+    const monthStartIndex = monthColumns[0]?.index ?? -1;
+    const monthEndIndex = monthColumns[monthColumns.length - 1]?.index ?? -1;
+    if (monthStartIndex < 0 || monthEndIndex < monthStartIndex) continue;
+
+    const t12AvgIndex = findHeaderColumnIndex(row, (normalized) => normalized === 't 12 avg', {
+      beforeIndex: monthStartIndex - 1,
+    });
+    const t12Index = findHeaderColumnIndex(row, (normalized) => normalized === 't 12', {
+      beforeIndex: monthStartIndex - 1,
+    });
+    const currentMgmtIndex = row.findIndex((value) => {
+      const normalized = normalizeLabel(value);
+      return normalized === 'current mgmt' || normalized === 'current management';
+    });
+    const impactIndex = row.findIndex((value) => {
+      const normalized = normalizeLabel(value);
+      return normalized.includes('impact to n o i') || normalized.includes('impact to noi');
+    });
+    const labelColumnIndex = detectPublicProformaLabelColumn(rows, rowIndex, monthStartIndex);
+    const storeIndex = currentMgmtIndex > monthEndIndex ? currentMgmtIndex - 1 : -1;
+
+    if (
+      t12AvgIndex < 0 ||
+      t12Index < 0 ||
+      currentMgmtIndex < 0 ||
+      impactIndex < 0 ||
+      labelColumnIndex < 0 ||
+      storeIndex <= monthEndIndex
+    ) {
+      continue;
+    }
+
+    return {
+      headerRowIndex: rowIndex,
+      labelColumnIndex,
+      t12Avg: { index: t12AvgIndex, label: cleanCell(row[t12AvgIndex] ?? 'T-12 Avg') || 'T-12 Avg' },
+      t12: { index: t12Index, label: cleanCell(row[t12Index] ?? 'T-12') || 'T-12' },
+      monthColumns,
+      store: { index: storeIndex, label: 'STORE' },
+      currentMgmt: {
+        index: currentMgmtIndex,
+        label: cleanCell(row[currentMgmtIndex] ?? 'Current Mgmt') || 'Current Mgmt',
+      },
+      impact: {
+        index: impactIndex,
+        label: cleanCell(row[impactIndex] ?? 'Impact to N.O.I.') || 'Impact to N.O.I.',
+      },
+    };
+  }
+
+  return null;
+}
+
+function buildPublicProformaMatrixRowSpecs(
+  layout: PublicProformaLayout,
+  specs: DynamicMatrixRowTokenSpec[],
+): MatrixRowTokenSpec[] {
+  return specs.map((spec) => ({
+    ...spec,
+    columns: spec.columns(layout),
+    sheetName: 'Proforma',
+    labelColumnIndex: layout.labelColumnIndex,
+  }));
+}
+
+function findValueCellForLabels(
+  rows: string[][],
+  labels: string[],
+): { rowIndex: number; labelIndex: number; valueIndex: number; value: string } | null {
+  const labelSet = new Set(labels.map(normalizeLabel));
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex] ?? [];
+    for (let labelIndex = 0; labelIndex < row.length; labelIndex += 1) {
+      if (!labelSet.has(normalizeLabel(row[labelIndex] ?? ''))) continue;
+      for (let valueIndex = row.length - 1; valueIndex > labelIndex; valueIndex -= 1) {
+        const value = cleanCell(row[valueIndex] ?? '');
+        if (!value) continue;
+        return { rowIndex, labelIndex, valueIndex, value };
+      }
+    }
+  }
+  return null;
+}
+
+function collectPercentLabeledRows(rows: string[][], startRowIndex: number): number[] {
+  const rowIndices: number[] = [];
+  for (let rowIndex = startRowIndex; rowIndex < rows.length; rowIndex += 1) {
+    const label = cleanCell(rows[rowIndex]?.[VALUATION_LABEL_COLUMN_INDEX] ?? '');
+    if (!label) {
+      if (rowIndices.length > 0) break;
+      continue;
+    }
+    if (!label.includes('%') || parseNumberLike(label) === null) {
+      if (rowIndices.length > 0) break;
+      continue;
+    }
+    rowIndices.push(rowIndex);
+  }
+  return rowIndices;
+}
+
+function detectSensitivityTable(
+  rows: string[][],
+  titleMatcher: (label: string) => boolean,
+  headerMatcher: (label: string, row: string[]) => boolean,
+): PublicSensitivityTable | null {
+  const titleRowIndex = rows.findIndex((row) => titleMatcher(normalizeLabel(firstNonEmpty(row))));
+  if (titleRowIndex < 0) return null;
+
+  let headerRowIndex = -1;
+  for (let rowIndex = titleRowIndex + 1; rowIndex < Math.min(rows.length, titleRowIndex + 6); rowIndex += 1) {
+    if (headerMatcher(normalizeLabel(firstNonEmpty(rows[rowIndex] ?? [])), rows[rowIndex] ?? [])) {
+      headerRowIndex = rowIndex;
+      break;
+    }
+  }
+  if (headerRowIndex < 0) return null;
+
+  const rowIndices = collectPercentLabeledRows(rows, headerRowIndex + 1);
+
+  if (!rowIndices.length) return null;
+  return { titleRowIndex, headerRowIndex, rowIndices };
 }
 
 function humanizeToken(token: string): string {
@@ -1661,12 +1750,12 @@ function addPublicHoldPeriodReturnAliases(
 
 function addPublicComparisonCalloutAliases(
   map: Map<string, ExtractedTokenRecord>,
-  workbook: XLSX.WorkBook,
+  proformaRows: string[][] | null,
+  proformaLayout: PublicProformaLayout | null,
   inputsRows: string[][],
 ): string[] {
   const warnings: string[] = [];
-  const proformaRows = sheetToOptionalMatrix(workbook, 'Proforma');
-  if (!proformaRows) {
+  if (!proformaRows || !proformaLayout) {
     warnings.push('Proforma sheet is missing comparison rows for revenue, expense, and NOI callouts.');
     return warnings;
   }
@@ -1678,7 +1767,7 @@ function addPublicComparisonCalloutAliases(
     warnings.push('Inputs & Drivers is missing a usable Exit Cap Rate for Asset Value Added.');
   }
 
-  const summaryValues = extractPublicProformaSummaryValues(proformaRows, warnings);
+  const summaryValues = extractPublicProformaSummaryValues(proformaRows, proformaLayout, warnings);
   if (!summaryValues) {
     return warnings;
   }
@@ -1803,6 +1892,7 @@ function addPublicComparisonCalloutAliases(
 
 function extractPublicProformaSummaryValues(
   proformaRows: string[][],
+  proformaLayout: PublicProformaLayout,
   warnings: string[],
 ): PublicProformaSummaryValues | null {
   const summarySpecs: Array<{
@@ -1830,14 +1920,14 @@ function extractPublicProformaSummaryValues(
   const extracted = {} as PublicProformaSummaryValues;
 
   for (const spec of summarySpecs) {
-    const rowIndex = findRowIndexByColumnValue(proformaRows, PROFORMA_LABEL_COLUMN_INDEX, spec.rowLabel);
+    const rowIndex = findRowIndexByColumnValue(proformaRows, proformaLayout.labelColumnIndex, spec.rowLabel);
     if (rowIndex < 0) {
       warnings.push(`Proforma sheet is missing the ${spec.label} summary row.`);
       return null;
     }
 
-    const t12DisplayValue = readMatrixCell(proformaRows, rowIndex, PROFORMA_VISIBLE_COLUMNS.t12.index);
-    const year1DisplayValue = readMatrixCell(proformaRows, rowIndex, PROFORMA_VISIBLE_COLUMNS.store.index);
+    const t12DisplayValue = readMatrixCell(proformaRows, rowIndex, proformaLayout.t12.index);
+    const year1DisplayValue = readMatrixCell(proformaRows, rowIndex, proformaLayout.store.index);
     const t12NumericValue = parseNumberLike(t12DisplayValue);
     const year1NumericValue = parseNumberLike(year1DisplayValue);
 
@@ -1856,12 +1946,12 @@ function extractPublicProformaSummaryValues(
       t12: {
         displayValue: t12DisplayValue,
         numericValue: t12NumericValue,
-        matchedKey: `Proforma!R${rowIndex + 1}C${PROFORMA_VISIBLE_COLUMNS.t12.index + 1}`,
+        matchedKey: `Proforma!R${rowIndex + 1}C${proformaLayout.t12.index + 1}`,
       },
       year1: {
         displayValue: year1DisplayValue,
         numericValue: year1NumericValue,
-        matchedKey: `Proforma!R${rowIndex + 1}C${PROFORMA_VISIBLE_COLUMNS.store.index + 1}`,
+        matchedKey: `Proforma!R${rowIndex + 1}C${proformaLayout.store.index + 1}`,
       },
     };
   }
@@ -1894,9 +1984,14 @@ function addDirectCellToken(
 function addPublicProformaSlideMappings(
   map: Map<string, ExtractedTokenRecord>,
   proformaRows: string[][],
+  proformaLayout: PublicProformaLayout | null,
 ): string[] {
   const warnings: string[] = [];
-  for (const spec of [...SLIDE4_PROFORMA_SPECS, ...SLIDE5_PROFORMA_SPECS]) {
+  if (!proformaLayout) {
+    warnings.push('Proforma sheet is missing recognizable direct table rows for slides 4 and 5.');
+    return warnings;
+  }
+  for (const spec of buildPublicProformaMatrixRowSpecs(proformaLayout, [...SLIDE4_PROFORMA_SPECS, ...SLIDE5_PROFORMA_SPECS])) {
     addMatrixRowTokenSpec(map, warnings, proformaRows, spec);
   }
   return warnings;
@@ -1945,21 +2040,17 @@ function addPublicSlide6Mappings(
     );
   }
 
-  const spreadRowIndex = findRowIndexByColumnValue(inputsRows, 5, 'Spread (bps)', { startRow: 0, endRow: 30 });
-  if (spreadRowIndex < 0) {
-    warnings.push('Inputs & Drivers: unable to locate "Spread (bps)" for slide 6.');
+  const spreadCell = findValueCellForLabels(inputsRows, ['Spread (bps)', 'Spread']);
+  if (!spreadCell) {
+    warnings.push('Inputs & Drivers: unable to locate "Spread" for slide 6.');
   } else {
-    addDirectCellToken(
-      map,
-      'CELL0492',
-      'Spread (bps)',
-      'dealEconomics',
-      'Inputs & Drivers',
-      spreadRowIndex,
-      7,
-      inputsRows,
-      percentToBasisPoints,
-    );
+    setResolvedValue(map, 'CELL0492', {
+      label: 'Spread (bps)',
+      value: percentToBasisPoints(spreadCell.value),
+      section: 'dealEconomics',
+      source: 'extracted',
+      matchedKey: `Inputs & Drivers!R${spreadCell.rowIndex + 1}C${spreadCell.valueIndex + 1}`,
+    });
   }
 
   const debtServiceSeries: DirectRowSeriesSpec[] = [
@@ -2226,7 +2317,6 @@ function addPublicSlide7Mappings(
     warnings.push('Valuation Sheet: unable to locate hold-period "Equity Multiple".');
   }
 
-  const interestSensitivityRowLabels = ['5.50%', '6.00%', '6.50%', '7.00%', '7.50%'];
   const interestSensitivityTokenRows = [
     buildCellTokenRange(621, 625),
     buildCellTokenRange(627, 631),
@@ -2234,35 +2324,34 @@ function addPublicSlide7Mappings(
     buildCellTokenRange(639, 643),
     buildCellTokenRange(645, 649),
   ];
-  const interestHeaderRowIndex = findRowIndexByColumnValue(
+  const interestSensitivityTable = detectSensitivityTable(
     valuationRows,
-    VALUATION_LABEL_COLUMN_INDEX,
-    'Exit Cap \\ All-In Rate',
-    { startRow: 84, endRow: 95 },
+    (label) => label.includes('interest rate sensitivity') && label.includes('levered irr'),
+    (label) => label === 'exit cap all in rate',
   );
-  for (let rowOffset = 0; rowOffset < interestSensitivityRowLabels.length; rowOffset += 1) {
-    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, interestSensitivityRowLabels[rowOffset], {
-      startRow: 84,
-      endRow: 95,
-    });
-    if (rowIndex < 0) {
-      warnings.push(`Valuation Sheet: unable to locate interest sensitivity row "${interestSensitivityRowLabels[rowOffset]}".`);
-      continue;
+  if (!interestSensitivityTable) {
+    warnings.push('Valuation Sheet: unable to locate the interest-rate sensitivity table.');
+  } else {
+    const visibleInterestRowCount = Math.min(interestSensitivityTokenRows.length, interestSensitivityTable.rowIndices.length);
+    for (let rowOffset = 0; rowOffset < visibleInterestRowCount; rowOffset += 1) {
+      const rowIndex = interestSensitivityTable.rowIndices[rowOffset] ?? -1;
+      if (rowIndex < 0) continue;
+      const rowLabel = readMatrixCell(valuationRows, rowIndex, VALUATION_LABEL_COLUMN_INDEX) || `Row ${rowOffset + 1}`;
+      interestSensitivityTokenRows[rowOffset]?.forEach((tokenNumber, columnOffset) => {
+        addDirectCellToken(
+          map,
+          buildCellToken(tokenNumber),
+          `Interest Rate Sensitivity / Exit Cap ${rowLabel} / All-In Rate ${
+            readMatrixCell(valuationRows, interestSensitivityTable.headerRowIndex, columnOffset + 1) || `Column ${columnOffset + 1}`
+          }`,
+          'exitSensitivity',
+          'Valuation Sheet',
+          rowIndex,
+          columnOffset + 1,
+          valuationRows,
+        );
+      });
     }
-    interestSensitivityTokenRows[rowOffset]?.forEach((tokenNumber, columnOffset) => {
-      addDirectCellToken(
-        map,
-        buildCellToken(tokenNumber),
-        `Interest Rate Sensitivity / Exit Cap ${interestSensitivityRowLabels[rowOffset]} / All-In Rate ${
-          interestHeaderRowIndex >= 0 ? readMatrixCell(valuationRows, interestHeaderRowIndex, columnOffset + 1) : `Column ${columnOffset + 1}`
-        }`,
-        'exitSensitivity',
-        'Valuation Sheet',
-        rowIndex,
-        columnOffset + 1,
-        valuationRows,
-      );
-    });
   }
 
   const capRateSensitivityTitleRowIndex = findRowIndexByColumnValue(
@@ -2292,7 +2381,11 @@ function addPublicSlide7Mappings(
     warnings.push('Valuation Sheet: unable to determine the cap rate sensitivity exit-year label.');
   }
 
-  const capRateRowLabels = ['5.50%', '5.75%', '6.00%', '6.50%', '7.00%', '7.50%', '8.00%', '8.50%'];
+  const capRateSensitivityTable = detectSensitivityTable(
+    valuationRows,
+    (label) => label.includes('cap rate sensitivity') && label.includes('implied value at exit'),
+    (label, row) => label === 'exit cap rate' && rowEntries(row).some((entry) => normalizeLabel(entry) === 'net proceeds'),
+  );
   const capRateTokenRows: string[][] = [
     ['CELL0656', 'CELL0657', 'CELL0658', 'CELL0659'],
     ['CELL0661', 'CELL0662', 'CELL0663', 'CELL0664'],
@@ -2309,28 +2402,31 @@ function addPublicSlide7Mappings(
     { columnIndex: 4, suffix: 'Equity Multiple', formatter: stripTrailingX },
     { columnIndex: 5, suffix: 'Levered IRR' },
   ];
-  for (let rowOffset = 0; rowOffset < capRateRowLabels.length; rowOffset += 1) {
-    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, capRateRowLabels[rowOffset], {
-      startRow: 74,
-      endRow: 85,
-    });
-    if (rowIndex < 0) {
-      warnings.push(`Valuation Sheet: unable to locate cap rate sensitivity row "${capRateRowLabels[rowOffset]}".`);
-      continue;
+  const capRateRowIndices =
+    capRateSensitivityTable?.rowIndices ??
+    (capRateSensitivityTitleRowIndex >= 0 ? collectPercentLabeledRows(valuationRows, capRateSensitivityTitleRowIndex + 1) : []);
+  if (!capRateRowIndices.length) {
+    warnings.push('Valuation Sheet: unable to locate the cap-rate sensitivity table.');
+  } else {
+    const visibleCapRateRowCount = Math.min(capRateTokenRows.length, capRateRowIndices.length);
+    for (let rowOffset = 0; rowOffset < visibleCapRateRowCount; rowOffset += 1) {
+      const rowIndex = capRateRowIndices[rowOffset] ?? -1;
+      if (rowIndex < 0) continue;
+      const rowLabel = readMatrixCell(valuationRows, rowIndex, VALUATION_LABEL_COLUMN_INDEX) || `Row ${rowOffset + 1}`;
+      capRateColumnSpecs.forEach((columnSpec, columnOffset) => {
+        addDirectCellToken(
+          map,
+          capRateTokenRows[rowOffset]?.[columnOffset] ?? '',
+          `Cap Rate Sensitivity / Exit Rate ${rowLabel} / ${columnSpec.suffix}`,
+          'exitSensitivity',
+          'Valuation Sheet',
+          rowIndex,
+          columnSpec.columnIndex,
+          valuationRows,
+          columnSpec.formatter,
+        );
+      });
     }
-    capRateColumnSpecs.forEach((columnSpec, columnOffset) => {
-      addDirectCellToken(
-        map,
-        capRateTokenRows[rowOffset]?.[columnOffset] ?? '',
-        `Cap Rate Sensitivity / Exit Rate ${capRateRowLabels[rowOffset]} / ${columnSpec.suffix}`,
-        'exitSensitivity',
-        'Valuation Sheet',
-        rowIndex,
-        columnSpec.columnIndex,
-        valuationRows,
-        columnSpec.formatter,
-      );
-    });
   }
 
   return warnings;
@@ -2388,6 +2484,7 @@ function buildWentworthDefaults(workbook: XLSX.WorkBook, fileName: string): Pars
 
 function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string): ParsedWorkbookBundle {
   const proformaRows = sheetToOptionalMatrix(workbook, 'Proforma');
+  const proformaLayout = proformaRows ? detectPublicProformaLayout(proformaRows) : null;
   const inputsRows = sheetToMatrix(workbook, 'Inputs & Drivers');
   const summaryRows = sheetToMatrix(workbook, '5 Year Proforma');
   const modelRows = sheetToMatrix(workbook, 'Model2.0');
@@ -2453,9 +2550,9 @@ function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string):
   addDerivedValues(defaults, propertyName, propertyAddress, '', propertyValues, summaryData.values, valuationData);
 
   const warnings = addPublicHoldPeriodReturnAliases(defaults, valuationRows);
-  warnings.push(...addPublicComparisonCalloutAliases(defaults, workbook, inputsRows));
+  warnings.push(...addPublicComparisonCalloutAliases(defaults, proformaRows, proformaLayout, inputsRows));
   if (proformaRows) {
-    warnings.push(...addPublicProformaSlideMappings(defaults, proformaRows));
+    warnings.push(...addPublicProformaSlideMappings(defaults, proformaRows, proformaLayout));
   } else {
     warnings.push('Proforma sheet is missing direct table rows for slides 4 and 5.');
   }

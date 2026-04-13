@@ -190,6 +190,150 @@ function buildPublicTemplateWorkbookBuffer(options?: { includeProforma?: boolean
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
+function buildNewLayoutPublicTemplateWorkbookBuffer(): Buffer {
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["", "DEAL INPUT CONTROL PANEL"],
+      ["", "1. Property Overview"],
+      ["", "Name", "", "", "Charleston Ashley Phosphate"],
+      ["", "Type", "", "", "Storage"],
+      ["", "Location", "", "", "5146 Ashley Phosphate Rd, North Charleston, SC 29418"],
+      ["", "Units Available", "", "", "592"],
+      ["", "Units Occupied", "", "", "563"],
+      ["", "NRSF", "", "", "72323"],
+      ["", "2. Financing"],
+      ["", "SOFR Rate", "", "", "4.30%"],
+      ["", "Spread", "", "", "2.20%"],
+      ["", "All-In Rate", "", "", "6.50%"],
+      ["", "Loan Amount", "", "", "$9,207,250"],
+      ["", "3. Capital Expenditures"],
+      ["", "Total CapEx", "", "", "$25,000"],
+      ["", "4. Exit Assumptions"],
+      ["", "Exit Cap Rate", "", "", "6.00%"],
+      ["", "Purchase Price", "", "", "$14,000,000"],
+    ]),
+    "Inputs & Drivers",
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"],
+      ["Rental Income", "1,457,831", "1,651,842", "1,736,353", "1,825,188", "1,918,568"],
+      ["Total Operating Income", "1,502,256", "1,685,253", "1,756,166", "1,833,507", "1,916,996"],
+      ["Expenses", "444,262", "474,096", "484,464", "495,149", "506,164"],
+    ]),
+    "5 Year Proforma",
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["", "Month 0", "Month 1", "Month 2", "Month 3", "Month 4", "Month 5", "Month 6", "Month 7", "Month 8", "Month 9", "Month 10", "Month 11"],
+      ["Projected Rate ($/sqft)", "$1.58", "$1.59", "$1.61", "$1.62", "$1.63", "$1.65", "$1.66", "$1.68", "$1.69", "$1.70", "$1.72", "$1.73"],
+      ["Occupied Units", "563", "565", "567", "569", "571", "573", "575", "577", "579", "581", "583", "585"],
+      ["Physical Occupancy", "95.1%", "95.4%", "95.6%", "95.9%", "96.1%", "96.4%", "96.6%", "96.9%", "97.1%", "97.4%", "97.6%", "97.9%"],
+      ["Net Rental Income", "104,476", "103,504", "104,986", "110,186", "113,651", "116,946", "118,358", "116,548", "120,116", "121,976", "126,056", "128,851"],
+    ]),
+    "Model2.0",
+  );
+
+  const valuationRows: string[][] = Array.from({ length: 176 }, () => []);
+  valuationRows[0] = ["Charleston Ashley Phosphate - Acquisition & Returns Analysis"];
+  valuationRows[3] = ["Sources & Uses", "", "", "", "", "Purchase Price", "$14,000,000"];
+  valuationRows[4] = ["Senior Debt", "$9,207,250", "Purchase Price", "$14,000,000", "", "Going-In Cap Rate", "6.05%"];
+  valuationRows[5] = ["Equity", "$4,957,750", "Closing Costs", "$140,000", "", "All-In Interest Rate (SOFR+220bps)", "6.50%"];
+  valuationRows[6] = ["", "", "", "", "", "LTC", "65.0%"];
+  valuationRows[7] = ["", "", "Upfront CapEx", "$25,000", "", "Loan Amount", "$9,207,250"];
+  valuationRows[8] = ["", "", "", "", "", "Equity Required", "$4,957,750"];
+  valuationRows[9] = ["", "", "", "", "", "Total CapEx", "$25,000"];
+  valuationRows[10] = ["", "", "", "", "", "NRSF", "72,323"];
+  valuationRows[11] = ["Total Sources", "$14,165,000", "Total Uses", "$14,165,000", "", "Price / SqFt", "$195.86"];
+  valuationRows[12] = ["", "", "", "", "", "Asset Mgmt Fee", "$75,000"];
+  valuationRows[15] = ["Beginning Balance", "$9,207,250", "$9,207,250", "$9,132,471", "$8,975,442", "$8,807,897"];
+  valuationRows[16] = ["Annual Debt Service", "$598,471", "$672,244", "$746,016", "$746,016", "$746,016"];
+  valuationRows[17] = ["Interest Portion", "$598,471", "$597,465", "$588,987", "$578,471", "$567,250"];
+  valuationRows[18] = ["Principal Portion", "$0", "$74,779", "$157,029", "$167,545", "$178,766"];
+  valuationRows[19] = ["DSCR", "1.77x", "1.80x", "1.70x", "1.79x", "1.89x"];
+  valuationRows[20] = ["Ending Balance", "$9,207,250", "$9,132,471", "$8,975,442", "$8,807,897", "$8,629,131"];
+  valuationRows[24] = ["Net Operating Income", "$1,057,993", "$1,211,157", "$1,271,702", "$1,338,358", "$1,410,832"];
+  valuationRows[25] = ["Less: CapEx", "-", "-", "-", "-", "-"];
+  valuationRows[26] = ["Less: Debt Service", "($598,471)", "($672,244)", "($746,016)", "($746,016)", "($746,016)"];
+  valuationRows[27] = ["Less: Asset Mgmt Fee", "($75,000)", "($75,000)", "($75,000)", "($75,000)", "($75,000)"];
+  valuationRows[28] = ["Levered Cash Flow", "$384,522", "$463,913", "$450,686", "$517,342", "$589,816"];
+  valuationRows[30] = ["Cash-on-Cash Return", "7.8%", "9.4%", "9.1%", "10.4%", "11.9%"];
+  valuationRows[31] = ["Yield on Cost", "7.5%", "8.6%", "9.0%", "9.4%", "10.0%"];
+  valuationRows[35] = ["", "3-Year Hold", "5-Year Hold", "7-Year Hold"];
+  valuationRows[37] = ["Exit Year NOI", "$1,271,702", "$1,410,832", "$1,555,442"];
+  valuationRows[38] = ["Forward NOI (exit + 1 yr)", "$1,335,287", "$1,481,374", "$1,633,215"];
+  valuationRows[39] = ["Gross Sale Price / Price Per Square Foot", "$22,254,787 / $308", "$24,689,563 / $341", "$27,220,243 / $376"];
+  valuationRows[40] = ["Disposition Costs", "($445,096)", "($493,791)", "($544,405)"];
+  valuationRows[41] = ["Net Sale Price", "$21,809,691", "$24,195,772", "$26,675,839"];
+  valuationRows[42] = ["Loan Balance at Exit", "$8,975,442", "$8,629,131", "$8,234,880"];
+  valuationRows[43] = ["Net Equity Proceeds", "$12,834,249", "$15,566,641", "$18,440,959"];
+  valuationRows[46] = ["Levered IRR", "43.8%", "32.0%", "27.3%"];
+  valuationRows[47] = ["Equity Multiple", "2.85x", "3.63x", "4.58x"];
+  valuationRows[73] = ["Cap Rate Sensitivity — Implied Value at Exit (Year 5 NOI)"];
+  valuationRows[74] = ["Exit Cap Rate", "Gross Sale", "Net Proceeds", "Equity Proceeds", "Equity Multiple", "Levered IRR"];
+  valuationRows[75] = ["5.00%", "$29,627,476", "$29,034,926", "$20,405,796", "4.60x", "38.4%"];
+  valuationRows[76] = ["5.25%", "$28,216,644", "$27,652,311", "$19,023,180", "4.32x", "36.7%"];
+  valuationRows[77] = ["5.50%", "$26,934,069", "$26,395,388", "$17,766,257", "4.07x", "35.1%"];
+  valuationRows[78] = ["5.75%", "$25,763,022", "$25,247,762", "$16,618,631", "3.84x", "33.5%"];
+  valuationRows[79] = ["6.00%", "$24,689,563", "$24,195,772", "$15,566,641", "3.63x", "32.0%"];
+  valuationRows[80] = ["6.25%", "$23,701,981", "$23,227,941", "$14,598,810", "3.43x", "30.5%"];
+  valuationRows[81] = ["6.50%", "$22,790,366", "$22,334,559", "$13,705,428", "3.25x", "29.1%"];
+  valuationRows[82] = ["6.75%", "$21,946,278", "$21,507,353", "$12,878,222", "3.08x", "27.7%"];
+  valuationRows[84] = ["Interest Rate Sensitivity — Levered IRR (Exit Cap × All-In Rate)"];
+  valuationRows[86] = ["Exit Cap \\ All-In Rate", "5.30%", "5.80%", "6.50%", "7.00%", "7.50%"];
+  valuationRows[87] = ["5.00%", "39.8%", "39.2%", "38.4%", "37.9%", "37.3%"];
+  valuationRows[88] = ["5.50%", "36.5%", "35.9%", "35.1%", "34.5%", "33.9%"];
+  valuationRows[89] = ["6.00%", "33.4%", "32.8%", "32.0%", "31.4%", "30.8%"];
+  valuationRows[90] = ["6.50%", "30.6%", "30.0%", "29.1%", "28.5%", "27.8%"];
+  valuationRows[91] = ["7.00%", "28.0%", "27.3%", "26.4%", "25.7%", "25.1%"];
+
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(valuationRows), "Valuation Sheet");
+
+  const proformaRows: string[][] = Array.from({ length: 60 }, () => []);
+  proformaRows[7] = ["", "", "", "", "", "Income", "T-12 Avg", "T-12", "Jun-26", "Jul-26", "Aug-26", "Sep-26", "Oct-26", "Nov-26", "Dec-26", "Jan-27", "Feb-27", "Mar-27", "Apr-27", "May-27", "", "Current Mgmt", "IMPACT TO N.O.I"];
+  proformaRows[8] = ["", "", "", "", "", "Rental Income", "$104,643", "$1,255,711", "$108,741", "$109,648", "$110,561", "$111,483", "$112,412", "$113,349", "$114,293", "$115,246", "$116,206", "$117,174", "$118,151", "$119,135", "$1,366,399", "$1,343,610", "$22,788"];
+  proformaRows[9] = ["", "", "", "", "", "STORE Rate Mgmt. Rev", "$-", "$-", "$-", "$-", "$-", "$5,574", "$6,698", "$7,832", "$8,975", "$10,127", "$11,289", "$12,461", "$13,642", "$14,834", "$91,432", "$-", "$91,432"];
+  proformaRows[10] = ["", "", "", "", "", "Discounts", "$(2,572)", "$(30,859)", "$(4,265)", "$(6,144)", "$(5,575)", "$(6,871)", "$(5,459)", "$(4,234)", "$(4,910)", "$(8,825)", "$(7,379)", "$(7,660)", "$(5,737)", "$(5,118)", "$(72,176)", "$(72,176)", ""];
+  proformaRows[11] = ["", "", "", "", "", "Net Rental Income", "$102,071", "$1,224,852", "$104,476", "$103,504", "$104,986", "$110,186", "$113,651", "$116,946", "$118,358", "$116,548", "$120,116", "$121,976", "$126,056", "$128,851", "$1,385,655", "$1,271,434", "$114,220"];
+  proformaRows[13] = ["", "", "", "", "", "Admin Fee Income", "$798", "$9,570", "$609", "$870", "$783", "$957", "$754", "$580", "$667", "$1,189", "$986", "$1,015", "$754", "$667", "$9,831", "$9,831", ""];
+  proformaRows[14] = ["", "", "", "", "", "Late Fee Income", "$5,385", "$64,625", "$5,824", "$5,707", "$5,593", "$5,481", "$5,372", "$5,264", "$5,159", "$5,056", "$4,955", "$4,856", "$4,759", "$4,663", "$62,690", "$62,690", ""];
+  proformaRows[15] = ["", "", "", "", "", "Current Tenant Protection Split", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", ""];
+  proformaRows[16] = ["", "$15.00", "", "", "", "STORE Tenant Protection Split", "$-", "$-", "$2,618", "$2,702", "$2,787", "$2,871", "$2,956", "$3,040", "$3,125", "$3,209", "$3,294", "$3,378", "$3,378", "$3,378", "$36,736", "$-", "$36,736"];
+  proformaRows[17] = ["", "", "", "", "", "Retail Sales Income", "$520", "$6,245", "$441", "$630", "$567", "$693", "$546", "$420", "$483", "$861", "$714", "$735", "$546", "$483", "$7,119", "$6,308", "$811"];
+  proformaRows[20] = ["", "", "", "", "", "Total Operating Income", "$108,793", "$1,305,515", "$113,987", "$113,433", "$114,735", "$120,207", "$123,298", "$126,270", "$127,811", "$126,882", "$130,083", "$131,978", "$135,511", "$138,062", "$1,502,256", "$1,350,488", "$151,767"];
+  proformaRows[22] = ["", "", "", "", "", "Expenses"];
+  proformaRows[23] = ["", "", "", "", "", "Advertising & Marketing", "$1,417", "$17,009", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$2,000", "$24,000", "$24,000", ""];
+  proformaRows[24] = ["", "1.40%", "", "", "", "Current Payment Processing Fees", "$1,496", "$17,957", "$1,592", "$1,585", "$1,603", "$1,679", "$1,723", "$1,764", "$1,786", "$1,773", "$1,817", "$1,844", "$1,893", "$1,929", "$-", "$20,988", ""];
+  proformaRows[25] = ["", "", "", "", "", "STORE Payment Processing Fees", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$-", "$20,988"];
+  proformaRows[28] = ["", "", "", "", "", "Current Mgmt. Fee", "$6,366", "$76,394", "$6,195", "$6,138", "$6,225", "$6,534", "$6,739", "$6,935", "$7,018", "$6,911", "$7,123", "$7,233", "$7,475", "$7,641", "$-", "$82,166", ""];
+  proformaRows[29] = ["", "", "", "", "", "STORE Mgmt. Fee", "$-", "$-", "$4,179", "$4,140", "$4,199", "$4,407", "$4,546", "$4,678", "$4,734", "$4,662", "$4,805", "$4,879", "$5,042", "$5,154", "$55,426", "$-", "$26,740"];
+  proformaRows[30] = ["", "54Hrs/Wk @ $22 + Burden Rate", "", "", "", "Payroll", "$6,126", "$73,516", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$6,987", "$83,842", "$78,164", "$(5,679)"];
+  proformaRows[31] = ["", "", "", "", "", "Office Supplies", "$166", "$1,989", "$166", "$166", "$166", "$166", "$166", "$166", "$166", "$166", "$166", "$166", "$166", "$166", "$1,989", "$1,989", ""];
+  proformaRows[32] = ["", "", "", "", "", "Repairs & Maintenance", "$2,083", "$25,002", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$2,083", "$25,002", "$25,002", ""];
+  proformaRows[33] = ["", "", "", "", "", "Security", "$130", "$1,555", "$162", "$162", "$162", "$162", "$162", "$162", "$162", "$162", "$162", "$162", "$162", "$162", "$1,944", "$1,944", ""];
+  proformaRows[34] = ["", "", "", "", "", "Retail Products", "$210", "$2,515", "$210", "$210", "$210", "$210", "$210", "$210", "$210", "$210", "$210", "$210", "$210", "$210", "$2,515", "$2,515", ""];
+  proformaRows[35] = ["", "", "", "", "", "Telephone & Internet", "$398", "$4,771", "$398", "$398", "$398", "$398", "$398", "$398", "$398", "$398", "$398", "$398", "$398", "$398", "$4,771", "$4,771", ""];
+  proformaRows[36] = ["", "", "", "", "", "Software", "$1,302", "$15,627", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$1,850", "$22,200", "$15,440", "$(6,760)"];
+  proformaRows[38] = ["", "", "", "", "", "Prof Fees - Legal/Acctg", "$618", "$7,418", "$618", "$618", "$618", "$618", "$618", "$618", "$618", "$618", "$618", "$618", "$618", "$618", "$7,418", "$7,418", ""];
+  proformaRows[39] = ["", "", "", "", "", "Utilities", "$2,680", "$32,156", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$2,680", "$32,156", "$32,156", ""];
+  proformaRows[40] = ["", "", "", "", "", "Insurance", "$3,000", "$36,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$3,000", "$36,000", "$36,000", ""];
+  proformaRows[41] = ["", "", "", "", "", "Property Taxes", "$12,083", "$145,000", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$12,083", "$145,000", "$145,000", ""];
+  proformaRows[44] = ["", "", "", "", "", "Total Operating Expense", "$38,242", "$458,909", "$36,582", "$36,543", "$36,602", "$36,810", "$36,949", "$37,081", "$37,137", "$37,065", "$37,208", "$37,282", "$37,445", "$37,557", "$444,262", "$479,552", "$35,289"];
+  proformaRows[46] = ["", "", "", "", "", "Net Operating Income", "$70,550", "$846,606", "$77,405", "$76,889", "$78,132", "$83,397", "$86,349", "$89,189", "$90,673", "$89,817", "$92,875", "$94,696", "$98,066", "$100,505", "$1,057,993", "$870,937", "$187,057"];
+  proformaRows[3] = ["", "", "", "", "", "Projected Rate", "", "", "$1.58", "$1.59", "$1.61", "$1.62", "$1.63", "$1.65", "$1.66", "$1.68", "$1.69", "$1.70", "$1.72", "$1.73"];
+  proformaRows[4] = ["", "", "", "", "", "General Vacancy", "", "", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%", "4.90%"];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(proformaRows), "Proforma");
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 function buildTemplateBuffer(): Buffer {
   const zip = new PizZip();
   zip.file("ppt/slides/slide1.xml", "<a:t>{{PUBLISHMONTHYEAR}}</a:t>");
@@ -391,6 +535,41 @@ test("parsePropertyAnalysisWorkbook maps Public template workbooks to return-pro
   assert.equal(reviews?.source, "manual");
   assert.equal(snapshotDescription?.source, "derived");
   assert.equal(snapshotDescription?.defaultValue, "N/A ERROR");
+});
+
+test("parsePropertyAnalysisWorkbook adapts to newer public-template layouts dynamically", async () => {
+  await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
+  await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
+
+  const parsed = await parsePropertyAnalysisWorkbook(buildNewLayoutPublicTemplateWorkbookBuffer(), "CharlestonProformaApr.9.26.xlsx", {
+    templatePath: TEST_TEMPLATE_PATH,
+  });
+  const rentalIncomeT12Avg = parsed.tokenFields.find((field) => field.token === "CELL0003");
+  const totalOperatingIncomeYear1 = parsed.tokenFields.find((field) => field.token === "CELL0171");
+  const projectedRateMonth1 = parsed.tokenFields.find((field) => field.token === "CELL0175");
+  const vacancyMonth1 = parsed.tokenFields.find((field) => field.token === "CELL0187");
+  const spreadBps = parsed.tokenFields.find((field) => field.token === "CELL0492");
+  const interestSensitivity = parsed.tokenFields.find((field) => field.token === "CELL0621");
+  const sensitivityYear = parsed.tokenFields.find((field) => field.token === "CELL0650");
+  const capRateNetProceeds = parsed.tokenFields.find((field) => field.token === "CELL0656");
+  const capRateMultiple = parsed.tokenFields.find((field) => field.token === "CELL0658");
+  const warningsText = parsed.warnings.join(" ");
+
+  assert.equal(parsed.metadata.workbookType, "public-proforma-template");
+  assert.equal(rentalIncomeT12Avg?.defaultValue, "$104,643");
+  assert.equal(totalOperatingIncomeYear1?.defaultValue, "$1,502,256");
+  assert.equal(projectedRateMonth1?.defaultValue, "$1.58");
+  assert.equal(vacancyMonth1?.defaultValue, "4.90%");
+  assert.equal(spreadBps?.defaultValue, "220");
+  assert.equal(interestSensitivity?.defaultValue, "39.8%");
+  assert.equal(sensitivityYear?.defaultValue, "5");
+  assert.equal(capRateNetProceeds?.defaultValue, "$29,034,926");
+  assert.equal(capRateMultiple?.defaultValue, "4.60");
+  assert.doesNotMatch(warningsText, /Total Operating Income summary row/i);
+  assert.doesNotMatch(warningsText, /unable to locate row "Rental Income"/i);
+  assert.doesNotMatch(warningsText, /unable to locate "Spread \(bps\)"/i);
+  assert.doesNotMatch(warningsText, /interest sensitivity row/i);
+  assert.doesNotMatch(warningsText, /cap rate sensitivity row/i);
 });
 
 test("parsePropertyAnalysisWorkbook derives slide 2 callouts from T-12 and STORE values instead of comparison columns", async () => {
