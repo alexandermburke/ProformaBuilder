@@ -563,21 +563,177 @@ function buildTemplateBuffer(): Buffer {
   );
   zip.file(
     "ppt/slides/slide4.xml",
-    "<a:t>{{CELL0003}}</a:t><a:t>{{CELL0031}}</a:t><a:t>{{CELL0171}}</a:t><a:t>{{CELL0175}}</a:t><a:t>{{CELL0187}}</a:t>",
+    "<a:t>{{CELL0003}}</a:t><a:t>{{CELL0031}}</a:t><a:t>{{CELL0171}}</a:t><a:t>{{CELL0175}}</a:t><a:t>{{CELL0187}}</a:t><a:t>{{CELL1011}}</a:t><a:t>{{CELL1012}}</a:t>",
   );
   zip.file(
     "ppt/slides/slide5.xml",
-    "<a:t>{{CELL0201}}</a:t><a:t>{{CELL0438}}</a:t><a:t>{{CELL0452}}</a:t><a:t>{{CELL0454}}</a:t><a:t>{{CELL0473}}</a:t><a:t>{{CELL0487}}</a:t>",
+    "<a:t>{{CELL0201}}</a:t><a:t>{{CELL0438}}</a:t><a:t>{{CELL0452}}</a:t><a:t>{{CELL0454}}</a:t><a:t>{{CELL0473}}</a:t><a:t>{{CELL0487}}</a:t><a:t>{{CELL1031}}</a:t><a:t>{{CELL1035}}</a:t>",
   );
   zip.file(
     "ppt/slides/slide6.xml",
-    "<a:t>{{CELL0490}}</a:t><a:t>{{CELL0492}}</a:t><a:t>{{CELL0506}}</a:t><a:t>({{CELL0551}})</a:t><a:t>{{CELL0568}}</a:t>",
+    "<a:t>{{CELL0490}}</a:t><a:t>All-In Interest Rate (SOFR+{{CELL0492}}bps)</a:t><a:t>{{CELL0506}}</a:t><a:t>({{CELL0551}})</a:t><a:t>{{CELL0561}}</a:t><a:t>{{CELL0562}}</a:t><a:t>{{CELL0563}}</a:t><a:t>{{CELL0564}}</a:t><a:t>{{CELL0565}}</a:t><a:t>{{CELL0568}}</a:t>",
   );
   zip.file(
     "ppt/slides/slide7.xml",
-    "<a:t>{{CELL0578}}</a:t><a:t>{{CELL0604}}</a:t><a:t>{{CELL0621}}</a:t><a:t>{{CELL0650}}</a:t><a:t>{{CELL0656}}</a:t><a:t>{{CELL0658}}x</a:t>",
+    "<a:t>{{CELL0578}}</a:t><a:t>{{CELL0604}}</a:t><a:t>{{CELL0621}}</a:t><a:t>Year {{CELL0650}} NOI</a:t><a:t>Year {{CELL_0651}} NOI</a:t><a:t>Year {{CELL_0652}} NOI</a:t><a:t>Year {{CELL_0653}} NOI</a:t><a:t>Year {{CELL_0654}} NOI</a:t><a:t>{{CELL0656}}</a:t><a:t>{{CELL0658}}x</a:t>",
   );
   return Buffer.from(zip.generate({ type: "uint8array" }));
+}
+
+function buildAcquisitionPrintSheetFallbackWorkbookBuffer(): Buffer {
+  const workbook = XLSX.read(buildExpandedLegacyPublicTemplateWorkbookBuffer(), { type: "buffer" });
+
+  const inputsRows = XLSX.utils.sheet_to_json(workbook.Sheets["Inputs & Drivers"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+  inputsRows[10] = ["Loan-to-Cost (LTC)", "", "", "55.00%", "", "Spread (bps)", "", "0.022", "helper text"];
+  workbook.Sheets["Inputs & Drivers"] = XLSX.utils.aoa_to_sheet(inputsRows);
+
+  const valuationRows = XLSX.utils.sheet_to_json(workbook.Sheets["Valuation Sheet"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+  valuationRows[28] = ["Levered Cash Flow", "", "", "", "", ""];
+  workbook.Sheets["Valuation Sheet"] = XLSX.utils.aoa_to_sheet(valuationRows);
+
+  const acquisitionRows: string[][] = Array.from({ length: 40 }, () => []);
+  acquisitionRows[29] = ["", "Levered Cash Flow", "421956.30", "584787.08", "640969.21", "666646.73", "693644.05"];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(acquisitionRows), "Print - Acquisition & Returns");
+
+  const exitSensitivityRows: string[][] = Array.from({ length: 10 }, () => []);
+  exitSensitivityRows[6] = ["", "", "", "", "", "", "All-In Interest Rate (SOFR+220bps)"];
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(exitSensitivityRows), "Print - Exit & Sensitivity");
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+function buildStatusColumnFallbackWorkbookBuffer(): Buffer {
+  const workbook = XLSX.read(buildExpandedLegacyPublicTemplateWorkbookBuffer(), { type: "buffer" });
+  const proformaRows = XLSX.utils.sheet_to_json(workbook.Sheets["Proforma"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+
+  const headerRow = [...(proformaRows[7] ?? [])];
+  headerRow[19] = "";
+  headerRow[20] = "";
+  headerRow[21] = "Current Mgmt";
+  headerRow[22] = "IMPACT TO N.O.I";
+  proformaRows[7] = headerRow;
+
+  const patchRow = (label: string, impactValue: string): void => {
+    const rowIndex = proformaRows.findIndex((row) => (row?.[3] ?? "") === label);
+    if (rowIndex < 0) throw new Error(`Missing Proforma row ${label}`);
+    const row = [...(proformaRows[rowIndex] ?? [])];
+    const storeValue = row[18] ?? "";
+    const currentMgmtValue = row[19] ?? "";
+    row[18] = "";
+    row[19] = "";
+    row[20] = storeValue;
+    row[21] = currentMgmtValue;
+    row[22] = "";
+    row[24] = storeValue;
+    row[25] = impactValue;
+    row[26] = "Check";
+    proformaRows[rowIndex] = row;
+  };
+
+  patchRow("Admin Fee Income", "0");
+  patchRow("Late Fee Income", "0");
+  patchRow("Current Payment Processing Fees", "0");
+  patchRow("Current Mgmt. Fee", "0");
+
+  workbook.Sheets["Proforma"] = XLSX.utils.aoa_to_sheet(proformaRows);
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+function buildDuplicateCashFlowHeaderWorkbookBuffer(): Buffer {
+  const workbook = XLSX.read(buildNewLayoutPublicTemplateWorkbookBuffer(), { type: "buffer" });
+  const valuationRows = XLSX.utils.sheet_to_json(workbook.Sheets["Valuation Sheet"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+
+  valuationRows[22] = ["Levered Cash Flow"];
+  valuationRows[23] = ["Year 1", "Year 2", "Year 3", "Year 4", "Year 5"];
+  valuationRows[24] = ["Net Operating Income", "1057993.45", "1211156.809", "1271702.122", "1338357.782", "1410832.183"];
+  valuationRows[25] = ["Less: CapEx", "0", "0", "0", "0", "0"];
+  valuationRows[26] = ["Less: Debt Service", "-598471.25", "-672243.6932", "-746016.1364", "-746016.1364", "-746016.1364"];
+  valuationRows[27] = ["Less: Asset Mgmt Fee", "-75000", "-75000", "-75000", "-75000", "-75000"];
+  valuationRows[28] = ["Levered Cash Flow", "384522.2005", "463913.1156", "450685.9859", "517341.6454", "589816.0467"];
+  workbook.Sheets["Valuation Sheet"] = XLSX.utils.aoa_to_sheet(valuationRows);
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+function buildZeroStartPublicTemplateWorkbookBuffer(): Buffer {
+  const workbook = XLSX.read(buildNewLayoutPublicTemplateWorkbookBuffer(), { type: "buffer" });
+
+  const inputsRows = XLSX.utils.sheet_to_json(workbook.Sheets["Inputs & Drivers"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+  const unitsOccupiedRowIndex = inputsRows.findIndex((row) => row.includes("Units Occupied"));
+  if (unitsOccupiedRowIndex >= 0) {
+    inputsRows[unitsOccupiedRowIndex] = ["", "Units Occupied", "", "", "0", "Rented"];
+  }
+  const exitCapRowIndex = inputsRows.findIndex((row) => row.includes("Exit Cap Rate"));
+  if (exitCapRowIndex >= 0) {
+    inputsRows[exitCapRowIndex] = ["", "Exit Cap Rate", "", "", "7.50%"];
+  }
+  workbook.Sheets["Inputs & Drivers"] = XLSX.utils.aoa_to_sheet(inputsRows);
+
+  const proformaRows = XLSX.utils.sheet_to_json(workbook.Sheets["Proforma"], {
+    header: 1,
+    raw: false,
+    defval: "",
+  }) as string[][];
+  const patchSummaryRow = (label: string, values: Record<number, string>): void => {
+    const rowIndex = proformaRows.findIndex((row) => (row?.[5] ?? "") === label);
+    if (rowIndex < 0) throw new Error(`Missing Proforma row ${label}`);
+    const row = [...(proformaRows[rowIndex] ?? [])];
+    for (const [index, value] of Object.entries(values)) {
+      row[Number(index)] = value;
+    }
+    proformaRows[rowIndex] = row;
+  };
+
+  patchSummaryRow("Total Operating Income", {
+    6: "$-",
+    7: "$-",
+    20: "$279,495",
+    21: "$(29,638)",
+    22: "$309,134",
+    24: "$279,495",
+    25: "$309,134",
+  });
+  patchSummaryRow("Total Operating Expense", {
+    6: "$52,428",
+    7: "$629,142",
+    20: "$439,980",
+    21: "$638,125",
+    22: "$198,145",
+    24: "$439,980",
+    25: "$198,145",
+  });
+  patchSummaryRow("Net Operating Income", {
+    6: "$(52,428)",
+    7: "$(629,142)",
+    20: "$(160,485)",
+    21: "$(667,763)",
+    22: "$507,278",
+    24: "$(160,485)",
+    25: "$507,278",
+  });
+  workbook.Sheets["Proforma"] = XLSX.utils.aoa_to_sheet(proformaRows);
+
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 const TEST_TEMPLATE_PATH = path.join(process.cwd(), "tmp", "property-analysis-package-test-template.pptx");
@@ -611,13 +767,26 @@ test("scanPackageTemplateTokens returns the managed token set including direct s
     "CELL0492",
     "CELL0506",
     "CELL0551",
+    "CELL0561",
+    "CELL0562",
+    "CELL0563",
+    "CELL0564",
+    "CELL0565",
     "CELL0568",
     "CELL0578",
     "CELL0604",
     "CELL0621",
     "CELL0650",
+    "CELL0651",
+    "CELL0652",
+    "CELL0653",
+    "CELL0654",
     "CELL0656",
     "CELL0658",
+    "CELL1011",
+    "CELL1012",
+    "CELL1031",
+    "CELL1035",
     "EXPREDPERC",
     "NOIPERCENT",
     "OCCPER",
@@ -821,6 +990,122 @@ test("parsePropertyAnalysisWorkbook resolves expanded slide 4 and 5 package-tabl
   assert.equal(securityT12Avg?.defaultValue, "$219");
   assert.equal(bankChargesT12Avg?.defaultValue, "$-");
   assert.equal(otherExpenseT12Avg?.defaultValue, "$-");
+});
+
+test("parsePropertyAnalysisWorkbook fills acquisition slide 6/7 tokens from stable sources and normalizes malformed template keys", async () => {
+  await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
+  await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
+
+  const parsed = await parsePropertyAnalysisWorkbook(buildAcquisitionPrintSheetFallbackWorkbookBuffer(), "ABQYaleProformaApr26.xlsx", {
+    templatePath: TEST_TEMPLATE_PATH,
+  });
+  const slide6Spread = parsed.tokenFields.find((field) => field.token === "CELL0492");
+  const leveredYear1 = parsed.tokenFields.find((field) => field.token === "CELL0561");
+  const leveredYear2 = parsed.tokenFields.find((field) => field.token === "CELL0562");
+  const leveredYear3 = parsed.tokenFields.find((field) => field.token === "CELL0563");
+  const leveredYear4 = parsed.tokenFields.find((field) => field.token === "CELL0564");
+  const leveredYear5 = parsed.tokenFields.find((field) => field.token === "CELL0565");
+  const malformedYearToken = parsed.tokenFields.find((field) => field.token === "CELL_0651");
+  const normalizedYearToken = parsed.tokenFields.find((field) => field.token === "CELL0651");
+
+  assert.equal(slide6Spread?.defaultValue, "220");
+  assert.equal(leveredYear1?.defaultValue, "$421,956");
+  assert.equal(leveredYear2?.defaultValue, "$584,787");
+  assert.equal(leveredYear3?.defaultValue, "$640,969");
+  assert.equal(leveredYear4?.defaultValue, "$666,647");
+  assert.equal(leveredYear5?.defaultValue, "$693,644");
+  assert.equal(malformedYearToken, undefined);
+  assert.equal(normalizedYearToken?.defaultValue, "5");
+
+  const rendered = await renderPropertyAnalysisPackage(buildFinalTokenMap(parsed, {}), { templatePath: TEST_TEMPLATE_PATH });
+  const zip = new PizZip(rendered);
+  const slide6Xml = zip.file("ppt/slides/slide6.xml")?.asText() ?? "";
+  const slide7Xml = zip.file("ppt/slides/slide7.xml")?.asText() ?? "";
+
+  assert.match(slide6Xml, /SOFR\+220bps/);
+  assert.match(slide6Xml, /\$421,956/);
+  assert.match(slide6Xml, /\$693,644/);
+  assert.match(slide7Xml, /Year 5 NOI/);
+  assert.doesNotMatch(slide7Xml, /\{\{CELL_0651\}\}/);
+});
+
+test("parsePropertyAnalysisWorkbook falls back to mirrored Proforma comparison columns when the primary impact cells are blank", async () => {
+  await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
+  await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
+
+  const parsed = await parsePropertyAnalysisWorkbook(buildStatusColumnFallbackWorkbookBuffer(), "ABQYaleProformaApr26.xlsx", {
+    templatePath: TEST_TEMPLATE_PATH,
+  });
+
+  const adminImpact = parsed.tokenFields.find((field) => field.token === "CELL1011");
+  const lateFeeImpact = parsed.tokenFields.find((field) => field.token === "CELL1012");
+  const paymentProcessingImpact = parsed.tokenFields.find((field) => field.token === "CELL1031");
+  const currentMgmtImpact = parsed.tokenFields.find((field) => field.token === "CELL1035");
+
+  assert.equal(adminImpact?.source, "extracted");
+  assert.equal(lateFeeImpact?.source, "extracted");
+  assert.equal(paymentProcessingImpact?.source, "extracted");
+  assert.equal(currentMgmtImpact?.source, "extracted");
+  assert.notEqual(adminImpact?.defaultValue, "");
+  assert.notEqual(paymentProcessingImpact?.defaultValue, "");
+
+  const rendered = await renderPropertyAnalysisPackage(buildFinalTokenMap(parsed, {}), { templatePath: TEST_TEMPLATE_PATH });
+  const zip = new PizZip(rendered);
+  const slide4Xml = zip.file("ppt/slides/slide4.xml")?.asText() ?? "";
+  const slide5Xml = zip.file("ppt/slides/slide5.xml")?.asText() ?? "";
+
+  assert.doesNotMatch(slide4Xml, /\{\{CELL1011\}\}/);
+  assert.doesNotMatch(slide5Xml, /\{\{CELL1031\}\}/);
+});
+
+test("parsePropertyAnalysisWorkbook prefers the populated levered cash flow row when a section header shares the same label", async () => {
+  await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
+  await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
+
+  const parsed = await parsePropertyAnalysisWorkbook(buildDuplicateCashFlowHeaderWorkbookBuffer(), "CharlestonProformaApr.9.26.xlsx", {
+    templatePath: TEST_TEMPLATE_PATH,
+  });
+
+  const leveredYear1 = parsed.tokenFields.find((field) => field.token === "CELL0561");
+  const leveredYear2 = parsed.tokenFields.find((field) => field.token === "CELL0562");
+  const leveredYear3 = parsed.tokenFields.find((field) => field.token === "CELL0563");
+  const leveredYear4 = parsed.tokenFields.find((field) => field.token === "CELL0564");
+  const leveredYear5 = parsed.tokenFields.find((field) => field.token === "CELL0565");
+
+  assert.equal(leveredYear1?.source, "extracted");
+  assert.equal(leveredYear2?.source, "extracted");
+  assert.equal(leveredYear3?.source, "extracted");
+  assert.equal(leveredYear4?.source, "extracted");
+  assert.equal(leveredYear5?.source, "extracted");
+  assert.match(leveredYear1?.matchedKey ?? "", /Valuation Sheet!R29C2$/);
+  assert.match(leveredYear2?.matchedKey ?? "", /Valuation Sheet!R29C3$/);
+  assert.match(leveredYear3?.matchedKey ?? "", /Valuation Sheet!R29C4$/);
+  assert.match(leveredYear4?.matchedKey ?? "", /Valuation Sheet!R29C5$/);
+  assert.match(leveredYear5?.matchedKey ?? "", /Valuation Sheet!R29C6$/);
+  assert.doesNotMatch(parsed.warnings.join(" "), /cash flow row "Levered Cash Flow" did not expose usable Year 1-Year 5 values/i);
+});
+
+test("parsePropertyAnalysisWorkbook derives zero-occupancy and accounting-zero comparison callouts", async () => {
+  await fs.mkdir(path.dirname(TEST_TEMPLATE_PATH), { recursive: true });
+  await fs.writeFile(TEST_TEMPLATE_PATH, buildTemplateBuffer());
+
+  const parsed = await parsePropertyAnalysisWorkbook(buildZeroStartPublicTemplateWorkbookBuffer(), "HaydenWIPProformaApr26.xlsx", {
+    templatePath: TEST_TEMPLATE_PATH,
+  });
+
+  const occupancy = parsed.tokenFields.find((field) => field.token === "OCCPER");
+  const assetValue = parsed.tokenFields.find((field) => field.token === "ASSETVALUE");
+  const expenseChange = parsed.tokenFields.find((field) => field.token === "EXPREDPERC");
+  const noiIncrease = parsed.tokenFields.find((field) => field.token === "NOIPERCENT");
+  const revenueLift = parsed.tokenFields.find((field) => field.token === "REVENUELIFT");
+
+  assert.equal(occupancy?.defaultValue, "0.00%");
+  assert.equal(occupancy?.source, "derived");
+  assert.equal(assetValue?.defaultValue, "6.2M");
+  assert.equal(expenseChange?.defaultValue, "-30%");
+  assert.equal(noiIncrease?.defaultValue, "-74");
+  assert.equal(revenueLift?.defaultValue, "279");
+  assert.doesNotMatch(parsed.warnings.join(" "), /missing a usable T-12 value for Total Operating Income/i);
 });
 
 test("parsePropertyAnalysisWorkbook derives slide 2 callouts from T-12 and STORE values instead of comparison columns", async () => {

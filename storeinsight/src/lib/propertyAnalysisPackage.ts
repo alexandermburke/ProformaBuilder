@@ -35,16 +35,35 @@ export type PropertyAnalysisTokenField = {
   matchedKey: string | null;
 };
 
+export type PropertyAnalysisImageSlot = {
+  id: string;
+  label: string;
+  description: string;
+  slideNumber: number;
+  mediaPath: string;
+  fileName: string;
+  contentType: string;
+};
+
 export type PropertyAnalysisParseResponse = {
   metadata: PropertyAnalysisWorkbookMetadata;
   warnings: string[];
   templateTokens: string[];
   unresolvedTokens: string[];
   tokenFields: PropertyAnalysisTokenField[];
+  imageSlots: PropertyAnalysisImageSlot[];
 };
 
 type PackageTemplateOptions = {
   templatePath?: string;
+  imageOverrides?: Record<
+    string,
+    {
+      buffer: Buffer;
+      fileName?: string;
+      contentType?: string;
+    }
+  >;
 };
 
 type InternalTokenSection =
@@ -86,6 +105,7 @@ type PackageTokenDefinition = {
 type MatrixColumnSpec = {
   index: number;
   label: string;
+  fallbackIndices?: number[];
   formatter?: (value: string) => string;
 };
 
@@ -180,6 +200,7 @@ const MONTH_TOKEN_COUNT = 12;
 const XML_TAG_PATTERN = /<[^>]+>/g;
 const TOKEN_SPAN_PATTERN = /\{\{[\s\S]*?\}\}/g;
 const SHORT_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
+const TEMPLATE_RASTER_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg']);
 const MALFORMED_OPEN_PAREN_TOKENS = new Set(
   [...buildCellTokenRange(551, 560), ...buildCellTokenRange(591, 593)].map((tokenNumber) =>
     normalizeTokenKey(buildCellToken(tokenNumber)) ?? buildCellToken(tokenNumber),
@@ -295,6 +316,14 @@ function withFormatter(
   formatter?: (value: string) => string,
 ): MatrixColumnSpec {
   return formatter ? { ...column, formatter } : { ...column };
+}
+
+function withFallbackIndices(column: MatrixColumnSpec, fallbackIndices: number[]): MatrixColumnSpec {
+  if (!fallbackIndices.length) return column;
+  return {
+    ...column,
+    fallbackIndices,
+  };
 }
 
 function stripLeadingDollar(value: string): string {
@@ -731,6 +760,11 @@ function detectPublicProformaLayout(rows: string[][]): PublicProformaLayout | nu
     });
     const labelColumnIndex = detectPublicProformaLabelColumn(rows, rowIndex, monthStartIndex);
     const storeIndex = currentMgmtIndex > monthEndIndex ? currentMgmtIndex - 1 : -1;
+    const fallbackStatusColumnIndex = detectPublicProformaStatusColumn(rows, rowIndex, impactIndex);
+    const storeFallbackIndex =
+      fallbackStatusColumnIndex >= 0 && fallbackStatusColumnIndex - 2 > impactIndex ? fallbackStatusColumnIndex - 2 : -1;
+    const impactFallbackIndex =
+      fallbackStatusColumnIndex >= 0 && fallbackStatusColumnIndex - 1 > impactIndex ? fallbackStatusColumnIndex - 1 : -1;
 
     if (
       t12AvgIndex < 0 ||
@@ -749,19 +783,36 @@ function detectPublicProformaLayout(rows: string[][]): PublicProformaLayout | nu
       t12Avg: { index: t12AvgIndex, label: cleanCell(row[t12AvgIndex] ?? 'T-12 Avg') || 'T-12 Avg' },
       t12: { index: t12Index, label: cleanCell(row[t12Index] ?? 'T-12') || 'T-12' },
       monthColumns,
-      store: { index: storeIndex, label: 'STORE' },
+      store: withFallbackIndices({ index: storeIndex, label: 'STORE' }, storeFallbackIndex >= 0 ? [storeFallbackIndex] : []),
       currentMgmt: {
         index: currentMgmtIndex,
         label: cleanCell(row[currentMgmtIndex] ?? 'Current Mgmt') || 'Current Mgmt',
       },
-      impact: {
-        index: impactIndex,
-        label: cleanCell(row[impactIndex] ?? 'Impact to N.O.I.') || 'Impact to N.O.I.',
-      },
+      impact: withFallbackIndices(
+        {
+          index: impactIndex,
+          label: cleanCell(row[impactIndex] ?? 'Impact to N.O.I.') || 'Impact to N.O.I.',
+        },
+        impactFallbackIndex >= 0 ? [impactFallbackIndex] : [],
+      ),
     };
   }
 
   return null;
+}
+
+function detectPublicProformaStatusColumn(rows: string[][], headerRowIndex: number, impactIndex: number): number {
+  for (let rowIndex = headerRowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex] ?? [];
+    const endColumnIndex = Math.min(row.length - 1, impactIndex + 6);
+    for (let columnIndex = impactIndex + 1; columnIndex <= endColumnIndex; columnIndex += 1) {
+      const normalized = normalizeLabel(rows[rowIndex]?.[columnIndex] ?? '');
+      if (normalized === 'ok' || normalized === 'check') {
+        return columnIndex;
+      }
+    }
+  }
+  return -1;
 }
 
 function buildPublicProformaMatrixRowSpecs(
@@ -793,6 +844,124 @@ function findValueCellForLabels(
     }
   }
   return null;
+}
+
+function findNearestNumericValueCellForLabels(
+  rows: string[][],
+  labels: string[],
+): { rowIndex: number; labelIndex: number; valueIndex: number; value: string } | null {
+  const labelSet = new Set(labels.map(normalizeLabel));
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex] ?? [];
+    for (let labelIndex = 0; labelIndex < row.length; labelIndex += 1) {
+      if (!labelSet.has(normalizeLabel(row[labelIndex] ?? ''))) continue;
+      for (let valueIndex = labelIndex + 1; valueIndex < row.length; valueIndex += 1) {
+        const value = cleanCell(row[valueIndex] ?? '');
+        if (!value) continue;
+        if (parseNumberLike(value) === null && !value.includes('%')) continue;
+        return { rowIndex, labelIndex, valueIndex, value };
+      }
+    }
+  }
+  return null;
+}
+
+function findCellMatchingPattern(
+  rows: string[][] | null,
+  pattern: RegExp,
+): { rowIndex: number; columnIndex: number; value: string } | null {
+  if (!rows) return null;
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex] ?? [];
+    for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
+      const value = cleanCell(row[columnIndex] ?? '');
+      if (!value || !pattern.test(value)) continue;
+      return { rowIndex, columnIndex, value };
+    }
+  }
+  return null;
+}
+
+function extractBasisPointsFromText(value: string): string | null {
+  const match = value.match(/([0-9]+(?:\.[0-9]+)?)\s*bps/i);
+  if (!match) return null;
+  const numeric = Number(match[1]);
+  if (!Number.isFinite(numeric)) return null;
+  return String(Math.round(numeric));
+}
+
+function formatCurrencyTokenValue(value: string): string {
+  const numeric = parseNumberLike(value);
+  if (numeric == null) return value.trim();
+  return formatCurrency(numeric);
+}
+
+function hasValuesInColumns(rows: string[][], rowIndex: number, columnIndices: number[]): boolean {
+  return columnIndices.some((columnIndex) => readMatrixCell(rows, rowIndex, columnIndex).length > 0);
+}
+
+function findRowLabelInColumns(
+  rows: string[][] | null,
+  labels: string[],
+  columnIndices: number[],
+  options?: { startRow?: number; endRow?: number },
+): { rowIndex: number; labelColumnIndex: number } | null {
+  if (!rows) return null;
+  const labelSet = new Set(labels.map(normalizeLabel));
+  const start = options?.startRow ?? 0;
+  const end = Math.min(options?.endRow ?? rows.length - 1, rows.length - 1);
+
+  for (let rowIndex = start; rowIndex <= end; rowIndex += 1) {
+    for (const columnIndex of columnIndices) {
+      const candidate = normalizeLabel(rows[rowIndex]?.[columnIndex] ?? '');
+      if (!candidate || !labelSet.has(candidate)) continue;
+      return { rowIndex, labelColumnIndex: columnIndex };
+    }
+  }
+
+  return null;
+}
+
+function collectValueCellsToRight(
+  row: string[],
+  labelColumnIndex: number,
+  count: number,
+): Array<{ valueIndex: number; value: string }> {
+  const matches: Array<{ valueIndex: number; value: string }> = [];
+  for (let valueIndex = labelColumnIndex + 1; valueIndex < row.length; valueIndex += 1) {
+    const value = cleanCell(row[valueIndex] ?? '');
+    if (!value) continue;
+    matches.push({ valueIndex, value });
+    if (matches.length >= count) break;
+  }
+  return matches;
+}
+
+function resolveSpreadBasisPoints(
+  inputsRows: string[][],
+  exitSensitivityRows: string[][] | null,
+): { value: string; matchedKey: string } | null {
+  const spreadCell = findNearestNumericValueCellForLabels(inputsRows, ['Spread (bps)', 'Spread']);
+  if (spreadCell) {
+    return {
+      value: percentToBasisPoints(spreadCell.value),
+      matchedKey: `Inputs & Drivers!R${spreadCell.rowIndex + 1}C${spreadCell.valueIndex + 1}`,
+    };
+  }
+
+  const exitSensitivityCell = findCellMatchingPattern(
+    exitSensitivityRows,
+    /all-in interest rate\s*\(sofr\+\s*[0-9.]+\s*bps\)/i,
+  );
+  if (!exitSensitivityCell) return null;
+
+  const bpsValue = extractBasisPointsFromText(exitSensitivityCell.value);
+  if (!bpsValue) return null;
+
+  return {
+    value: bpsValue,
+    matchedKey: `Print - Exit & Sensitivity!R${exitSensitivityCell.rowIndex + 1}C${exitSensitivityCell.columnIndex + 1}`,
+  };
 }
 
 function collectPercentLabeledRows(rows: string[][], startRowIndex: number): number[] {
@@ -860,12 +1029,13 @@ function formatIsoDate(date: Date): string {
 function parseNumberLike(value: string): number | null {
   const raw = value.trim();
   if (!raw) return null;
-  const negative = /^\((.+)\)$/.test(raw);
-  const cleaned = raw
-    .replace(/[,$]/g, '')
-    .replace(/%/g, '')
-    .replace(/[()]/g, '')
-    .trim();
+  const compact = raw.replace(/\s+/g, '').replace(/,/g, '');
+  if (compact === '-' || compact === '$-' || compact === '($-)' || compact === '(-)') {
+    return 0;
+  }
+  const normalized = raw.replace(/[$,%\s]/g, '');
+  const negative = /^\(.+\)$/.test(normalized);
+  const cleaned = normalized.replace(/[()]/g, '').trim();
   if (!/^[-+]?\d*\.?\d+$/.test(cleaned)) return null;
   const numeric = Number(cleaned);
   if (!Number.isFinite(numeric)) return null;
@@ -1173,24 +1343,29 @@ function rowEntries(row: string[]): string[] {
   return row.map((value) => value.trim()).filter(Boolean);
 }
 
-function findValueForLabel(rows: string[][], labels: string[]): string {
+function findValueForLabel(rows: string[][], labels: string[], strategy: 'first' | 'last' = 'last'): string {
   const labelSet = new Set(labels.map(normalizeLabel));
   for (const row of rows) {
     const entries = rowEntries(row);
     if (entries.length < 2) continue;
     for (let index = 0; index < entries.length - 1; index += 1) {
       if (!labelSet.has(normalizeLabel(entries[index] ?? ''))) continue;
-      const value = entries.slice(index + 1).findLast((entry) => entry.trim().length > 0);
+      const candidates = entries.slice(index + 1).filter((entry) => entry.trim().length > 0);
+      const value = strategy === 'first' ? candidates[0] : candidates[candidates.length - 1];
       if (value) return value;
     }
   }
   return '';
 }
 
-function collectKnownLabelValues(rows: string[][], labels: string[]): Array<{ label: string; value: string }> {
+function collectKnownLabelValues(
+  rows: string[][],
+  labels: string[],
+  strategy: 'first' | 'last' = 'last',
+): Array<{ label: string; value: string }> {
   const values: Array<{ label: string; value: string }> = [];
   for (const label of labels) {
-    const value = findValueForLabel(rows, [label]);
+    const value = findValueForLabel(rows, [label], strategy);
     if (value) values.push({ label, value });
   }
   return values;
@@ -1336,8 +1511,59 @@ function findRowIndexByColumnValue(
   return -1;
 }
 
+function findBestRowIndexByColumnValue(
+  rows: string[][],
+  columnIndex: number,
+  label: string,
+  options?: { startRow?: number; endRow?: number; preferredValueColumns?: number[] },
+): number {
+  const target = normalizeLabel(label);
+  const start = options?.startRow ?? 0;
+  const end = Math.min(options?.endRow ?? rows.length - 1, rows.length - 1);
+  const matches: number[] = [];
+
+  for (let rowIndex = start; rowIndex <= end; rowIndex += 1) {
+    const candidate = normalizeLabel(rows[rowIndex]?.[columnIndex] ?? '');
+    if (!candidate || candidate !== target) continue;
+    matches.push(rowIndex);
+  }
+
+  if (!matches.length) return -1;
+  const preferredValueColumns = options?.preferredValueColumns ?? [];
+  if (!preferredValueColumns.length) {
+    return matches[matches.length - 1] ?? -1;
+  }
+
+  for (const rowIndex of matches) {
+    if (hasValuesInColumns(rows, rowIndex, preferredValueColumns)) {
+      return rowIndex;
+    }
+  }
+
+  return matches[matches.length - 1] ?? -1;
+}
+
 function readMatrixCell(rows: string[][], rowIndex: number, columnIndex: number): string {
   return cleanCell(rows[rowIndex]?.[columnIndex] ?? '');
+}
+
+function resolveMatrixColumnValue(
+  rows: string[][],
+  rowIndex: number,
+  column: MatrixColumnSpec,
+): { value: string; matchedColumnIndex: number } {
+  const primaryValue = readMatrixCell(rows, rowIndex, column.index);
+  if (primaryValue) {
+    return { value: primaryValue, matchedColumnIndex: column.index };
+  }
+
+  for (const fallbackIndex of column.fallbackIndices ?? []) {
+    const fallbackValue = readMatrixCell(rows, rowIndex, fallbackIndex);
+    if (!fallbackValue) continue;
+    return { value: fallbackValue, matchedColumnIndex: fallbackIndex };
+  }
+
+  return { value: '', matchedColumnIndex: column.index };
 }
 
 function addMatrixRowTokenSpec(
@@ -1361,14 +1587,15 @@ function addMatrixRowTokenSpec(
 
   spec.tokenNumbers.forEach((tokenNumber, index) => {
     const column = spec.columns[index];
-    const rawValue = readMatrixCell(rows, rowIndex, column.index);
+    const { value: resolvedValue, matchedColumnIndex } = resolveMatrixColumnValue(rows, rowIndex, column);
+    const rawValue = resolvedValue;
     const value = column.formatter ? column.formatter(rawValue) : rawValue;
     setResolvedValue(map, buildCellToken(tokenNumber), {
       label: `${spec.label} / ${column.label}`,
       value,
       section: spec.section,
       source: 'extracted',
-      matchedKey: `${spec.sheetName}!R${rowIndex + 1}C${column.index + 1}`,
+      matchedKey: `${spec.sheetName}!R${rowIndex + 1}C${matchedColumnIndex + 1}`,
     });
   });
 }
@@ -1541,7 +1768,7 @@ function addDerivedValues(
       if (occupied === null || available === null || available === 0) return null;
       return formatPercent((occupied / available) * 100);
     })();
-  if (occupancy) {
+  if (occupancy !== null && occupancy !== '') {
     const hasExplicitOccupancy =
       propertyLookup.has('current sq ft occupancy') || propertyLookup.has('occupancy');
     registerValue(
@@ -2034,6 +2261,8 @@ function addPublicSlide6Mappings(
   map: Map<string, ExtractedTokenRecord>,
   valuationRows: string[][],
   inputsRows: string[][],
+  acquisitionReturnsRows: string[][] | null,
+  exitSensitivityRows: string[][] | null,
 ): string[] {
   const warnings: string[] = [];
 
@@ -2073,16 +2302,16 @@ function addPublicSlide6Mappings(
     );
   }
 
-  const spreadCell = findValueCellForLabels(inputsRows, ['Spread (bps)', 'Spread']);
-  if (!spreadCell) {
+  const spreadBps = resolveSpreadBasisPoints(inputsRows, exitSensitivityRows);
+  if (!spreadBps) {
     warnings.push('Inputs & Drivers: unable to locate "Spread" for slide 6.');
   } else {
     setResolvedValue(map, 'CELL0492', {
       label: 'Spread (bps)',
-      value: percentToBasisPoints(spreadCell.value),
+      value: spreadBps.value,
       section: 'dealEconomics',
       source: 'extracted',
-      matchedKey: `Inputs & Drivers!R${spreadCell.rowIndex + 1}C${spreadCell.valueIndex + 1}`,
+      matchedKey: spreadBps.matchedKey,
     });
   }
 
@@ -2128,26 +2357,58 @@ function addPublicSlide6Mappings(
   ];
 
   for (const series of cashFlowSeries) {
-    const rowIndex = findRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, series.rowLabel, {
+    const valuationColumnIndices = Array.from({ length: 5 }, (_, index) => index + 1);
+    const rowIndex = findBestRowIndexByColumnValue(valuationRows, VALUATION_LABEL_COLUMN_INDEX, series.rowLabel, {
       startRow: 22,
       endRow: 35,
+      preferredValueColumns: valuationColumnIndices,
     });
-    if (rowIndex < 0) {
-      warnings.push(`Valuation Sheet: unable to locate cash flow row "${series.rowLabel}".`);
+    const useValuationSheet = rowIndex >= 0 && hasValuesInColumns(valuationRows, rowIndex, valuationColumnIndices);
+    if (useValuationSheet) {
+      for (let yearOffset = 0; yearOffset < 5; yearOffset += 1) {
+        addDirectCellToken(
+          map,
+          buildCellToken(series.tokenStart + yearOffset),
+          `Cash Flow / ${series.label} / Year ${yearOffset + 1}`,
+          'dealEconomics',
+          'Valuation Sheet',
+          rowIndex,
+          yearOffset + 1,
+          valuationRows,
+          series.formatter,
+        );
+      }
       continue;
     }
-    for (let yearOffset = 0; yearOffset < 5; yearOffset += 1) {
-      addDirectCellToken(
-        map,
-        buildCellToken(series.tokenStart + yearOffset),
-        `Cash Flow / ${series.label} / Year ${yearOffset + 1}`,
-        'dealEconomics',
-        'Valuation Sheet',
-        rowIndex,
-        yearOffset + 1,
-        valuationRows,
-        series.formatter,
-      );
+
+    if (series.rowLabel === 'Levered Cash Flow') {
+      const acquisitionRow = findRowLabelInColumns(acquisitionReturnsRows, [series.rowLabel], [0, 1, 2], {
+        startRow: 0,
+        endRow: 60,
+      });
+      const fallbackValues =
+        acquisitionRow && acquisitionReturnsRows
+          ? collectValueCellsToRight(acquisitionReturnsRows[acquisitionRow.rowIndex] ?? [], acquisitionRow.labelColumnIndex, 5)
+          : [];
+
+      if (acquisitionRow && fallbackValues.length >= 5) {
+        fallbackValues.slice(0, 5).forEach((cell, yearOffset) => {
+          setResolvedValue(map, buildCellToken(series.tokenStart + yearOffset), {
+            label: `Cash Flow / ${series.label} / Year ${yearOffset + 1}`,
+            value: formatCurrencyTokenValue(cell.value),
+            section: 'dealEconomics',
+            source: 'extracted',
+            matchedKey: `Print - Acquisition & Returns!R${acquisitionRow.rowIndex + 1}C${cell.valueIndex + 1}`,
+          });
+        });
+        continue;
+      }
+    }
+
+    if (rowIndex < 0) {
+      warnings.push(`Valuation Sheet: unable to locate cash flow row "${series.rowLabel}".`);
+    } else {
+      warnings.push(`Valuation Sheet: cash flow row "${series.rowLabel}" did not expose usable Year 1-Year 5 values.`);
     }
   }
 
@@ -2398,7 +2659,7 @@ function addPublicSlide7Mappings(
       ? readMatrixCell(valuationRows, capRateSensitivityTitleRowIndex, 0).match(/Year\s+(\d+)/i)
       : null;
   const capRateYearValue = capRateYearMatch?.[1] ?? '';
-  ['CELL0650', 'CELL_0651', 'CELL_0652', 'CELL_0653', 'CELL_0654'].forEach((token) => {
+  ['CELL0650', 'CELL0651', 'CELL0652', 'CELL0653', 'CELL0654'].forEach((token) => {
     setResolvedValue(map, token, {
       label: 'Cap Rate Sensitivity / Exit NOI Year',
       value: capRateYearValue,
@@ -2522,6 +2783,8 @@ function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string):
   const summaryRows = sheetToMatrix(workbook, '5 Year Proforma');
   const modelRows = sheetToMatrix(workbook, 'Model2.0');
   const valuationRows = sheetToMatrix(workbook, 'Valuation Sheet');
+  const acquisitionReturnsRows = sheetToOptionalMatrix(workbook, 'Print - Acquisition & Returns');
+  const exitSensitivityRows = sheetToOptionalMatrix(workbook, 'Print - Exit & Sensitivity');
 
   const propertyLabels = [
     'Name',
@@ -2553,19 +2816,19 @@ function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string):
   ];
 
   const propertyValues = [
-    ...collectKnownLabelValues(inputsRows, propertyLabels),
-    ...collectKnownLabelValues(valuationRows, valuationLabels),
+    ...collectKnownLabelValues(inputsRows, propertyLabels, 'first'),
+    ...collectKnownLabelValues(valuationRows, valuationLabels, 'first'),
   ];
 
   const propertyName =
-    findValueForLabel(inputsRows, ['Name']) ||
+    findValueForLabel(inputsRows, ['Name'], 'first') ||
     firstNonEmpty(
       summaryRows.find((row) => rowEntries(row).some((entry) => normalizeLabel(entry).includes('year proforma'))) ?? [],
     ) ||
     workbook.SheetNames[0] ||
     '';
-  const propertyAddress = findValueForLabel(inputsRows, ['Location']);
-  const propertyType = findValueForLabel(inputsRows, ['Type']);
+  const propertyAddress = findValueForLabel(inputsRows, ['Location'], 'first');
+  const propertyType = findValueForLabel(inputsRows, ['Type'], 'first');
 
   if (propertyType) {
     propertyValues.push({ label: 'Property Type', value: propertyType });
@@ -2589,7 +2852,7 @@ function buildPublicTemplateDefaults(workbook: XLSX.WorkBook, fileName: string):
   } else {
     warnings.push('Proforma sheet is missing direct table rows for slides 4 and 5.');
   }
-  warnings.push(...addPublicSlide6Mappings(defaults, valuationRows, inputsRows));
+  warnings.push(...addPublicSlide6Mappings(defaults, valuationRows, inputsRows, acquisitionReturnsRows, exitSensitivityRows));
   warnings.push(...addPublicSlide7Mappings(defaults, valuationRows));
   if (summaryData.columns.length < 5) {
     warnings.push('5 Year Proforma sheet exposed fewer than five yearly summary columns.');
@@ -2740,6 +3003,135 @@ function processEmbeddedWorkbooks(zip: PizZip, normalizedTokens: Record<string, 
   }
 }
 
+function buildImageSlotId(mediaPath: string): string {
+  return mediaPath.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase();
+}
+
+function mediaPathContentType(mediaPath: string): string {
+  const lowerPath = mediaPath.toLowerCase();
+  if (lowerPath.endsWith('.png')) return 'image/png';
+  if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) return 'image/jpeg';
+  return 'application/octet-stream';
+}
+
+function collectTemplateImageSlots(zip: PizZip): PropertyAnalysisImageSlot[] {
+  const slots: PropertyAnalysisImageSlot[] = [];
+  const seenMediaPaths = new Set<string>();
+  const slideRelPaths = Object.keys(zip.files)
+    .filter((filePath) => /^ppt\/slides\/_rels\/slide\d+\.xml\.rels$/i.test(filePath))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+
+  for (const relPath of slideRelPaths) {
+    const slideNumberMatch = relPath.match(/slide(\d+)\.xml\.rels$/i);
+    if (!slideNumberMatch) continue;
+    const slideNumber = Number(slideNumberMatch[1]);
+    const slidePath = relPath.replace('/_rels/', '/').replace(/\.rels$/i, '');
+    const relFile = zip.file(relPath);
+    const slideFile = zip.file(slidePath);
+    if (!relFile || !slideFile) continue;
+
+    const slideXml = slideFile.asText();
+    const usedRelIds = new Set(Array.from(slideXml.matchAll(/r:embed="([^"]+)"/g), (match) => match[1]));
+    if (usedRelIds.size === 0) continue;
+
+    let slideImageIndex = 0;
+    for (const match of relFile.asText().matchAll(/Id="([^"]+)"[\s\S]*?Target="\.\.\/media\/([^"]+)"/g)) {
+      const relId = match[1];
+      const fileName = path.posix.basename(match[2]);
+      const mediaPath = `ppt/media/${fileName}`;
+      if (!usedRelIds.has(relId) || seenMediaPaths.has(mediaPath)) continue;
+      if (!TEMPLATE_RASTER_IMAGE_EXTENSIONS.has(path.posix.extname(fileName).toLowerCase())) continue;
+      slideImageIndex += 1;
+      seenMediaPaths.add(mediaPath);
+      slots.push({
+        id: buildImageSlotId(mediaPath),
+        label: `Slide ${slideNumber} image ${slideImageIndex}`,
+        description: `Replaces ${fileName} in the managed template.`,
+        slideNumber,
+        mediaPath,
+        fileName,
+        contentType: mediaPathContentType(mediaPath),
+      });
+    }
+  }
+
+  return slots;
+}
+
+async function transcodeImageBuffer(
+  buffer: Buffer,
+  targetContentType: 'image/png' | 'image/jpeg',
+): Promise<Buffer> {
+  const { createCanvas, loadImage } = await import('canvas');
+  const image = await loadImage(buffer);
+  const width = Math.max(1, Math.round(image.width || 1));
+  const height = Math.max(1, Math.round(image.height || 1));
+  const canvas = createCanvas(width, height);
+  const context = canvas.getContext('2d');
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toBuffer(targetContentType);
+}
+
+async function normalizeImageOverrideBuffer(
+  override: {
+    buffer: Buffer;
+    fileName?: string;
+    contentType?: string;
+  },
+  slot: PropertyAnalysisImageSlot,
+): Promise<Buffer> {
+  const lowerFileName = override.fileName?.toLowerCase() ?? '';
+  const lowerContentType = override.contentType?.toLowerCase() ?? '';
+  const targetContentType = slot.contentType === 'image/png' ? 'image/png' : 'image/jpeg';
+  const alreadyCompatible =
+    (targetContentType === 'image/png' &&
+      (lowerContentType === 'image/png' || lowerFileName.endsWith('.png'))) ||
+    (targetContentType === 'image/jpeg' &&
+      (lowerContentType === 'image/jpeg' ||
+        lowerContentType === 'image/jpg' ||
+        lowerFileName.endsWith('.jpg') ||
+        lowerFileName.endsWith('.jpeg')));
+
+  if (alreadyCompatible) {
+    return override.buffer;
+  }
+
+  try {
+    return await transcodeImageBuffer(override.buffer, targetContentType);
+  } catch (error) {
+    throw new Error(
+      `Unable to convert uploaded image "${override.fileName || slot.fileName}" into ${targetContentType} for ${slot.label}.`,
+      { cause: error },
+    );
+  }
+}
+
+async function applyImageOverridesToZip(
+  zip: PizZip,
+  imageOverrides: PackageTemplateOptions['imageOverrides'],
+): Promise<void> {
+  if (!imageOverrides || Object.keys(imageOverrides).length === 0) return;
+
+  const slots = collectTemplateImageSlots(zip);
+  const slotsById = new Map(slots.map((slot) => [slot.id, slot]));
+
+  for (const [slotId, override] of Object.entries(imageOverrides)) {
+    if (!override) continue;
+    const slot = slotsById.get(slotId);
+    if (!slot) {
+      throw new Error(`Unknown template image slot "${slotId}". Re-parse the workbook and try again.`);
+    }
+    const normalizedBuffer = await normalizeImageOverrideBuffer(override, slot);
+    zip.file(slot.mediaPath, normalizedBuffer);
+  }
+}
+
+export async function scanPackageTemplateImageSlots(options?: PackageTemplateOptions): Promise<PropertyAnalysisImageSlot[]> {
+  const templatePath = options?.templatePath ?? PACKAGE_TEMPLATE_PATH;
+  const templateBuffer = await fs.readFile(templatePath);
+  return collectTemplateImageSlots(new PizZip(templateBuffer));
+}
+
 export async function renderPropertyAnalysisPackage(
   overrides: Record<string, string>,
   options?: PackageTemplateOptions,
@@ -2754,6 +3146,8 @@ export async function renderPropertyAnalysisPackage(
     if (!normalized) continue;
     normalizedTokens[normalized] = value ?? '';
   }
+
+  await applyImageOverridesToZip(zip, options?.imageOverrides);
 
   const pptXmlPaths = Object.keys(zip.files).filter(
     (filePath) => filePath.startsWith('ppt/') && filePath.endsWith('.xml') && !filePath.startsWith('ppt/embeddings/'),
@@ -2794,5 +3188,5 @@ export function buildFinalTokenMap(
 
 export function buildPackageFileName(propertyName: string, now = new Date()): string {
   const safeProperty = propertyName.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-  return `Property_Analysis_Package - ${safeProperty || 'Property'}_${formatIsoDate(now)}.pptx`;
+  return `Property Analysis Package - ${safeProperty || 'Property'}_${formatIsoDate(now)}.pptx`;
 }

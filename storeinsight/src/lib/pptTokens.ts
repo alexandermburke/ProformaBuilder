@@ -38,6 +38,7 @@ const TAG_PATTERN = /<[^>]+>/g;
 const ENTITY_PATTERN = /&[a-z0-9#]+;/gi;
 const HIDDEN_CHAR_PATTERN = /[\u200B-\u200D\u2060\uFEFF\u00A0\u202F]/g;
 const NON_TOKEN_CHAR_PATTERN = /[^A-Za-z0-9_]/g;
+const MALFORMED_CELL_TOKEN_PATTERN = /^CELL_(\d{4,})$/i;
 
 export function stripHiddenTokenCharacters(value: string): string {
   if (!value) return value;
@@ -51,7 +52,12 @@ export function normalizeTokenKey(value: string | undefined | null): string | nu
     .replace(/\s+/g, "")
     .replace(NON_TOKEN_CHAR_PATTERN, "");
   if (!cleaned) return null;
-  return cleaned.toUpperCase();
+  const upper = cleaned.toUpperCase();
+  const malformedCellMatch = upper.match(MALFORMED_CELL_TOKEN_PATTERN);
+  if (malformedCellMatch) {
+    return `CELL${malformedCellMatch[1]}`;
+  }
+  return upper;
 }
 
 export async function scanPptTokens(options?: PptTokenScanOptions): Promise<PptTokenScanResult> {
@@ -94,11 +100,5 @@ export async function scanPptTokens(options?: PptTokenScanOptions): Promise<PptT
 function normalizePlaceholder(rawToken: string): string | null {
   if (!rawToken) return null;
   const withoutEntities = rawToken.replace(ENTITY_PATTERN, "");
-  const cleaned = stripHiddenTokenCharacters(withoutEntities)
-    .replace(TAG_PATTERN, "")
-    .replace(/[{}]/g, "")
-    .replace(/\s+/g, "")
-    .replace(NON_TOKEN_CHAR_PATTERN, "");
-  if (!cleaned) return null;
-  return cleaned.toUpperCase();
+  return normalizeTokenKey(withoutEntities.replace(TAG_PATTERN, ""));
 }

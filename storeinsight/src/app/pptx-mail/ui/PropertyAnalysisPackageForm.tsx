@@ -79,6 +79,10 @@ function sourceClass(source: PropertyAnalysisTokenSource): string {
   }
 }
 
+function isBlank(value: string | undefined): boolean {
+  return !(value ?? "").trim();
+}
+
 export default function PropertyAnalysisPackageForm() {
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<PropertyAnalysisParseResponse | null>(null);
@@ -298,41 +302,75 @@ export default function PropertyAnalysisPackageForm() {
 
                 <div className="grid max-h-[40rem] gap-4 overflow-y-auto pr-2 md:grid-cols-2">
                   {fields.map((field) => (
-                    <label
-                      key={field.token}
-                      className="ios-list-card flex flex-col gap-2 p-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-semibold text-[color:var(--text-primary)]">{field.label}</div>
-                          <div className="text-xs text-[color:var(--text-secondary)]">
-                            <code>{field.token}</code>
+                    (() => {
+                      const currentValue = values[field.token] ?? "";
+                      const unresolved = field.source === "manual" && isBlank(currentValue);
+
+                      return (
+                        <label
+                          key={field.token}
+                          className={`ios-list-card flex flex-col gap-2 p-4 ${
+                            unresolved
+                              ? "border border-[rgba(245,158,11,0.28)] bg-[rgba(245,158,11,0.08)]"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--text-primary)]">
+                                {unresolved ? (
+                                  <span
+                                    aria-hidden
+                                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[rgba(245,158,11,0.18)] text-[11px] font-bold text-[rgb(180,83,9)]"
+                                  >
+                                    !
+                                  </span>
+                                ) : null}
+                                <span>{field.label}</span>
+                              </div>
+                              <div className="text-xs text-[color:var(--text-secondary)]">
+                                <code>{field.token}</code>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {unresolved ? (
+                                <span className="ios-pill px-2.5 py-1 text-[11px]" data-tone="warning">
+                                  Unresolved
+                                </span>
+                              ) : null}
+                              <span className="ios-pill px-2.5 py-1 text-[11px]" data-tone={sourceClass(field.source)}>
+                                {SOURCE_META[field.source]}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <span className="ios-pill px-2.5 py-1 text-[11px]" data-tone={sourceClass(field.source)}>
-                          {SOURCE_META[field.source]}
-                        </span>
-                      </div>
 
-                      <input
-                        type="text"
-                        value={values[field.token] ?? ""}
-                        onChange={(event) =>
-                          setValues((current) => ({
-                            ...current,
-                            [field.token]: event.target.value,
-                          }))
-                        }
-                        className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-sm outline-none transition focus:border-[color:var(--accent-strong)] focus:ring-2 focus:ring-[rgba(37,99,235,0.22)]"
-                        placeholder={field.source === "manual" ? "Enter manual text for this token" : ""}
-                      />
+                          <input
+                            type="text"
+                            value={currentValue}
+                            onChange={(event) =>
+                              setValues((current) => ({
+                                ...current,
+                                [field.token]: event.target.value,
+                              }))
+                            }
+                            className="rounded-xl border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-sm outline-none transition focus:border-[color:var(--accent-strong)] focus:ring-2 focus:ring-[rgba(37,99,235,0.22)]"
+                            placeholder={field.source === "manual" ? "Enter manual text for this token" : ""}
+                          />
 
-                      {field.matchedKey ? (
-                        <div className="text-xs text-[color:var(--text-secondary)]">
-                          Matched from <code>{field.matchedKey}</code>
-                        </div>
-                      ) : null}
-                    </label>
+                          {unresolved ? (
+                            <div className="text-xs font-medium text-[rgb(146,64,14)]">
+                              Missing value: this token will render blank in the deck until you enter one.
+                            </div>
+                          ) : null}
+
+                          {field.matchedKey ? (
+                            <div className="text-xs text-[color:var(--text-secondary)]">
+                              Matched from <code>{field.matchedKey}</code>
+                            </div>
+                          ) : null}
+                        </label>
+                      );
+                    })()
                   ))}
                 </div>
               </section>
