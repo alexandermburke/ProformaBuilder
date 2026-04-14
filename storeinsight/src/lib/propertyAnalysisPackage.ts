@@ -1128,7 +1128,7 @@ function buildSnapshotDescription(
   void propertyName;
   void propertyAddress;
   void propertyType;
-  return 'N/A ERROR';
+  return '';
 }
 
 function buildSnapshotDescriptionPrompt(
@@ -1162,10 +1162,10 @@ async function maybeGenerateSnapshotDescriptionWithAi(
   propertyType: string,
   region: string,
 ): Promise<string | null> {
-  const apiKey = process.env.OPENAI_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+  const model = process.env.OPENAI_MODEL ?? 'gpt-5-mini';
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -1174,7 +1174,6 @@ async function maybeGenerateSnapshotDescriptionWithAi(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
       messages: [
         {
           role: 'system',
@@ -1190,8 +1189,10 @@ async function maybeGenerateSnapshotDescriptionWithAi(
   });
 
   if (!response.ok) {
-    return null;
-  }
+  const text = await response.text();
+  console.error('Snapshot AI request failed', response.status, text);
+  return null;
+}
 
   const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const content = payload.choices?.[0]?.message?.content;
@@ -2931,19 +2932,20 @@ export async function parsePropertyAnalysisWorkbook(
 
   const templateTokens = await scanPackageTemplateTokens({ templatePath });
   const tokenFields = templateTokens.map((token) => buildTokenField(token, parsed.defaults));
-
+  const imageSlots = await scanPackageTemplateImageSlots({ templatePath });
   const warnings = [...parsed.warnings];
   if (templateTokens.length === 0) {
     warnings.push('PackageTemplate.pptx does not contain any {{TOKEN}} placeholders yet.');
   }
 
   return {
-    metadata: parsed.metadata,
-    warnings,
-    templateTokens,
-    unresolvedTokens: tokenFields.filter((field) => field.source === 'manual').map((field) => field.token),
-    tokenFields,
-  };
+  metadata: parsed.metadata,
+  warnings,
+  templateTokens,
+  unresolvedTokens: tokenFields.filter((field) => field.source === 'manual').map((field) => field.token),
+  tokenFields,
+  imageSlots,
+};
 }
 
 function normalizeTemplateXml(xml: string): string {
@@ -3068,8 +3070,14 @@ async function transcodeImageBuffer(
   const height = Math.max(1, Math.round(image.height || 1));
   const canvas = createCanvas(width, height);
   const context = canvas.getContext('2d');
+
   context.drawImage(image, 0, 0, width, height);
-  return canvas.toBuffer(targetContentType);
+
+  if (targetContentType === 'image/png') {
+    return canvas.toBuffer('image/png');
+  }
+
+  return canvas.toBuffer('image/jpeg');
 }
 
 async function normalizeImageOverrideBuffer(
