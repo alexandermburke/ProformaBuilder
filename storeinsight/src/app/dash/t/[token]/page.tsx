@@ -12,7 +12,7 @@ import { validateShareToken } from '@/lib/shareLinks';
 export const dynamic = 'force-dynamic';
 
 type TokenPageProps = {
-  params: { token: string };
+  params: Promise<{ token: string }>;
 };
 
 type StatusMessage = {
@@ -33,7 +33,8 @@ const renderStatus = ({ title, message }: StatusMessage): JSX.Element => (
 );
 
 export default async function TokenDashboardPage({ params }: TokenPageProps): Promise<JSX.Element> {
-  const token = params?.token ?? '';
+  const resolvedParams = await params;
+  const token = resolvedParams?.token ?? '';
   if (!token) {
     return renderStatus({
       title: 'Invalid link',

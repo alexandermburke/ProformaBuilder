@@ -300,6 +300,35 @@ const formatSignedNumber = (value: number | null | undefined): string => {
 
 const formatMonthLabel = (monthIso: string): string => formatShortMonth(monthIso);
 
+function MonthAxisLabels({
+  labels,
+  y,
+  fontSize = 11,
+  fill = 'rgba(71,85,105,0.78)',
+}: {
+  labels: Array<{ key: string; monthIso: string; x: number }>;
+  y: number;
+  fontSize?: number;
+  fill?: string;
+}): JSX.Element {
+  return (
+    <>
+      {labels.map((label) => (
+        <text
+          key={label.key}
+          x={label.x}
+          y={y}
+          fontSize={fontSize}
+          textAnchor="middle"
+          fill={fill}
+        >
+          {formatMonthLabel(label.monthIso)}
+        </text>
+      ))}
+    </>
+  );
+}
+
 const getLatestSeriesValue = (series: SeriesPoint[]): number | null => {
   const latestPoint = series[series.length - 1];
   return latestPoint && isFiniteNumber(latestPoint.value) ? latestPoint.value : null;
@@ -1818,7 +1847,7 @@ export function HistoricalSnapshotDashboardView({
           </div>
 
           <div className="ios-list-card flex flex-col gap-3 px-4 py-3 text-xs xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-3 xl:flex-nowrap">
+            <div className="hidden min-w-0 flex-wrap items-center gap-3 sm:flex xl:flex-nowrap">
               <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
                 Section
               </span>
@@ -2667,6 +2696,22 @@ function OccupancyUnitMixSection({
                     />
                   );
                 })}
+                <MonthAxisLabels
+                  labels={chartMonths.flatMap((monthIso, index) =>
+                    monthIso
+                      ? [
+                          {
+                            key: `occupancy-rate-axis-${monthIso}-${index}`,
+                            monthIso,
+                            x: plotLeft + bandWidth * index + bandWidth / 2,
+                          },
+                        ]
+                      : [],
+                  )}
+                  y={CHART_HEIGHT - 8}
+                  fontSize={10.5}
+                  fill="var(--text-primary)"
+                />
               </svg>
 
               {hoverIndex != null ? (
@@ -2704,13 +2749,6 @@ function OccupancyUnitMixSection({
               ) : null}
             </div>
 
-            <div className="mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
-              {chartMonths.map((monthIso, index) => (
-                <span key={`${monthIso}-${index}`} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
-                  {monthIso ? formatMonthLabel(monthIso) : '-'}
-                </span>
-              ))}
-            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-[color:var(--text-secondary)]">
@@ -2917,7 +2955,7 @@ function CollectionsSection({
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[color:var(--text-muted)]">
+            <div className="mt-3 space-y-3 text-[11px] text-[color:var(--text-muted)]">
               <div className="flex flex-wrap items-center gap-3">
                 {agingBuckets.map((bucket) => (
                   <span key={bucket.label} className="inline-flex items-center gap-1">
@@ -2926,9 +2964,9 @@ function CollectionsSection({
                   </span>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-2 text-[11px] text-[color:var(--text-muted)]">
-                {agingSeries.map((row, index) => (
-                  <span key={row.monthIso} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
+              <div className="flex gap-2 text-[11px] text-[color:var(--text-muted)]">
+                {agingSeries.map((row) => (
+                  <span key={row.monthIso} className="min-w-0 flex-1 text-center">
                     {formatMonthLabel(row.monthIso)}
                   </span>
                 ))}
@@ -3136,9 +3174,15 @@ function PricingSection({
   const rentCountMax = rentHasCounts ? Math.max(1, ...rentCountNumbers) : 1;
   const rentPctMin = rentHasPct ? Math.min(0, ...rentPctNumbers) : 0;
   const rentPctMax = rentHasPct ? Math.max(1, ...rentPctNumbers) : 1;
-  const rentLinePath = rentHasPct
-    ? buildLinePathWithGaps(rentPctValues, SMALL_CHART_WIDTH, 150, SMALL_CHART_PADDING, rentPctMin, rentPctMax)
-    : '';
+  const rentChangeSlotWidth = (SMALL_CHART_WIDTH - SMALL_CHART_PADDING * 2) / Math.max(rentChangeSeries.length, 1);
+  const rentPctRange = Math.max(1, rentPctMax - rentPctMin);
+  const rentPctChartPoints = rentChangeSeries.map((point, index) => {
+    if (!isFiniteNumber(point.pct)) return null;
+    const x = SMALL_CHART_PADDING + rentChangeSlotWidth * index + rentChangeSlotWidth / 2;
+    const y = SMALL_CHART_PADDING + ((rentPctMax - point.pct) / rentPctRange) * (150 - SMALL_CHART_PADDING * 2);
+    return { x, y, value: point.pct };
+  });
+  const rentLinePath = rentHasPct ? buildPathFromPoints(rentPctChartPoints) : '';
   const rentChangeStatus = needsTrendHint ? 'Need 2+ months for trend' : !rentHasCounts && !rentHasPct ? 'N/A' : null;
 
   const rateSeries = seriesEntries
@@ -3283,7 +3327,7 @@ function PricingSection({
                   const value = sellRates[index];
                   if (!isFiniteNumber(value)) return null;
                   const labelX = point.x + (index % 2 === 0 ? 8 : -8);
-                  const labelY = Math.min(PRICING_CHART_HEIGHT - PRICING_CHART_PADDING + 18, point.y + 24);
+                  const labelY = Math.min(PRICING_CHART_HEIGHT - 24, point.y + 24);
                   return (
                     <g key={`sell-rate-${rateSeries[index]?.monthIso ?? index}`}>
                       <circle
@@ -3306,6 +3350,17 @@ function PricingSection({
                     </g>
                   );
                 })}
+                <MonthAxisLabels
+                  labels={rateSeries.flatMap((row, index) => {
+                    const x = currentPoints[index]?.x ?? sellPoints[index]?.x;
+                    return row.monthIso && typeof x === 'number'
+                      ? [{ key: `pricing-rate-axis-${row.monthIso}-${index}`, monthIso: row.monthIso, x }]
+                      : [];
+                  })}
+                  y={PRICING_CHART_HEIGHT - 8}
+                  fontSize={10.5}
+                  fill={isDark ? 'rgba(255,255,255,0.82)' : undefined}
+                />
               </svg>
 
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-[color:var(--text-muted)]">
@@ -3318,13 +3373,6 @@ function PricingSection({
                     <span className="h-2 w-2 rounded-full bg-[rgba(14,165,233,0.8)]" />
                     Sell rate
                   </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {rateSeries.map((row, index) => (
-                    <span key={row.monthIso} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
-                      {formatMonthLabel(row.monthIso)}
-                    </span>
-                  ))}
                 </div>
               </div>
             </div>
@@ -3403,7 +3451,7 @@ function PricingSection({
                   const labelY =
                     point.value >= 0
                       ? Math.max(12, barY - 6)
-                      : Math.min(140 - 4, barY + barHeight + 12);
+                      : Math.min(140 - 20, barY + barHeight + 12);
                   return (
                     <g key={`${point.monthIso ?? index}`}>
                       <rect
@@ -3432,6 +3480,22 @@ function PricingSection({
                     </g>
                   );
                 })}
+                <MonthAxisLabels
+                  labels={varianceSeries.flatMap((point, index) => {
+                    if (!point.monthIso) return [];
+                    const barSlot = (SMALL_CHART_WIDTH - SMALL_CHART_PADDING * 2) / Math.max(varianceSeries.length, 1);
+                    return [
+                      {
+                        key: `variance-axis-${point.monthIso}-${index}`,
+                        monthIso: point.monthIso,
+                        x: SMALL_CHART_PADDING + index * barSlot + barSlot / 2,
+                      },
+                    ];
+                  })}
+                  y={134}
+                  fontSize={10.5}
+                  fill={isDark ? 'rgba(255,255,255,0.82)' : undefined}
+                />
               </svg>
               {varianceStatus ? (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[color:var(--text-muted)]">
@@ -3439,7 +3503,7 @@ function PricingSection({
                 </div>
               ) : null}
             </div>
-            <div className="mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
+            <div className="hidden mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
               {varianceSeries.map((point, index) => (
                 <span key={point.monthIso ?? `variance-${index}`} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
                   {point.monthIso ? formatMonthLabel(point.monthIso) : '—'}
@@ -3491,9 +3555,9 @@ function PricingSection({
                 })}
                 {rentChangeSeries.map((point, index) => {
                   if (!isFiniteNumber(point.count)) return null;
-                  const barSlot = (SMALL_CHART_WIDTH - SMALL_CHART_PADDING * 2) / Math.max(rentChangeSeries.length, 1);
-                  const barWidth = barSlot * 0.55;
-                  const barX = SMALL_CHART_PADDING + index * barSlot + barSlot * 0.225;
+                  const barWidth = rentChangeSlotWidth * 0.55;
+                  const centerX = SMALL_CHART_PADDING + index * rentChangeSlotWidth + rentChangeSlotWidth / 2;
+                  const barX = centerX - barWidth / 2;
                   const height = (point.count / rentCountMax) * (150 - SMALL_CHART_PADDING * 2);
                   const barY = 150 - SMALL_CHART_PADDING - height;
                   return (
@@ -3538,41 +3602,47 @@ function PricingSection({
                   />
                 ) : null}
                 {rentHasPct
-                  ? rentChangeSeries.map((point, index) => {
-                      if (!isFiniteNumber(point.pct)) return null;
-                      const step =
-                        rentChangeSeries.length > 1
-                          ? (SMALL_CHART_WIDTH - SMALL_CHART_PADDING * 2) / (rentChangeSeries.length - 1)
-                          : 0;
-                      const x = SMALL_CHART_PADDING + index * step;
-                      const y =
-                        SMALL_CHART_PADDING +
-                        ((rentPctMax - point.pct) / Math.max(1, rentPctMax - rentPctMin)) *
-                          (150 - SMALL_CHART_PADDING * 2);
-                      const labelY = Math.max(SMALL_CHART_PADDING + 8, y - 10);
+                  ? rentPctChartPoints.map((point, index) => {
+                      if (!point) return null;
+                      const labelY = Math.max(SMALL_CHART_PADDING + 8, point.y - 10);
                       return (
-                        <g key={`${point.monthIso ?? index}-pct`}>
+                        <g key={`${rentChangeSeries[index]?.monthIso ?? index}-pct`}>
                           <circle
-                            cx={x}
-                            cy={y}
+                            cx={point.x}
+                            cy={point.y}
                             r={3.5}
                             fill="rgba(37,99,235,0.9)"
                             stroke="#ffffff"
                             strokeWidth={1.2}
                           />
                           <text
-                            x={x}
+                            x={point.x}
                             y={labelY}
                             fontSize={12}
                             textAnchor="middle"
                             fill={isDark ? 'rgba(255,255,255,0.92)' : 'rgba(71,85,105,0.9)'}
                           >
-                            {formatMaybePercent(point.pct, 1)}
+                            {formatMaybePercent(point.value, 1)}
                           </text>
                         </g>
                       );
                     })
                   : null}
+                <MonthAxisLabels
+                  labels={rentChangeSeries.flatMap((point, index) => {
+                    if (!point.monthIso) return [];
+                    return [
+                      {
+                        key: `rent-change-axis-${point.monthIso}-${index}`,
+                        monthIso: point.monthIso,
+                        x: SMALL_CHART_PADDING + index * rentChangeSlotWidth + rentChangeSlotWidth / 2,
+                      },
+                    ];
+                  })}
+                  y={144}
+                  fontSize={10.5}
+                  fill={isDark ? 'rgba(255,255,255,0.82)' : undefined}
+                />
               </svg>
               {rentChangeStatus ? (
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-[color:var(--text-muted)]">
@@ -3580,7 +3650,7 @@ function PricingSection({
                 </div>
               ) : null}
             </div>
-            <div className="mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
+            <div className="hidden mt-3 grid grid-cols-6 gap-2 text-[11px] text-[color:var(--text-muted)] sm:grid-cols-12">
               {rentChangeSeries.map((point, index) => (
                 <span key={point.monthIso ?? `rent-${index}`} className={index % 2 === 1 ? 'hidden sm:block' : ''}>
                   {point.monthIso ? formatMonthLabel(point.monthIso) : '—'}
@@ -5140,16 +5210,14 @@ function LineChartWithMonths({
         {points.map((point, index) => {
           const monthIso = series[index]?.monthIso;
           if (!monthIso) return null;
-          const isFirstPoint = index === 0;
-          const isLastPoint = index === points.length - 1;
           return (
             <text
               key={`${monthIso}-axis`}
               x={point.x}
               y={monthLabelY}
               fontSize={11}
-              textAnchor={isFirstPoint ? 'start' : isLastPoint ? 'end' : 'middle'}
-              fill="rgba(71,85,105,0.78)"
+              textAnchor="middle"
+              fill={labelColor ?? 'var(--text-primary)'}
             >
               {formatMonthLabel(monthIso)}
             </text>
