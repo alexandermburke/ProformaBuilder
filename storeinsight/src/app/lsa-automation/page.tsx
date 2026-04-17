@@ -44,6 +44,18 @@ function downloadBase64Artifact(base64: string, mimeType: string, filename: stri
   URL.revokeObjectURL(url);
 }
 
+function extractHtmlErrorMessage(html: string): string {
+  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+  if (titleMatch?.[1]) {
+    return titleMatch[1].trim();
+  }
+  const headingMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+  if (headingMatch?.[1]) {
+    return headingMatch[1].trim();
+  }
+  return "The server returned an HTML error page instead of JSON.";
+}
+
 export default function LsaAutomationPage(): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -95,13 +107,29 @@ export default function LsaAutomationPage(): JSX.Element {
         method: "POST",
         body: formData,
       });
-      const payload = (await response.json()) as {
+      const rawResponse = await response.text();
+      let payload: {
         error?: string;
         artifactName?: string;
         artifactMimeType?: string;
         artifactBase64?: string;
         results?: ProcessResult[];
-      };
+      } = {};
+
+      if (rawResponse) {
+        const contentType = response.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          payload = JSON.parse(rawResponse) as typeof payload;
+        } else if (rawResponse.trim().startsWith("{")) {
+          payload = JSON.parse(rawResponse) as typeof payload;
+        } else if (rawResponse.trim().startsWith("<")) {
+          throw new Error(
+            `${extractHtmlErrorMessage(rawResponse)} If this is a dev server, restart it so /api/lsa-automation/process is loaded cleanly.`,
+          );
+        } else {
+          throw new Error(rawResponse.trim());
+        }
+      }
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Unable to process uploaded statements.");

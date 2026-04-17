@@ -1,6 +1,5 @@
-import AdmZip from "adm-zip";
-import ExcelJS from "exceljs";
-import { PDFParse } from "pdf-parse";
+import { createRequire } from "node:module";
+import path from "node:path";
 
 const PAGE_MARKER_PATTERN = /^-- \d+ of \d+ --$/;
 const DOT_VALUE_PATTERN = /\.{10,}\s*\t?([^\n]+)/g;
@@ -60,6 +59,69 @@ type NamedBuffer = {
   name: string;
   buffer: Buffer;
 };
+
+type WorksheetLike = {
+  columns: Array<{ width?: number }>;
+  getCell: (ref: string) => CellLike;
+  getRow: (row: number) => { height?: number };
+};
+
+type CellLike = {
+  value?: unknown;
+  font?: Record<string, unknown>;
+  alignment?: Record<string, unknown>;
+};
+
+type AdmZipClass = typeof import("adm-zip") extends { default: infer T }
+  ? T
+  : typeof import("adm-zip");
+
+type ExcelJSImport = typeof import("exceljs") extends { default: infer T }
+  ? T
+  : typeof import("exceljs");
+
+type PdfParseCtor = new (options: { data: Buffer }) => {
+  getText: () => Promise<{ text: string }>;
+  destroy: () => Promise<void>;
+};
+
+function getRuntimeRequire(): (id: string) => unknown {
+  const moduleBuiltin = typeof process.getBuiltinModule === "function"
+    ? (process.getBuiltinModule("node:module") as { createRequire?: typeof createRequire } | undefined)
+    : undefined;
+  const candidate = moduleBuiltin?.createRequire
+    ? moduleBuiltin.createRequire(path.join(process.cwd(), "package.json"))
+    : createRequire(path.join(process.cwd(), "package.json"));
+  if (typeof candidate !== "function") {
+    throw new Error("Node require loader is unavailable in this runtime.");
+  }
+  return candidate as (id: string) => unknown;
+}
+
+function loadRuntimeModule<T>(moduleName: string): T {
+  try {
+    return getRuntimeRequire()(moduleName) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to load ${moduleName}: ${message}`);
+  }
+}
+
+function loadAdmZip(): AdmZipClass {
+  const mod = loadRuntimeModule<AdmZipClass | { default: AdmZipClass }>("adm-zip");
+  return ((mod as { default?: AdmZipClass }).default ?? mod) as AdmZipClass;
+}
+
+function loadExcelJS(): ExcelJSImport {
+  const mod = loadRuntimeModule<ExcelJSImport | { default: ExcelJSImport }>("exceljs");
+  return ((mod as { default?: ExcelJSImport }).default ?? mod) as ExcelJSImport;
+}
+
+function loadPdfParseCtor(): PdfParseCtor {
+  const mod = loadRuntimeModule<{ PDFParse: PdfParseCtor } | { default: { PDFParse: PdfParseCtor } }>("pdf-parse");
+  const candidate = "default" in mod ? mod.default : mod;
+  return candidate.PDFParse;
+}
 
 function cleanPdfText(rawText: string): string {
   return rawText
@@ -206,7 +268,8 @@ export function parseLsaStatementText(text: string, sourceFilename = "statement.
 }
 
 export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer });
+  const PDFParseCtor = loadPdfParseCtor();
+  const parser = new PDFParseCtor({ data: buffer });
   try {
     const result = await parser.getText();
     return result.text;
@@ -220,7 +283,7 @@ export async function parseLsaStatementPdf(buffer: Buffer, sourceFilename: strin
   return parseLsaStatementText(text, sourceFilename);
 }
 
-function setWorkbookLayout(worksheet: ExcelJS.Worksheet): void {
+function setWorkbookLayout(worksheet: WorksheetLike): void {
   worksheet.columns = [
     { width: 34 },
     { width: 14 },
@@ -235,7 +298,7 @@ function setWorkbookLayout(worksheet: ExcelJS.Worksheet): void {
   ];
 }
 
-function applyCellStyle(cell: ExcelJS.Cell, options?: { bold?: boolean; alignRight?: boolean; wrap?: boolean }): void {
+function applyCellStyle(cell: CellLike, options?: { bold?: boolean; alignRight?: boolean; wrap?: boolean }): void {
   cell.font = {
     name: "Aptos",
     size: 11,
@@ -249,6 +312,7 @@ function applyCellStyle(cell: ExcelJS.Cell, options?: { bold?: boolean; alignRig
 }
 
 export async function buildLsaWorkbookBuffer(statement: LsaStatement): Promise<Buffer> {
+  const ExcelJS = loadExcelJS();
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Table 1");
   setWorkbookLayout(worksheet);
@@ -367,6 +431,7 @@ async function expandPdfInputs(inputs: NamedBuffer[]): Promise<NamedBuffer[]> {
   const pdfs: NamedBuffer[] = [];
   for (const input of inputs) {
     if (/\.zip$/i.test(input.name)) {
+      const AdmZip = loadAdmZip();
       const zip = new AdmZip(input.buffer);
       for (const entry of zip.getEntries()) {
         if (entry.isDirectory || !/\.pdf$/i.test(entry.entryName)) {
@@ -442,6 +507,7 @@ export async function buildLsaAutomationExport(inputs: NamedBuffer[]): Promise<L
     };
   }
 
+  const AdmZip = loadAdmZip();
   const zip = new AdmZip();
   for (const file of generatedFiles) {
     zip.addFile(file.name, file.buffer);
