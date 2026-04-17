@@ -2434,25 +2434,25 @@ function OccupancyUnitMixSection({
   const totalRsf = isFiniteNumber(unitMix?.totalRsf) ? Number(unitMix?.totalRsf) : null;
   const sortedUnitMix = unitMixEntries.sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 4);
   const unitMixSegments = useMemo(() => {
-    if (!totalOccupiedRsf || sortedUnitMix.length === 0) return [];
+    const ringTotal = totalRsf && totalRsf > 0 ? totalRsf : totalOccupiedRsf;
+    if (!ringTotal || sortedUnitMix.length === 0) return [];
     let offset = 0;
     return sortedUnitMix.map(([label, value], index) => {
-      const percent = (Number(value) / totalOccupiedRsf) * 100;
+      const arcPercent = (Number(value) / ringTotal) * 100;
       const start = 25 - offset;
-      offset += percent;
+      offset += arcPercent;
       return {
         label,
-        value: percent,
+        value: arcPercent,
         color: UNIT_MIX_COLORS[index % UNIT_MIX_COLORS.length],
         offset: start,
         delay: `${index * 0.12}s`,
       };
     });
-  }, [sortedUnitMix, totalOccupiedRsf]);
+  }, [sortedUnitMix, totalOccupiedRsf, totalRsf]);
   const unitMixChartKey = `${rangeKey}-${unitMixSegments
     .map((segment) => `${segment.label}-${segment.value.toFixed(2)}`)
     .join('|')}`;
-  const occupiedPct = totalRsf && totalOccupiedRsf ? (totalOccupiedRsf / totalRsf) * 100 : null;
 
   return (
     <div className="space-y-4">
@@ -2801,8 +2801,8 @@ function OccupancyUnitMixSection({
         <ChartCard
           key={`token-unitmix-${rangeKey}`}
           title="Unit mix"
-          subtitle="Occupied RSF by type "
-          info="Occupied RSF by unit type from the Occupancy tab; aggregated into the latest snapshot."
+          subtitle="Occupied RSF by type"
+          info="Occupied RSF by type from the Occupancy tab; the gray remainder represents unoccupied RSF."
           emptyMessage={!totalOccupiedRsf || unitMixSegments.length === 0 ? 'N/A' : undefined}
         >
           <div className="flex items-center justify-center">
@@ -2838,24 +2838,20 @@ function OccupancyUnitMixSection({
                 ))}
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <div className="text-2xl font-semibold text-[color:var(--text-primary)]">
-                  {occupiedPct ? formatMaybePercent(occupiedPct, 1) : formatMaybeNumber(totalOccupiedRsf)}
-                </div>
+                <div className="text-2xl font-semibold text-[color:var(--text-primary)]">{formatMaybeNumber(totalOccupiedRsf)}</div>
                 <div className="text-xs text-[color:var(--text-secondary)]">Occupied RSF</div>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
             {unitMixSegments.map((segment) => (
-              <div key={segment.label} className="ios-list-card flex items-center justify-between px-4 py-2 text-sm">
-                <div className="flex items-center gap-3 text-[color:var(--text-primary)]">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
-                  <span>{segment.label}</span>
-                </div>
-                <span className="tabular-nums text-[color:var(--text-secondary)]">
-                  {formatMaybePercent(segment.value, 0)}
-                </span>
+              <div
+                key={segment.label}
+                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] px-3 py-1.5 text-sm text-[color:var(--text-primary)] shadow-sm"
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: segment.color }} />
+                <span>{segment.label}</span>
               </div>
             ))}
           </div>

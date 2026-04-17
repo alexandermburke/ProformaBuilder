@@ -131,8 +131,10 @@ export type MsrSnapshot = {
   };
   unitMix?: {
     occupiedRsfByType?: Record<string, number>;
+    occupiedPctByType?: Record<string, number>;
     totalOccupiedRsf?: number;
     totalRsf?: number;
+    occupiedPct?: number;
   };
   topDelinquencies?: Array<{
     tenant?: string;
