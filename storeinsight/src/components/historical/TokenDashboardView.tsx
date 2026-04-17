@@ -2339,18 +2339,18 @@ function OccupancyUnitMixSection({
     let minSell = Math.min(...valid);
     let maxSell = Math.max(...valid);
     let range = maxSell - minSell;
-    if (range < 10) {
+    if (range < 4) {
       const center = (minSell + maxSell) / 2;
-      minSell = center - 5;
-      maxSell = center + 5;
+      minSell = center - 2;
+      maxSell = center + 2;
       range = maxSell - minSell;
     } else {
-      const padding = Math.max(range * 0.05, 5);
+      const padding = Math.max(range * 0.04, 1);
       minSell -= padding;
       maxSell += padding;
       range = maxSell - minSell;
     }
-    const step = range <= 25 ? 5 : range <= 60 ? 10 : range <= 150 ? 25 : range <= 300 ? 50 : 100;
+    const step = range <= 6 ? 1 : range <= 15 ? 2 : range <= 30 ? 5 : range <= 75 ? 10 : range <= 150 ? 25 : range <= 300 ? 50 : 100;
     const start = Math.ceil(minSell / step) * step;
     const ticks: number[] = [];
     for (let value = start; value <= maxSell + 0.001; value += step) {
