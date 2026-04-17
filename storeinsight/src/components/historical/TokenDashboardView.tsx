@@ -2289,7 +2289,9 @@ function OccupancyUnitMixSection({
   const sellChartValues = useMemo(
     () =>
       seriesEntries.map((entry) => {
-        const value = entry.snapshot.pricing?.avgSellRateOccupied;
+        const value =
+          entry.snapshot.pricing?.avgCurrentRentPerSqftOccupied ??
+          entry.snapshot.pricing?.avgCurrentRentOccupied;
         return isFiniteNumber(value) ? value : null;
       }),
     [seriesEntries],
@@ -4152,6 +4154,12 @@ function FinancialsSection({
   const latestClosedFinancialDetail = latestClosedFinancialMonthIso
     ? `As of ${formatMonthAsOfLabel(latestClosedFinancialMonthIso)}`
     : 'Updated monthly';
+  const latestNetRevenueMonthIso =
+    netRevenueSeries[netRevenueSeries.length - 1]?.monthIso ?? seriesEntries[seriesEntries.length - 1]?.monthIso ?? null;
+  const netRevenueTrendSubtitle = 'Month to date';
+  const closedFinancialTrendSubtitle = latestClosedFinancialMonthIso
+    ? `As of ${formatMonthAsOfLabel(latestClosedFinancialMonthIso)}`
+    : 'Updated monthly';
 
   return (
     <LazyBlock minHeight={420}>
@@ -4177,29 +4185,29 @@ function FinancialsSection({
           />
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <ChartCard title="Net revenue" subtitle="Monthly trend" emptyMessage={netRevenueEmpty}>
+            <ChartCard title="Net revenue" subtitle={netRevenueTrendSubtitle} emptyMessage={netRevenueEmpty}>
               <MemoLineChartWithMonths
                 series={netRevenueSeries}
                 color="rgba(14,165,233,0.9)"
-                label="Net revenue "
+                label="Net revenue (MTD)"
                 formatValue={formatCompactCurrency}
                 labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
               />
             </ChartCard>
-            <ChartCard title="Expenses" subtitle="Monthly trend" emptyMessage={expensesEmpty}>
+            <ChartCard title="Expenses" subtitle={closedFinancialTrendSubtitle} emptyMessage={expensesEmpty}>
               <MemoLineChartWithMonths
                 series={expensesSeries}
                 color="rgba(248,113,113,0.86)"
-                label="Expenses "
+                label="Expenses (monthly close)"
                 formatValue={formatCompactCurrency}
                 labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
               />
             </ChartCard>
-            <ChartCard title="NOI" subtitle="Monthly trend" emptyMessage={noiEmpty}>
+            <ChartCard title="NOI" subtitle={closedFinancialTrendSubtitle} emptyMessage={noiEmpty}>
               <MemoLineChartWithMonths
                 series={noiSeries}
                 color="rgba(16,185,129,0.9)"
-                label="NOI "
+                label="NOI (monthly close)"
                 formatValue={formatCompactCurrency}
                 labelColor={isDark ? 'rgba(255,255,255,0.92)' : undefined}
               />
