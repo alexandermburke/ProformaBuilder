@@ -1103,7 +1103,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-occupancy-core-${range}`}
             title="Occupancy (RSF)"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="RSF occupancy percent parsed from the Occupancy tab; falls back to the MSR Space Occupancy block when present."
             emptyMessage={occupancyCoreEmpty}
           >
@@ -1122,7 +1122,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-net-revenue-core-${range}`}
             title="Net Revenue"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Parsed from the MSR 'Net Revenue' block (month-to-date) and stored per snapshot."
             emptyMessage={netRevenueCoreEmpty}
           >
@@ -1182,7 +1182,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-past-due-${range}`}
             title="Total Past Due"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Total AR past due trend from the delinquency snapshots."
             emptyMessage={totalPastDueEmpty}
           >
@@ -1201,7 +1201,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-rate-variance-${range}`}
             title="Occupied Rate Variance"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Occupied rate variance from pricing/revenue snapshot fields."
             emptyMessage={rateVarianceEmpty}
           >
@@ -1239,7 +1239,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-leads-${range}`}
             title="Leads"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Total lead volume from the MSR lead snapshot values."
             emptyMessage={leadsEmpty}
           >
@@ -1258,7 +1258,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-promos-discounts-${range}`}
             title="Promos and Discounts"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Discounts and promotions trend from the MSR concessions data."
             emptyMessage={promosDiscountsEmpty}
           >
@@ -1277,7 +1277,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-autopay-${range}`}
             title="Autopay Adoption"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Autopay participation trend from the MSR Autopay Enrolled sheet."
             emptyMessage={autopayEmpty}
           >
@@ -1296,7 +1296,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-tpp-enrollment-${range}`}
             title="TPP Enrollment"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Coverage/TPP enrollment trend from the MSR coverage section."
             emptyMessage={tppEnrollmentEmpty}
           >
@@ -1315,7 +1315,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-move-ins-${range}`}
             title="Move-ins"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             emptyMessage={moveInsEmpty}
           >
             <MemoLineChartWithMonths
@@ -1333,7 +1333,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-move-outs-${range}`}
             title="Move-outs"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             emptyMessage={moveOutsEmpty}
           >
             <MemoLineChartWithMonths
@@ -1351,7 +1351,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-net-rentals-${range}`}
             title="Net Rentals"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             emptyMessage={netRentalsEmpty}
           >
             <MemoLineChartWithMonths
@@ -1369,7 +1369,7 @@ export function HistoricalSnapshotDashboardView({
           <ChartCard
             key={`overview-stale-rent-${range}`}
             title="No Rent Change (12 Months)"
-            subtitle="Monthly trend"
+            subtitle="Month to date"
             info="Count of occupied units with no rent change in the last 12 months."
             emptyMessage={staleRentEmpty}
           >
@@ -3920,7 +3920,7 @@ function OperationalSection({
               <ChartCard
                 key={`stale-rent-12mo-${rangeKey}`}
                 title="No rent change (last 12 months)"
-                subtitle="Monthly trend"
+                subtitle="Month to date"
                 info="Parsed from the MSR No Rent Change Last 12 Months sheet."
                 emptyMessage={staleRentEmpty}
               >
@@ -3951,7 +3951,7 @@ function OperationalSection({
               <ChartCard
                 key={`rental-moveins-${rangeKey}`}
                 title="Move-ins"
-                subtitle="Monthly trend"
+                subtitle="Month to date"
                 emptyMessage={moveInsEmpty}
               >
                 <MemoLineChartWithMonths
@@ -3965,7 +3965,7 @@ function OperationalSection({
               <ChartCard
                 key={`rental-moveouts-${rangeKey}`}
                 title="Move-outs"
-                subtitle="Monthly trend"
+                subtitle="Month to date"
                 emptyMessage={moveOutsEmpty}
               >
                 <MemoLineChartWithMonths
@@ -4239,7 +4239,7 @@ function FinancialsSection({
             <ChartCard
               key="financials-concessions-promos"
               title="Promos and discounts"
-              subtitle="Monthly trend"
+              subtitle="Month to date"
               info="Parsed from the MSR Discounts & Promotions MTD sheet."
               emptyMessage={concessionsEmpty}
             >
@@ -4254,7 +4254,7 @@ function FinancialsSection({
             <ChartCard
               key="financials-concessions-credits"
               title="Credits and adjustments"
-              subtitle="Monthly trend"
+              subtitle="Month to date"
               info="Parsed from the MSR Credits & Adjustments MTD sheet."
               emptyMessage={creditsEmpty}
             >
@@ -4269,7 +4269,7 @@ function FinancialsSection({
             <ChartCard
               key="financials-concessions-refunds"
               title="Refunds + write-offs"
-              subtitle="Monthly trend"
+              subtitle="Month to date"
               info="Parsed from the MSR Refunds MTD and Write-Offs MTD sheets (combined)."
               emptyMessage={refundsEmpty}
             >
