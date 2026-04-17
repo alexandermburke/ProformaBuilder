@@ -300,6 +300,19 @@ const formatSignedNumber = (value: number | null | undefined): string => {
 
 const formatMonthLabel = (monthIso: string): string => formatShortMonth(monthIso);
 
+const formatMonthAsOfLabel = (monthIso: string): string => {
+  const [year, month] = monthIso.split('-');
+  const parsedYear = Number(year);
+  const parsedMonth = Number(month);
+  if (!Number.isFinite(parsedYear) || !Number.isFinite(parsedMonth)) return monthIso;
+  const date = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+};
+
 function MonthAxisLabels({
   labels,
   y,
@@ -4131,6 +4144,14 @@ function FinancialsSection({
     isFiniteNumber(latestNoi) && isFiniteNumber(latestNetRevenue) && latestNetRevenue !== 0
       ? (latestNoi / latestNetRevenue) * 100
       : null;
+  const latestClosedFinancialMonthIso =
+    noiSeries[noiSeries.length - 1]?.monthIso ??
+    expensesSeries[expensesSeries.length - 1]?.monthIso ??
+    laggedFinancialSeriesEntries[laggedFinancialSeriesEntries.length - 1]?.monthIso ??
+    null;
+  const latestClosedFinancialDetail = latestClosedFinancialMonthIso
+    ? `As of ${formatMonthAsOfLabel(latestClosedFinancialMonthIso)}`
+    : 'Updated monthly';
 
   return (
     <LazyBlock minHeight={420}>
@@ -4147,10 +4168,10 @@ function FinancialsSection({
         <section className="ios-card ios-animate-up space-y-6 p-6">
           <KpiRow
             items={[
-              { label: 'Net revenue ', value: formatMaybeCurrency(latestNetRevenue) },
-              { label: 'Expenses ', value: formatMaybeCurrency(latestExpenses) },
-              { label: 'NOI ', value: formatMaybeCurrency(latestNoi) },
-              { label: 'NOI margin', value: formatMaybePercent(marginPct, 1) },
+              { label: 'Net revenue', value: formatMaybeCurrency(latestNetRevenue), detail: 'Month to date' },
+              { label: 'Expenses', value: formatMaybeCurrency(latestExpenses), detail: latestClosedFinancialDetail },
+              { label: 'NOI', value: formatMaybeCurrency(latestNoi), detail: latestClosedFinancialDetail },
+              { label: 'NOI margin', value: formatMaybePercent(marginPct, 1), detail: latestClosedFinancialDetail },
             ]}
             columns={4}
           />
