@@ -1,10 +1,12 @@
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { InfoTooltip } from './InfoTooltip';
 
 export type KpiItem = {
   label: string;
   value: string;
+  valueNode?: ReactNode;
   detail?: string;
+  detailNode?: ReactNode;
   info?: string;
 };
 
@@ -25,8 +27,12 @@ export function KpiRow({ items, columns = 3 }: KpiRowProps): JSX.Element {
             <span>{item.label}</span>
             {item.info ? <InfoTooltip label={item.info} /> : null}
           </div>
-          <div className="text-lg font-semibold text-[color:var(--text-primary)]">{item.value}</div>
-          {item.detail ? <div className="text-xs text-[color:var(--text-secondary)]">{item.detail}</div> : null}
+          <div className="text-lg font-semibold text-[color:var(--text-primary)]">{item.valueNode ?? item.value}</div>
+          {item.detailNode ? (
+            <div className="text-xs text-[color:var(--text-secondary)]">{item.detailNode}</div>
+          ) : item.detail ? (
+            <div className="text-xs text-[color:var(--text-secondary)]">{item.detail}</div>
+          ) : null}
         </div>
       ))}
     </div>

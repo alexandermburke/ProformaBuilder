@@ -34,6 +34,8 @@ export type MsrSnapshot = {
   revenue?: {
     economicOccupancy?: number;
     netRevenueMtd?: number;
+    netRevenueSameDayLastMonth?: number;
+    netRevenueSameDayLastYear?: number;
     grossPotentialRevenue?: number;
     totalOperatingExpense?: number;
     totalOperatingExpenseMtd?: number;

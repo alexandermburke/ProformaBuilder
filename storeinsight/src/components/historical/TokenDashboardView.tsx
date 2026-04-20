@@ -1607,6 +1607,79 @@ export function HistoricalSnapshotDashboardView({
         .token-dashboard-print .info-tooltip {
           display: none !important;
         }
+        @keyframes mtd-chip-orbit {
+          0% {
+            transform: scale(0.82);
+            opacity: 0;
+          }
+          20% {
+            opacity: 0.42;
+          }
+          70% {
+            opacity: 0.12;
+          }
+          100% {
+            transform: scale(1.55);
+            opacity: 0;
+          }
+        }
+        @keyframes mtd-chip-arrow {
+          0%,
+          100% {
+            transform: translateY(0);
+            filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+          }
+          35% {
+            transform: translateY(-1px);
+            filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.18));
+          }
+          70% {
+            transform: translateY(0.5px);
+          }
+        }
+        .mtd-pace-chip {
+          position: relative;
+        }
+        .mtd-pace-chip__beacon {
+          position: relative;
+          display: inline-flex;
+          height: 1rem;
+          width: 1rem;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+        }
+        .mtd-pace-chip__beacon::before,
+        .mtd-pace-chip__beacon::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 9999px;
+          pointer-events: none;
+        }
+        .mtd-pace-chip__beacon::before {
+          background: currentColor;
+          opacity: 0.18;
+          animation: mtd-chip-orbit 2.6s ease-out infinite;
+        }
+        .mtd-pace-chip__beacon::after {
+          background: currentColor;
+          opacity: 0.1;
+          animation: mtd-chip-orbit 2.6s ease-out infinite 1.1s;
+        }
+        .mtd-pace-chip__glyph {
+          position: relative;
+          display: inline-flex;
+          height: 1rem;
+          width: 1rem;
+          align-items: center;
+          justify-content: center;
+          border-radius: 9999px;
+        }
+        .mtd-pace-chip__glyph svg {
+          animation: mtd-chip-arrow 2.2s ease-in-out infinite;
+          will-change: transform, filter;
+        }
         @media print {
           @page {
             size: landscape;
@@ -4135,6 +4208,7 @@ function FinancialsSection({
 
   const latestNetRevenue =
     (latestSnapshot ? getSnapshotNumber(latestSnapshot, NET_REVENUE_VALUE_PATHS) : null) ?? getLatestSeriesValue(netRevenueSeries);
+  const latestNetRevenueSameDayLastMonth = latestSnapshot?.revenue?.netRevenueSameDayLastMonth ?? null;
   const latestClosedNetRevenue = getLatestSeriesValue(closedNetRevenueSeries);
   const latestExpenses = getLatestSeriesValue(expensesSeries);
   const directLatestNoi = getLatestSeriesValue(noiSeries);
@@ -4163,6 +4237,45 @@ function FinancialsSection({
   const closedFinancialTrendSubtitle = latestClosedFinancialMonthIso
     ? `As of ${formatMonthAsOfLabel(latestClosedFinancialMonthIso)}`
     : 'Updated monthly';
+  const netRevenueVsLastMonthPct =
+    isFiniteNumber(latestNetRevenue) &&
+    isFiniteNumber(latestNetRevenueSameDayLastMonth) &&
+    latestNetRevenueSameDayLastMonth !== 0
+      ? ((latestNetRevenue - latestNetRevenueSameDayLastMonth) / latestNetRevenueSameDayLastMonth) * 100
+      : null;
+  const netRevenueVsLastMonthDelta =
+    isFiniteNumber(latestNetRevenue) && isFiniteNumber(latestNetRevenueSameDayLastMonth)
+      ? latestNetRevenue - latestNetRevenueSameDayLastMonth
+      : null;
+  const netRevenueTrendUp = isFiniteNumber(netRevenueVsLastMonthDelta) ? netRevenueVsLastMonthDelta >= 0 : null;
+  const netRevenueInlineValueNode = (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span>{formatMaybeCurrency(latestNetRevenue)}</span>
+      {isFiniteNumber(latestNetRevenueSameDayLastMonth) ? (
+        <>
+          <span
+            className={`mtd-pace-chip inline-flex items-center gap-2 text-[12px] font-semibold ${
+              netRevenueTrendUp ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+            }`}
+          >
+            <span className="mtd-pace-chip__beacon">
+              <span className="mtd-pace-chip__glyph">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" focusable="false">
+                  <path
+                    d={netRevenueTrendUp ? 'M8 3l4 5H9v5H7V8H4l4-5z' : 'M8 13l-4-5h3V3h2v5h3l-4 5z'}
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+            </span>
+            <span>
+              {formatMaybePercent(Math.abs(netRevenueVsLastMonthPct ?? 0), 1)} vs last month
+            </span>
+          </span>
+        </>
+      ) : null}
+    </div>
+  );
 
   return (
     <LazyBlock minHeight={420}>
@@ -4179,7 +4292,13 @@ function FinancialsSection({
         <section className="ios-card ios-animate-up space-y-6 p-6">
           <KpiRow
             items={[
-              { label: 'Net revenue', value: formatMaybeCurrency(latestNetRevenue), detail: 'Month to date' },
+              {
+                label: 'Net revenue',
+                value: formatMaybeCurrency(latestNetRevenue),
+                valueNode: netRevenueInlineValueNode,
+                detail: 'Month to date',
+                info: 'Current month-to-date net revenue. The animated chip compares today’s month-to-date pace against the same day last month.',
+              },
               { label: 'Expenses', value: formatMaybeCurrency(latestExpenses), detail: latestClosedFinancialDetail },
               { label: 'NOI', value: formatMaybeCurrency(latestNoi), detail: latestClosedFinancialDetail },
               { label: 'NOI margin', value: formatMaybePercent(marginPct, 1), detail: latestClosedFinancialDetail },
