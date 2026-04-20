@@ -4254,7 +4254,7 @@ function FinancialsSection({
     valueText: string,
     latestValue: number | null,
     previousValue: number | null,
-    options?: { favorDecrease?: boolean },
+    options?: { favorDecrease?: boolean; comparisonLabel?: string },
   ): JSX.Element => {
     const delta = isFiniteNumber(latestValue) && isFiniteNumber(previousValue) ? latestValue - previousValue : null;
     const deltaPct =
@@ -4282,7 +4282,7 @@ function FinancialsSection({
                 </svg>
               </span>
             </span>
-            <span>{formatMaybePercent(Math.abs(deltaPct), 1)} vs last month</span>
+            <span>{formatMaybePercent(Math.abs(deltaPct), 1)} {options?.comparisonLabel ?? 'vs Prior MTD'}</span>
           </span>
         ) : null}
       </div>
@@ -4299,9 +4299,14 @@ function FinancialsSection({
     formatMaybeCurrency(latestExpenses),
     latestExpenses,
     previousExpenses,
-    { favorDecrease: true },
+    { favorDecrease: true, comparisonLabel: 'MoM' },
   );
-  const noiInlineValueNode = makeInlineComparisonNode(formatMaybeCurrency(latestNoi), latestNoi, previousNoi);
+  const noiInlineValueNode = makeInlineComparisonNode(
+    formatMaybeCurrency(latestNoi),
+    latestNoi,
+    previousNoi,
+    { comparisonLabel: 'MoM' },
+  );
 
   return (
     <LazyBlock minHeight={420}>
