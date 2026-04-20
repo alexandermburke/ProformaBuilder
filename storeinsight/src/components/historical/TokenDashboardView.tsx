@@ -4248,34 +4248,60 @@ function FinancialsSection({
       ? latestNetRevenue - latestNetRevenueSameDayLastMonth
       : null;
   const netRevenueTrendUp = isFiniteNumber(netRevenueVsLastMonthDelta) ? netRevenueVsLastMonthDelta >= 0 : null;
-  const netRevenueInlineValueNode = (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span>{formatMaybeCurrency(latestNetRevenue)}</span>
-      {isFiniteNumber(latestNetRevenueSameDayLastMonth) ? (
-        <>
+  const previousExpenses = expensesSeries.length > 1 ? expensesSeries[expensesSeries.length - 2]?.value ?? null : null;
+  const previousNoi = noiSeries.length > 1 ? noiSeries[noiSeries.length - 2]?.value ?? null : null;
+  const makeInlineComparisonNode = (
+    valueText: string,
+    latestValue: number | null,
+    previousValue: number | null,
+    options?: { favorDecrease?: boolean },
+  ): JSX.Element => {
+    const delta = isFiniteNumber(latestValue) && isFiniteNumber(previousValue) ? latestValue - previousValue : null;
+    const deltaPct =
+      isFiniteNumber(delta) && isFiniteNumber(previousValue) && previousValue !== 0
+        ? (delta / previousValue) * 100
+        : null;
+    const trendUp = isFiniteNumber(delta) ? delta >= 0 : null;
+    const positiveDirection = options?.favorDecrease ? trendUp === false : trendUp === true;
+    return (
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span>{valueText}</span>
+        {isFiniteNumber(previousValue) && isFiniteNumber(deltaPct) && trendUp != null ? (
           <span
             className={`mtd-pace-chip inline-flex items-center gap-2 text-[12px] font-semibold ${
-              netRevenueTrendUp ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+              positiveDirection ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
             }`}
           >
             <span className="mtd-pace-chip__beacon">
               <span className="mtd-pace-chip__glyph">
                 <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" focusable="false">
                   <path
-                    d={netRevenueTrendUp ? 'M8 3l4 5H9v5H7V8H4l4-5z' : 'M8 13l-4-5h3V3h2v5h3l-4 5z'}
+                    d={trendUp ? 'M8 3l4 5H9v5H7V8H4l4-5z' : 'M8 13l-4-5h3V3h2v5h3l-4 5z'}
                     fill="currentColor"
                   />
                 </svg>
               </span>
             </span>
-            <span>
-              {formatMaybePercent(Math.abs(netRevenueVsLastMonthPct ?? 0), 1)} vs last month
-            </span>
+            <span>{formatMaybePercent(Math.abs(deltaPct), 1)} vs last month</span>
           </span>
-        </>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
+    );
+  };
+  const netRevenueInlineValueNode = (
+    makeInlineComparisonNode(
+      formatMaybeCurrency(latestNetRevenue),
+      latestNetRevenue,
+      latestNetRevenueSameDayLastMonth,
+    )
   );
+  const expensesInlineValueNode = makeInlineComparisonNode(
+    formatMaybeCurrency(latestExpenses),
+    latestExpenses,
+    previousExpenses,
+    { favorDecrease: true },
+  );
+  const noiInlineValueNode = makeInlineComparisonNode(formatMaybeCurrency(latestNoi), latestNoi, previousNoi);
 
   return (
     <LazyBlock minHeight={420}>
@@ -4299,9 +4325,23 @@ function FinancialsSection({
                 detail: 'Month to date',
                 info: 'Current month-to-date net revenue. The animated chip compares today’s month-to-date pace against the same day last month.',
               },
-              { label: 'Expenses', value: formatMaybeCurrency(latestExpenses), detail: latestClosedFinancialDetail },
-              { label: 'NOI', value: formatMaybeCurrency(latestNoi), detail: latestClosedFinancialDetail },
-              { label: 'NOI margin', value: formatMaybePercent(marginPct, 1), detail: latestClosedFinancialDetail },
+              {
+                label: 'Expenses',
+                value: formatMaybeCurrency(latestExpenses),
+                valueNode: expensesInlineValueNode,
+                detail: latestClosedFinancialDetail,
+              },
+              {
+                label: 'NOI',
+                value: formatMaybeCurrency(latestNoi),
+                valueNode: noiInlineValueNode,
+                detail: latestClosedFinancialDetail,
+              },
+              {
+                label: 'NOI margin',
+                value: formatMaybePercent(marginPct, 1),
+                detail: latestClosedFinancialDetail,
+              },
             ]}
             columns={4}
           />
