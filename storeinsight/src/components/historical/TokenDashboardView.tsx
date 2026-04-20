@@ -30,6 +30,7 @@ import {
   TOKEN_DEFAULT_SNAPSHOT_RANGE,
   TOKEN_SNAPSHOT_RANGE_OPTIONS,
   normalizeMonthIso,
+  sliceLaggedFinancialEntriesByRange,
   sliceSnapshotEntriesByRange,
   toMonthKey,
 } from '@/lib/historical/snapshotDashboard';
@@ -629,8 +630,11 @@ export function HistoricalSnapshotDashboardView({
     [rangeSnapshots],
   );
   const financialSeriesEntries = useMemo(
-    () => rangeSnapshots.filter((entry) => entry.monthIso && hasFinancialSeriesData(entry.snapshot)),
-    [rangeSnapshots],
+    () => sliceLaggedFinancialEntriesByRange(
+      rangeSnapshots.filter((entry) => entry.monthIso && hasFinancialSeriesData(entry.snapshot)),
+      range,
+    ),
+    [rangeSnapshots, range],
   );
 
   const overlayTop = isDark
@@ -4097,6 +4101,9 @@ function FinancialsSection({
   isDark: boolean;
 }): JSX.Element {
   const netRevenueSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS));
+  const closedNetRevenueSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) =>
+    getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS),
+  );
   const expensesSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS));
   const noiSeries = useMemo(
     () =>
@@ -4128,22 +4135,22 @@ function FinancialsSection({
 
   const latestNetRevenue =
     (latestSnapshot ? getSnapshotNumber(latestSnapshot, NET_REVENUE_VALUE_PATHS) : null) ?? getLatestSeriesValue(netRevenueSeries);
-  const latestExpenses =
-    (latestSnapshot ? getSnapshotNumber(latestSnapshot, EXPENSES_VALUE_PATHS) : null) ?? getLatestSeriesValue(expensesSeries);
-  const directLatestNoi =
-    (latestSnapshot ? getSnapshotNumber(latestSnapshot, NOI_VALUE_PATHS) : null) ?? getLatestSeriesValue(noiSeries);
+  const latestClosedNetRevenue = getLatestSeriesValue(closedNetRevenueSeries);
+  const latestExpenses = getLatestSeriesValue(expensesSeries);
+  const directLatestNoi = getLatestSeriesValue(noiSeries);
   const latestNoi =
     isFiniteNumber(directLatestNoi)
       ? directLatestNoi
-      : isFiniteNumber(latestNetRevenue) && isFiniteNumber(latestExpenses)
-        ? latestNetRevenue - latestExpenses
+      : isFiniteNumber(latestClosedNetRevenue) && isFiniteNumber(latestExpenses)
+        ? latestClosedNetRevenue - latestExpenses
         : null;
   const marginPct =
-    isFiniteNumber(latestNoi) && isFiniteNumber(latestNetRevenue) && latestNetRevenue !== 0
-      ? (latestNoi / latestNetRevenue) * 100
+    isFiniteNumber(latestNoi) && isFiniteNumber(latestClosedNetRevenue) && latestClosedNetRevenue !== 0
+      ? (latestNoi / latestClosedNetRevenue) * 100
       : null;
   const latestClosedFinancialMonthIso =
     noiSeries[noiSeries.length - 1]?.monthIso ??
+    closedNetRevenueSeries[closedNetRevenueSeries.length - 1]?.monthIso ??
     expensesSeries[expensesSeries.length - 1]?.monthIso ??
     laggedFinancialSeriesEntries[laggedFinancialSeriesEntries.length - 1]?.monthIso ??
     null;
@@ -4995,6 +5002,9 @@ function PrintFinancialsReport({
   laggedFinancialSeriesEntries: SnapshotEntry[];
 }): JSX.Element {
   const netRevenueSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS));
+  const closedNetRevenueSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) =>
+    getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS),
+  );
   const expensesSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS));
   const noiSeries = laggedFinancialSeriesEntries.flatMap((entry) => {
     if (!entry.monthIso) return [];
@@ -5014,18 +5024,19 @@ function PrintFinancialsReport({
   const refundsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.refundsWriteoffsMtd);
   const latestNetRevenue =
     (latestSnapshot ? getSnapshotNumber(latestSnapshot, NET_REVENUE_VALUE_PATHS) : null) ?? getLatestSeriesValue(netRevenueSeries);
-  const latestExpenses =
-    (latestSnapshot ? getSnapshotNumber(latestSnapshot, EXPENSES_VALUE_PATHS) : null) ?? getLatestSeriesValue(expensesSeries);
-  const directLatestNoi =
-    (latestSnapshot ? getSnapshotNumber(latestSnapshot, NOI_VALUE_PATHS) : null) ?? getLatestSeriesValue(noiSeries);
+  const latestClosedNetRevenue = getLatestSeriesValue(closedNetRevenueSeries);
+  const latestExpenses = getLatestSeriesValue(expensesSeries);
+  const directLatestNoi = getLatestSeriesValue(noiSeries);
   const latestNoi =
     isFiniteNumber(directLatestNoi)
       ? directLatestNoi
-      : isFiniteNumber(latestNetRevenue) && isFiniteNumber(latestExpenses)
-        ? latestNetRevenue - latestExpenses
+      : isFiniteNumber(latestClosedNetRevenue) && isFiniteNumber(latestExpenses)
+        ? latestClosedNetRevenue - latestExpenses
         : null;
   const marginPct =
-    isFiniteNumber(latestNoi) && isFiniteNumber(latestNetRevenue) && latestNetRevenue !== 0 ? (latestNoi / latestNetRevenue) * 100 : null;
+    isFiniteNumber(latestNoi) && isFiniteNumber(latestClosedNetRevenue) && latestClosedNetRevenue !== 0
+      ? (latestNoi / latestClosedNetRevenue) * 100
+      : null;
 
   return (
     <PrintReportSection title="Financials" subtitle="Revenue, expenses, NOI, and allowance trends.">
