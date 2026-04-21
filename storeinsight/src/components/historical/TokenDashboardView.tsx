@@ -535,11 +535,14 @@ export function HistoricalSnapshotDashboardView({
   const [overviewSaveStatus, setOverviewSaveStatus] = useState<string | null>(null);
   const [overviewSaving, setOverviewSaving] = useState(false);
   const [isPrintMode, setIsPrintMode] = useState(false);
+  const [printStatus, setPrintStatus] = useState<'idle' | 'preparing' | 'error'>('idle');
   const hideHeaderDetailsOnMobile = section !== 'overview';
   const currentYear = new Date().getFullYear();
   const overviewCustomizeButtonRef = useRef<HTMLButtonElement | null>(null);
   const overviewModalRef = useRef<HTMLDivElement | null>(null);
   const overviewModalWasOpen = useRef(false);
+  const printLifecycleTimerRef = useRef<number | null>(null);
+  const printErrorTimerRef = useRef<number | null>(null);
   const selectedPropertyOption = useMemo(
     () => propertyOptions?.find((option) => option.id === propertyId) ?? propertyOptions?.[0] ?? null,
     [propertyId, propertyOptions],
@@ -1397,6 +1400,7 @@ export function HistoricalSnapshotDashboardView({
     { label: 'Projected rent', value: formatMaybeCurrency(projRentValue), detail: 'Economic occupancy' },
     { label: 'Gross potential rent', value: formatMaybeCurrency(grossPotentialRentValue), detail: 'Revenue statistics' },
   ];
+  const currentSectionLabel = SECTION_TABS.find((option) => option.id === section)?.label ?? 'Overview';
   const renderPrintOverviewWidgetCard = (widget: OverviewWidgetKey): JSX.Element | null => {
     switch (widget) {
       case 'occupancy':
@@ -1569,33 +1573,77 @@ export function HistoricalSnapshotDashboardView({
         return null;
     }
   };
+  const clearPrintTimers = useCallback(() => {
+    if (printLifecycleTimerRef.current != null) {
+      window.clearTimeout(printLifecycleTimerRef.current);
+      printLifecycleTimerRef.current = null;
+    }
+    if (printErrorTimerRef.current != null) {
+      window.clearTimeout(printErrorTimerRef.current);
+      printErrorTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => () => clearPrintTimers(), [clearPrintTimers]);
   const printOverviewCards = visibleOverviewWidgets
+    .slice(0, 4)
     .map((option) => renderPrintOverviewWidgetCard(option.id))
     .filter((card): card is JSX.Element => Boolean(card));
   const handlePrint = useCallback(() => {
+    if (isPrintMode || printStatus === 'preparing') return;
     const previousTitle = document.title;
     let restored = false;
+    const cleanup = () => {
+      clearPrintTimers();
+      window.removeEventListener('afterprint', restoreTitle);
+      window.removeEventListener('focus', handleFocusReturn);
+    };
     const restoreTitle = () => {
       if (restored) return;
       restored = true;
+      cleanup();
+      document.title = previousTitle;
+      setPrintStatus('idle');
+      setIsPrintMode(false);
+    };
+    const failPrint = () => {
+      if (restored) return;
+      restored = true;
+      cleanup();
       document.title = previousTitle;
       setIsPrintMode(false);
-      window.removeEventListener('afterprint', restoreTitle);
-      window.removeEventListener('focus', restoreTitle);
+      setPrintStatus('error');
+      printErrorTimerRef.current = window.setTimeout(() => {
+        setPrintStatus((current) => (current === 'error' ? 'idle' : current));
+      }, 5000);
+    };
+    const handleFocusReturn = () => {
+      window.setTimeout(restoreTitle, 40);
     };
 
+    setPrintStatus('preparing');
     flushSync(() => {
       setIsPrintMode(true);
     });
     document.title = printDocumentTitle;
     window.addEventListener('afterprint', restoreTitle);
-    window.addEventListener('focus', restoreTitle);
-    window.requestAnimationFrame(() => {
+    window.addEventListener('focus', handleFocusReturn);
+    printLifecycleTimerRef.current = window.setTimeout(() => {
       window.requestAnimationFrame(() => {
-        window.print();
+        window.requestAnimationFrame(() => {
+          try {
+            window.print();
+          } catch {
+            failPrint();
+          }
+        });
       });
-    });
-  }, [printDocumentTitle]);
+    }, 220);
+    printErrorTimerRef.current = window.setTimeout(() => {
+      if (document.visibilityState === 'visible' && document.hasFocus()) {
+        failPrint();
+      }
+    }, 12000);
+  }, [clearPrintTimers, isPrintMode, printDocumentTitle, printStatus]);
 
 
   return (
@@ -1680,7 +1728,18 @@ export function HistoricalSnapshotDashboardView({
           animation: mtd-chip-arrow 2.2s ease-in-out infinite;
           will-change: transform, filter;
         }
+        @keyframes print-prep-spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+        .token-dashboard-print-preparing__spinner {
+          animation: print-prep-spin 0.9s linear infinite;
+        }
         @media print {
+          .token-dashboard-print-preparing {
+            display: none !important;
+          }
           @page {
             size: landscape;
             margin: 0.45in;
@@ -1875,6 +1934,32 @@ export function HistoricalSnapshotDashboardView({
       `}</style>
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayTop}`} />
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
+      {printStatus !== 'idle' ? (
+        <div className="token-dashboard-print-preparing fixed inset-0 z-[60] flex items-center justify-center bg-[color:var(--overlay)]/70 px-6 backdrop-blur-sm">
+          <div className="ios-card max-w-md space-y-3 p-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.2)]" data-tone="blue">
+            {printStatus === 'preparing' ? (
+              <>
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface)] shadow-inner">
+                  <div className="token-dashboard-print-preparing__spinner h-5 w-5 rounded-full border-2 border-[color:var(--border-soft)] border-t-[color:var(--accent-strong)]" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-base font-semibold text-[color:var(--text-primary)]">Preparing print report…</div>
+                  <div className="text-sm text-[color:var(--text-secondary)]">
+                    Building a lighter full-report layout for printing. The print dialog should open automatically.
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-base font-semibold text-[color:var(--text-primary)]">Print preview did not open.</div>
+                <div className="text-sm text-[color:var(--text-secondary)]">
+                  The print layout was cancelled before the browser opened the dialog. Try again after the page finishes rendering.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {!isPrintMode ? (
       <div className="token-dashboard-screen token-dashboard-print__content relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
@@ -2136,35 +2221,44 @@ export function HistoricalSnapshotDashboardView({
           <PrintReportHeader
             propertyName={resolvedPrintPropertyName}
             asOfDate={latestDateLabel ?? 'N/A'}
-            sectionLabel="Full dashboard"
+            sectionLabel={currentSectionLabel}
             rangeLabel={range}
             items={printSummaryItems}
           />
-          <PrintReportSection
-            title="Overview"
-            subtitle={
-              isInternal
-                ? 'Selected internal overview graphs reformatted for paper output.'
-                : 'Selected owner-view graphs reformatted for paper output.'
-            }
-          >
-            {printOverviewCards.length ? (
-              <div className="print-report-grid-2">{printOverviewCards}</div>
-            ) : (
-              <PrintBlock title="Overview" subtitle="No printable chart data">
-                <div className="print-report-note">No overview widgets currently have data for this range.</div>
-              </PrintBlock>
-            )}
-          </PrintReportSection>
-
-          <PrintCollectionsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          <PrintPricingReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          <PrintOperationsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          <PrintFinancialsReport
-            latestSnapshot={latestSnapshot}
-            seriesEntries={seriesEntries}
-            laggedFinancialSeriesEntries={financialSeriesEntries}
-          />
+          {section === 'overview' ? (
+            <PrintReportSection
+              title="Overview"
+              subtitle={
+                isInternal
+                  ? 'Selected internal overview graphs reformatted for paper output.'
+                  : 'Selected owner-view graphs reformatted for paper output.'
+              }
+            >
+              {printOverviewCards.length ? (
+                <div className="print-report-grid-2">{printOverviewCards}</div>
+              ) : (
+                <PrintBlock title="Overview" subtitle="No printable chart data">
+                  <div className="print-report-note">No overview widgets currently have data for this range.</div>
+                </PrintBlock>
+              )}
+            </PrintReportSection>
+          ) : null}
+          {section === 'collections' ? (
+            <PrintCollectionsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          ) : null}
+          {section === 'pricing' ? (
+            <PrintPricingReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          ) : null}
+          {section === 'drilldowns' ? (
+            <PrintOperationsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
+          ) : null}
+          {section === 'accounting' ? (
+            <PrintFinancialsReport
+              latestSnapshot={latestSnapshot}
+              seriesEntries={seriesEntries}
+              laggedFinancialSeriesEntries={financialSeriesEntries}
+            />
+          ) : null}
         </div>
       </div>
       ) : null}
@@ -4647,21 +4741,16 @@ function PrintCollectionsReport({
   seriesEntries: SnapshotEntry[];
 }): JSX.Element {
   const latestAr = latestSnapshot?.ar;
-  const agingSeries = seriesEntries
-    .map((entry) => ({ monthIso: entry.monthIso, buckets: getArBuckets(entry.snapshot) }))
-    .filter((entry): entry is { monthIso: string; buckets: NonNullable<ReturnType<typeof getArBuckets>> } => {
-      return Boolean(entry.monthIso) && Boolean(entry.buckets);
-    });
-  const agingTotals = agingSeries.map((entry) => {
-    return entry.buckets.days0to10 + entry.buckets.days11to30 + entry.buckets.days31to60 + entry.buckets.days61plus;
-  });
-  const agingMax = Math.max(1, ...agingTotals);
-  const agingBuckets = [
-    { label: '0-10', color: '#38bdf8' },
-    { label: '11-30', color: '#818cf8' },
-    { label: '31-60', color: '#fbbf24' },
-    { label: '61+', color: '#f87171' },
-  ] as const;
+  const totalPastDueSeries = buildSeries(seriesEntries, (snapshot) => snapshot.ar?.totalPastDue);
+  const latestAging = getArBuckets(latestSnapshot ?? {});
+  const latestAgingRows = latestAging
+    ? [
+        { bucket: '0-10 days', balance: latestAging.days0to10 },
+        { bucket: '11-30 days', balance: latestAging.days11to30 },
+        { bucket: '31-60 days', balance: latestAging.days31to60 },
+        { bucket: '61+ days', balance: latestAging.days61plus },
+      ]
+    : [];
   const overlockDistribution = Array.isArray(latestAr?.overlockBucketShare)
     ? latestAr.overlockBucketShare.filter((bucket) => isFiniteNumber(bucket.percent))
     : [];
@@ -4682,57 +4771,14 @@ function PrintCollectionsReport({
       />
 
       <div className="print-report-grid-2">
-        {agingSeries.length ? (
-          <PrintBlock title="AR aging trend" subtitle="Past-due dollars by bucket">
-            <div className="mt-3 rounded-[16px] border border-[color:#e5e7eb] bg-white p-3">
-              <div className="relative h-36">
-                <div className="absolute inset-0 flex flex-col justify-between">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <div key={index} className="border-t border-dashed border-[rgba(148,163,184,0.2)]" />
-                  ))}
-                </div>
-                <div className="relative z-10 flex h-full items-end gap-2">
-                  {agingSeries.map((row) => {
-                    const stack = [
-                      row.buckets.days0to10,
-                      row.buckets.days11to30,
-                      row.buckets.days31to60,
-                      row.buckets.days61plus,
-                    ];
-                    return (
-                      <div key={row.monthIso} className="flex h-full flex-1 flex-col-reverse">
-                        {stack.map((value, stackIndex) => (
-                          <div
-                            key={`${row.monthIso}-${stackIndex}`}
-                            className="history-chart-bar w-full"
-                            style={{
-                              height: `${(value / agingMax) * 100}%`,
-                              backgroundColor: agingBuckets[stackIndex].color,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
-                <div className="flex flex-wrap items-center gap-3">
-                  {agingBuckets.map((bucket) => (
-                    <span key={bucket.label} className="inline-flex items-center gap-1">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: bucket.color }} />
-                      {bucket.label}
-                    </span>
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {agingSeries.map((row) => (
-                    <span key={row.monthIso}>{formatMonthLabel(row.monthIso)}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </PrintBlock>
+        {totalPastDueSeries.length ? (
+          <PrintTrendCard
+            title="Total past due"
+            subtitle="Simple monthly trend"
+            series={totalPastDueSeries}
+            color="rgba(248,113,113,0.88)"
+            formatValue={formatCompactCurrency}
+          />
         ) : null}
 
         {overlockDistribution.length || isFiniteNumber(latestAr?.overlockTotalBalance) ? (
@@ -4748,17 +4794,9 @@ function PrintCollectionsReport({
             {overlockDistribution.length ? (
               <div className="mt-3 space-y-2">
                 {overlockDistribution.map((bucket) => (
-                  <div key={bucket.label} className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] text-slate-600">
-                      <span>{bucket.label} days</span>
-                      <span>{formatMaybePercent(bucket.percent, 0)}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-200">
-                      <div
-                        className="h-full rounded-full bg-[rgba(59,130,246,0.75)]"
-                        style={{ width: `${bucket.percent}%` }}
-                      />
-                    </div>
+                  <div key={bucket.label} className="flex items-center justify-between border-b border-slate-200 pb-1 text-[11px] text-slate-600">
+                    <span>{bucket.label} days</span>
+                    <span>{formatMaybePercent(bucket.percent, 0)}</span>
                   </div>
                 ))}
               </div>
@@ -4766,6 +4804,19 @@ function PrintCollectionsReport({
           </PrintBlock>
         ) : null}
       </div>
+
+      {latestAgingRows.length ? (
+        <PrintBlock title="Aging summary" subtitle="Latest snapshot" className="print-report-table">
+          <SimpleTable
+            rows={latestAgingRows}
+            columns={[
+              { header: 'Bucket', accessor: (row) => row.bucket },
+              { header: 'Balance', accessor: (row) => formatMaybeCurrency(row.balance), align: 'right' },
+            ]}
+            rowKey={(row) => row.bucket}
+          />
+        </PrintBlock>
+      ) : null}
 
       {topDelinquencies.length ? (
         <PrintBlock title="Top delinquent units" subtitle="Highest balances in the latest snapshot" className="print-report-table">
@@ -4853,32 +4904,33 @@ function PrintPricingReport({
     .slice(0, 5);
   const showRentChange = rentChangeCountSeries.length > 0 || rentChangePctSeries.length > 0;
   const showStaleRent = !showRentChange && staleSegments.length > 0;
+  const primaryRateSeries = sellSeries.length ? sellSeries : setSeries;
+  const primaryRateLabel = sellSeries.length ? 'Sell rate' : 'GPR rate';
+  const primaryRateColor = sellSeries.length ? 'rgba(14,165,233,0.9)' : 'rgba(37,99,235,0.9)';
+  const primaryRateFormat = formatMaybeCurrencyPerSqft;
 
   return (
     <PrintReportSection
       title="Pricing & Revenue"
-      subtitle="Rate positioning, revenue snapshot, and one supporting pricing drilldown."
+      subtitle="Rate positioning, revenue snapshot, and one lightweight pricing drilldown."
     >
       <div className="print-report-grid-2">
-        {setSeries.length && sellSeries.length ? (
-          <PrintBlock title="GPR rate vs sell rate" subtitle="Rate comparison over time">
+        <PrintBlock title="Rate positioning" subtitle="Latest snapshot">
+          <PrintMetricGrid
+            items={[
+              { label: 'GPR rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
+              { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
+              { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
+            ]}
+            columns={3}
+          />
+          <div className="mt-2 text-[11px] text-slate-500">GPR is Gross Potential Rate.</div>
+          {primaryRateSeries.length ? (
             <div className="mt-3">
-              <PrintMetricGrid
-                items={[
-                  { label: 'GPR rate ($/sqft)', value: formatMaybeCurrencyPerSqft(setRate) },
-                  { label: 'Sell rate ($/sqft)', value: formatMaybeCurrencyPerSqft(sellRate) },
-                  { label: 'Delta percent', value: formatMaybePercent(spreadPct, 1) },
-                ]}
-                columns={3}
-              />
+              <PrintLineChart series={primaryRateSeries} color={primaryRateColor} formatValue={primaryRateFormat} label={primaryRateLabel} />
             </div>
-            <div className="mt-2 text-[11px] text-slate-500">GPR is Gross Potential Rate.</div>
-            <div className="mt-3 print-report-grid-2">
-              <PrintLineChart series={setSeries} color="rgba(37,99,235,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="GPR rate" />
-              <PrintLineChart series={sellSeries} color="rgba(14,165,233,0.9)" formatValue={formatMaybeCurrencyPerSqft} label="Sell rate" />
-            </div>
-          </PrintBlock>
-        ) : null}
+          ) : null}
+        </PrintBlock>
 
         <PrintBlock title="Revenue statistics" subtitle="Latest snapshot">
           <PrintMetricGrid
@@ -4893,78 +4945,72 @@ function PrintPricingReport({
         </PrintBlock>
       </div>
 
-      <div className="print-report-grid-2">
-        <PrintBlock title="Rent analysis" subtitle="Rate spread summary">
-          <PrintMetricGrid
-            items={[
-              { label: 'GPR - sell (%)', value: formatMaybePercent(spreadPct, 1), detail: 'Relative spread from current rates' },
-              {
-                label: 'GPR - sell ($)',
-                value: isFiniteNumber(setRate) && isFiniteNumber(sellRate) ? formatMaybeCurrency(setRate - sellRate) : 'N/A',
-                detail: 'Absolute spread between rate metrics',
-              },
-              { label: 'Occupied rate variance', value: formatMaybePercent(occupiedRateVariancePct, 1), detail: 'Variance vs target occupancy' },
-            ]}
-            columns={3}
-          />
-        </PrintBlock>
-
-        {showRentChange ? (
-          <PrintBlock title="Rent change activity" subtitle="Selected pricing drilldown">
+      {(showRentChange || showStaleRent) ? (
+        <div className="print-report-grid-2">
+          <PrintBlock title="Rent analysis" subtitle="Summary">
             <PrintMetricGrid
               items={[
+                { label: 'GPR - sell (%)', value: formatMaybePercent(spreadPct, 1), detail: 'Relative spread from current rates' },
                 {
-                  label: 'Rent changes',
-                  value:
-                    isFiniteNumber(pricing?.rentChangeCountMtd) || isFiniteNumber(pricing?.rentChangeCount)
-                      ? formatMaybeNumber(pricing?.rentChangeCountMtd ?? pricing?.rentChangeCount)
-                      : 'N/A',
+                  label: 'GPR - sell ($)',
+                  value: isFiniteNumber(setRate) && isFiniteNumber(sellRate) ? formatMaybeCurrency(setRate - sellRate) : 'N/A',
+                  detail: 'Absolute spread between rate metrics',
                 },
-                { label: 'Avg change %', value: formatMaybePercent(pricing?.avgRentChangePct, 1) },
+                { label: 'Occupied rate variance', value: formatMaybePercent(occupiedRateVariancePct, 1), detail: 'Variance vs target occupancy' },
               ]}
-              columns={2}
+              columns={3}
             />
-            <div className="mt-3 print-report-grid-2">
+          </PrintBlock>
+
+          {showRentChange ? (
+            <PrintBlock title="Rent change activity" subtitle="Selected pricing drilldown">
+              <PrintMetricGrid
+                items={[
+                  {
+                    label: 'Rent changes',
+                    value:
+                      isFiniteNumber(pricing?.rentChangeCountMtd) || isFiniteNumber(pricing?.rentChangeCount)
+                        ? formatMaybeNumber(pricing?.rentChangeCountMtd ?? pricing?.rentChangeCount)
+                        : 'N/A',
+                  },
+                  { label: 'Avg change %', value: formatMaybePercent(pricing?.avgRentChangePct, 1) },
+                ]}
+                columns={2}
+              />
               {rentChangeCountSeries.length ? (
-                <PrintLineChart
-                  series={rentChangeCountSeries}
-                  color="rgba(37,99,235,0.85)"
-                  formatValue={formatMaybeNumber}
-                  label="Rent change count"
-                />
-              ) : null}
-              {rentChangePctSeries.length ? (
-                <PrintLineChart
-                  series={rentChangePctSeries}
-                  color="rgba(99,102,241,0.85)"
-                  formatValue={(value) => formatMaybePercent(value, 1)}
-                  label="Average change %"
-                />
-              ) : null}
-            </div>
-          </PrintBlock>
-        ) : showStaleRent ? (
-          <PrintBlock title="Stale rent exposure" subtitle="Units with no ECRI in 12 months">
-            <PrintMetricGrid
-              items={[
-                { label: 'Stale units', value: formatMaybeNumber(staleUnits), detail: isFiniteNumber(stalePct) ? `${formatPercent(stalePct, 1)} of total` : undefined },
-                { label: 'Total units', value: formatMaybeNumber(totalUnits) },
-              ]}
-              columns={2}
-            />
-            <div className="mt-3 space-y-2">
-              {staleSegments.map((segment) => (
-                <div key={segment.label} className="flex items-center justify-between border-b border-slate-200 pb-1 text-[11px] text-slate-600">
-                  <span>{segment.label}</span>
-                  <span>
-                    {formatMaybeNumber(segment.value)} ({formatMaybePercent((segment.value / Math.max(staleRentTotal, 1)) * 100, 0)})
-                  </span>
+                <div className="mt-3">
+                  <PrintLineChart
+                    series={rentChangeCountSeries}
+                    color="rgba(37,99,235,0.85)"
+                    formatValue={formatMaybeNumber}
+                    label="Rent change count"
+                  />
                 </div>
-              ))}
-            </div>
-          </PrintBlock>
-        ) : null}
-      </div>
+              ) : null}
+            </PrintBlock>
+          ) : showStaleRent ? (
+            <PrintBlock title="Stale rent exposure" subtitle="Units with no ECRI in 12 months">
+              <PrintMetricGrid
+                items={[
+                  { label: 'Stale units', value: formatMaybeNumber(staleUnits), detail: isFiniteNumber(stalePct) ? `${formatPercent(stalePct, 1)} of total` : undefined },
+                  { label: 'Total units', value: formatMaybeNumber(totalUnits) },
+                ]}
+                columns={2}
+              />
+              <div className="mt-3 space-y-2">
+                {staleSegments.map((segment) => (
+                  <div key={segment.label} className="flex items-center justify-between border-b border-slate-200 pb-1 text-[11px] text-slate-600">
+                    <span>{segment.label}</span>
+                    <span>
+                      {formatMaybeNumber(segment.value)} ({formatMaybePercent((segment.value / Math.max(staleRentTotal, 1)) * 100, 0)})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </PrintBlock>
+          ) : null}
+        </div>
+      ) : null}
     </PrintReportSection>
   );
 }
@@ -5050,24 +5096,16 @@ function PrintOperationsReport({
             ]}
             columns={3}
           />
-          <div className="mt-3 print-report-grid-2">
-            {occupancySeries.length ? (
+          {occupancySeries.length ? (
+            <div className="mt-3">
               <PrintLineChart
                 series={occupancySeries}
                 color="rgba(37,99,235,0.9)"
                 formatValue={(value) => formatPercent(value, 1)}
                 label="Occupancy (RSF)"
               />
-            ) : null}
-            {sellRateSeries.length ? (
-              <PrintLineChart
-                series={sellRateSeries}
-                color="rgba(14,165,233,0.9)"
-                formatValue={formatMaybeCurrencyPerSqft}
-                label="Sell rate"
-              />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           {unitMixSegments.length ? (
             <div className="mt-3 space-y-2">
               {unitMixSegments.map((segment) => (
@@ -5092,65 +5130,50 @@ function PrintOperationsReport({
             ]}
             columns={3}
           />
-          <div className="mt-3 print-report-grid-3">
-            {moveInsSeries.length ? (
-              <PrintLineChart series={moveInsSeries} color="rgba(37,99,235,0.88)" formatValue={formatMaybeNumber} label="Move-ins" />
-            ) : null}
-            {moveOutsSeries.length ? (
-              <PrintLineChart series={moveOutsSeries} color="rgba(248,113,113,0.84)" formatValue={formatMaybeNumber} label="Move-outs" />
-            ) : null}
-            {netRentalsSeries.length ? (
+          {netRentalsSeries.length ? (
+            <div className="mt-3">
               <PrintLineChart series={netRentalsSeries} color="rgba(16,185,129,0.9)" formatValue={formatSignedNumber} label="Net rentals" />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </PrintBlock>
       </div>
 
       {(channelSum > 0 || conversionSeries.length > 0) ? (
-        <div className="print-report-grid-2">
+        <PrintBlock title="Demand funnel" subtitle="Lead mix and conversion summary">
+          <PrintMetricGrid
+            items={[
+              { label: 'Total leads', value: formatMaybeNumber(leadsTotal) },
+              { label: 'Move-ins', value: formatMaybeNumber(latestMoveIns) },
+              { label: 'Conversion %', value: formatMaybePercent(conversionPct, 1) },
+            ]}
+            columns={3}
+          />
           {channelSum > 0 ? (
-            <PrintBlock title="Demand funnel" subtitle="Lead sources in the latest snapshot">
-              <PrintMetricGrid
-                items={[
-                  { label: 'Total leads', value: formatMaybeNumber(leadsTotal) },
-                  { label: 'Move-ins', value: formatMaybeNumber(latestMoveIns) },
-                  { label: 'Conversion %', value: formatMaybePercent(conversionPct, 1) },
-                ]}
-                columns={3}
-              />
-              <div className="mt-3 rounded-[16px] border border-[color:#e5e7eb] bg-white p-3">
-                <div className="flex h-32 items-end gap-3">
-                  {channelTotals.map((channel) => (
-                    <div key={channel.label} className="flex flex-1 flex-col items-center gap-2">
-                      <div className="flex h-24 w-full items-end">
-                        <div
-                          className="history-chart-bar w-full rounded-t-md"
-                          style={{
-                            height: `${channelSum > 0 ? (channel.value / channelSum) * 100 : 0}%`,
-                            backgroundColor: channel.color,
-                          }}
-                        />
-                      </div>
-                      <div className="text-center text-[10px] text-slate-600">
-                        <div>{channel.label}</div>
-                        <div>{formatMaybeNumber(channel.value)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </PrintBlock>
+            <div className="mt-3 space-y-2">
+              {channelTotals
+                .filter((channel) => channel.value > 0)
+                .map((channel) => (
+                  <div key={channel.label} className="flex items-center justify-between border-b border-slate-200 pb-1 text-[11px] text-slate-600">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: channel.color }} />
+                      {channel.label}
+                    </span>
+                    <span>{formatMaybeNumber(channel.value)}</span>
+                  </div>
+                ))}
+            </div>
           ) : null}
           {conversionSeries.length ? (
-            <PrintTrendCard
-              title="Conversion rate"
-              subtitle="Move-ins vs leads"
-              series={conversionSeries}
-              color="rgba(37,99,235,0.9)"
-              formatValue={(value) => formatPercent(value, 1)}
-            />
+            <div className="mt-3">
+              <PrintLineChart
+                series={conversionSeries}
+                color="rgba(37,99,235,0.9)"
+                formatValue={(value) => formatPercent(value, 1)}
+                label="Conversion rate"
+              />
+            </div>
           ) : null}
-        </div>
+        </PrintBlock>
       ) : null}
     </PrintReportSection>
   );
