@@ -46,6 +46,9 @@ export function InternalHistoricalRouteBar({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
+              Back to directory
+            </Link>
             {showUploadLink ? (
               <Link href="/historical-data-upload" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
                 Upload data
