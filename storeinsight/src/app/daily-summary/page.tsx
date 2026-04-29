@@ -1133,7 +1133,7 @@ export default function DailySummaryPage() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
-                    MoM Gross Accrued Rent
+                    MoM Net Revenue
                   </label>
                   <input
                     name="momPlaceholderGrossAccruedRent"

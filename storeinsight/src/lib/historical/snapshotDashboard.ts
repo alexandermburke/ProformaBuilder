@@ -159,12 +159,12 @@ export function resolveHistoricalPropertyName(
   fallbackPropertyName: string,
 ): string {
   const nameCandidates: Array<unknown> = [
+    fallbackPropertyName,
     data.propertyName,
     data.property_name,
     data.name,
     snapshots.find((snapshot) => typeof snapshot.propertyName === 'string' && snapshot.propertyName.trim())
       ?.propertyName,
-    fallbackPropertyName,
   ];
 
   const resolved = nameCandidates.find((value) => typeof value === 'string' && value.trim());

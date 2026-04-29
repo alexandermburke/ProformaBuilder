@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import type { JSX } from 'react';
+import type { FormEvent, JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import {
   getHistoricalTemplatePayload,
@@ -221,6 +221,13 @@ type BudgetFinancialPreviewResponse = {
   updatedAt?: string | null;
 };
 
+type NewHistoricalPropertyFormState = {
+  name: string;
+  propertyId: string;
+  propertyCode: string;
+  tenantPropertyId: string;
+};
+
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -262,6 +269,28 @@ const normalizePropertyToken = (value: string): string =>
     .replace(/\bthe\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+const buildHistoricalPropertyCode = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+
+const createEmptyHistoricalPropertyForm = (): NewHistoricalPropertyFormState => ({
+  name: '',
+  propertyId: '',
+  propertyCode: '',
+  tenantPropertyId: '',
+});
+
+const fetchHistoricalPropertyConfigs = async (): Promise<PropertyConfig[] | null> => {
+  const response = await fetch('/api/daily-summary/properties');
+  if (!response.ok) return null;
+  const data = (await response.json().catch(() => null)) as PropertyConfig[] | null;
+  if (!Array.isArray(data)) return null;
+  return data;
+};
 
 const resolvePropertyIdFromLabel = (label: string, propertyOptions: HistoricalPropertyOption[]): string | null => {
   const normalized = normalizePropertyToken(label);
@@ -307,6 +336,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const [historicalPropertyOptions, setHistoricalPropertyOptions] = useState<HistoricalPropertyOption[]>(
     buildHistoricalPropertyOptions([], PROPERTY_OPTIONS),
   );
+  const [historicalPropertyConfigs, setHistoricalPropertyConfigs] = useState<PropertyConfig[]>([]);
   const [propertyId, setPropertyId] = useState('');
   const [dataInput, setDataInput] = useState('');
   const [dataError, setDataError] = useState<string | null>(null);
@@ -339,17 +369,26 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const [budgetExisting, setBudgetExisting] = useState(false);
   const [budgetFinancialsExisting, setBudgetFinancialsExisting] = useState(false);
   const [budgetUpdatedAt, setBudgetUpdatedAt] = useState<string | null>(null);
+  const [newPropertyForm, setNewPropertyForm] = useState<NewHistoricalPropertyFormState>(
+    createEmptyHistoricalPropertyForm,
+  );
+  const [newPropertySaving, setNewPropertySaving] = useState(false);
+  const [newPropertyError, setNewPropertyError] = useState<string | null>(null);
+  const [newPropertyStatus, setNewPropertyStatus] = useState<string | null>(null);
+  const [deletePropertyConfigId, setDeletePropertyConfigId] = useState('');
+  const [deletePropertySaving, setDeletePropertySaving] = useState(false);
+  const [deletePropertyError, setDeletePropertyError] = useState<string | null>(null);
+  const [deletePropertyStatus, setDeletePropertyStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     const loadPropertyOptions = async () => {
       try {
-        const response = await fetch('/api/daily-summary/properties');
-        if (!response.ok) return;
-        const data = (await response.json().catch(() => null)) as PropertyConfig[] | null;
-        if (!isMounted || !Array.isArray(data)) return;
-        setHistoricalPropertyOptions(buildHistoricalPropertyOptions(data, PROPERTY_OPTIONS));
+        const configs = await fetchHistoricalPropertyConfigs();
+        if (!isMounted || !configs) return;
+        setHistoricalPropertyConfigs(configs);
+        setHistoricalPropertyOptions(buildHistoricalPropertyOptions(configs, PROPERTY_OPTIONS));
       } catch {
         // keep static fallback options
       }
@@ -461,6 +500,14 @@ export default function HistoricalDataUploadPage(): JSX.Element {
         { key: 'inventory', label: 'Inventory', ok: msrPreview.sections?.inventory },
       ]
     : [];
+  const deletableHistoricalProperties = useMemo(
+    () =>
+      historicalPropertyConfigs
+        .filter((property) => property.enabled === false)
+        .slice()
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [historicalPropertyConfigs],
+  );
 
   const handleLoadTemplate = () => {
     setDataInput(templateString);
@@ -476,6 +523,145 @@ export default function HistoricalDataUploadPage(): JSX.Element {
       setTemplateStatus('Template copied.');
     } catch {
       setTemplateStatus('Copy failed.');
+    }
+  };
+
+  const handleCreateHistoricalProperty = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setNewPropertyError(null);
+    setNewPropertyStatus(null);
+
+    const name = newPropertyForm.name.trim();
+    const resolvedPropertyId = newPropertyForm.propertyId.trim();
+    const propertyCode = newPropertyForm.propertyCode.trim() || buildHistoricalPropertyCode(name);
+    const tenantPropertyId = newPropertyForm.tenantPropertyId.trim() || resolvedPropertyId;
+
+    if (!name) {
+      setNewPropertyError('Property name is required.');
+      return;
+    }
+    if (!resolvedPropertyId) {
+      setNewPropertyError('Property ID is required.');
+      return;
+    }
+    if (!propertyCode) {
+      setNewPropertyError('Property code could not be generated. Enter one manually.');
+      return;
+    }
+
+    setNewPropertySaving(true);
+    try {
+      const response = await fetch('/api/daily-summary/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          id: resolvedPropertyId,
+          propertyId: resolvedPropertyId,
+          propertyCode,
+          tenantPropertyId,
+          enabled: false,
+          timezone: 'America/Phoenix',
+          sendTimeLocal: '08:00',
+          sendTimeMst: '08:00',
+          ownerEmails: [],
+        } satisfies Partial<PropertyConfig>),
+      });
+      const data = (await response.json().catch(() => null)) as Partial<PropertyConfig> & {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        setNewPropertyError(data?.error ?? 'Unable to add property.');
+        return;
+      }
+
+      const selectedId = data?.propertyId?.trim() || data?.id?.trim() || resolvedPropertyId;
+      const refreshedConfigs = await fetchHistoricalPropertyConfigs();
+      if (refreshedConfigs) {
+        setHistoricalPropertyConfigs(refreshedConfigs);
+        setHistoricalPropertyOptions(buildHistoricalPropertyOptions(refreshedConfigs, PROPERTY_OPTIONS));
+      }
+
+      setPropertyId(selectedId);
+      setMsrPropertyId(selectedId);
+      setBudgetPropertyId(selectedId);
+      setDeletePropertyConfigId(data?.id?.trim() || selectedId);
+      setMsrPreview(null);
+      setMsrWarnings([]);
+      setMsrExisting(false);
+      setMsrOverwrite(false);
+      setBudgetPreview(null);
+      setBudgetWarnings([]);
+      setBudgetExisting(false);
+      setBudgetFinancialsExisting(false);
+      setBudgetOverwrite(false);
+      setNewPropertyForm(createEmptyHistoricalPropertyForm());
+      setNewPropertyStatus(`${name} added as a historical-only property and selected for uploads.`);
+    } catch {
+      setNewPropertyError('Unable to add property.');
+    } finally {
+      setNewPropertySaving(false);
+    }
+  };
+
+  const handleDeleteHistoricalProperty = async () => {
+    setDeletePropertyError(null);
+    setDeletePropertyStatus(null);
+
+    const selectedConfig = deletableHistoricalProperties.find((property) => property.id === deletePropertyConfigId);
+    if (!selectedConfig) {
+      setDeletePropertyError('Select a historical-only property to delete.');
+      return;
+    }
+
+    setDeletePropertySaving(true);
+    try {
+      const response = await fetch('/api/daily-summary/properties', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selectedConfig.id }),
+      });
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        setDeletePropertyError(data?.error ?? 'Unable to delete property.');
+        return;
+      }
+
+      const refreshedConfigs = await fetchHistoricalPropertyConfigs();
+      if (refreshedConfigs) {
+        setHistoricalPropertyConfigs(refreshedConfigs);
+        setHistoricalPropertyOptions(buildHistoricalPropertyOptions(refreshedConfigs, PROPERTY_OPTIONS));
+      }
+
+      const deletedIds = new Set(
+        [selectedConfig.id, selectedConfig.propertyId, selectedConfig.tenantPropertyId, selectedConfig.propertyCode]
+          .map((value) => value?.trim())
+          .filter((value): value is string => Boolean(value)),
+      );
+      if (deletedIds.has(propertyId.trim())) setPropertyId('');
+      if (deletedIds.has(msrPropertyId.trim())) {
+        setMsrPropertyId('');
+        setMsrPreview(null);
+        setMsrWarnings([]);
+        setMsrExisting(false);
+        setMsrOverwrite(false);
+      }
+      if (deletedIds.has(budgetPropertyId.trim())) {
+        setBudgetPropertyId('');
+        setBudgetPreview(null);
+        setBudgetWarnings([]);
+        setBudgetExisting(false);
+        setBudgetFinancialsExisting(false);
+        setBudgetOverwrite(false);
+      }
+      setDeletePropertyConfigId('');
+      setDeletePropertyStatus(`${selectedConfig.name} deleted from historical property options.`);
+    } catch {
+      setDeletePropertyError('Unable to delete property.');
+    } finally {
+      setDeletePropertySaving(false);
     }
   };
 
@@ -754,6 +940,151 @@ export default function HistoricalDataUploadPage(): JSX.Element {
             </div>
           </div>
         </header>
+
+        <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="blue">
+          <div className="space-y-2">
+            <div className="text-base font-semibold text-[color:var(--text-primary)]">
+              Add historical property
+            </div>
+            <p className="max-w-2xl text-xs text-[color:var(--text-secondary)]">
+              Create a property for historical dashboards before uploading MSR or budget history. New properties are
+              saved disabled for Daily Flash automation.
+            </p>
+          </div>
+
+          <form className="space-y-4" onSubmit={handleCreateHistoricalProperty}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                  Property name
+                </span>
+                <input
+                  className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                  placeholder="e.g. STORE on Main"
+                  value={newPropertyForm.name}
+                  onChange={(event) => {
+                    setNewPropertyForm((prev) => ({ ...prev, name: event.target.value }));
+                    setNewPropertyError(null);
+                    setNewPropertyStatus(null);
+                  }}
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                  Property ID
+                </span>
+                <input
+                  className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                  placeholder="e.g. L004"
+                  value={newPropertyForm.propertyId}
+                  onChange={(event) => {
+                    setNewPropertyForm((prev) => ({ ...prev, propertyId: event.target.value }));
+                    setNewPropertyError(null);
+                    setNewPropertyStatus(null);
+                  }}
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                  Property code
+                </span>
+                <input
+                  className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                  placeholder="Auto-generates from name"
+                  value={newPropertyForm.propertyCode}
+                  onChange={(event) => {
+                    setNewPropertyForm((prev) => ({ ...prev, propertyCode: event.target.value }));
+                    setNewPropertyError(null);
+                    setNewPropertyStatus(null);
+                  }}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                  Tenant property ID
+                </span>
+                <input
+                  className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                  placeholder="Defaults to Property ID"
+                  value={newPropertyForm.tenantPropertyId}
+                  onChange={(event) => {
+                    setNewPropertyForm((prev) => ({ ...prev, tenantPropertyId: event.target.value }));
+                    setNewPropertyError(null);
+                    setNewPropertyStatus(null);
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-[color:var(--text-secondary)]">
+                Daily Flash status: disabled until enabled from /daily-summary.
+              </div>
+              <button
+                type="submit"
+                className="ios-button px-4 py-2 text-xs"
+                disabled={newPropertySaving}
+              >
+                {newPropertySaving ? 'Adding...' : 'Add property'}
+              </button>
+            </div>
+
+            <div className="space-y-1 text-[11px]">
+              {newPropertyError ? <p className="text-red-500">Error: {newPropertyError}</p> : null}
+              {newPropertyStatus ? <p className="text-[color:var(--text-secondary)]">{newPropertyStatus}</p> : null}
+            </div>
+          </form>
+
+          <div className="border-t border-[color:var(--border-soft)] pt-4">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                  Delete historical-only property
+                </span>
+                <select
+                  className="owner-field-input rounded-2xl px-4 py-2 text-sm"
+                  value={deletePropertyConfigId}
+                  onChange={(event) => {
+                    setDeletePropertyConfigId(event.target.value);
+                    setDeletePropertyError(null);
+                    setDeletePropertyStatus(null);
+                  }}
+                  disabled={!deletableHistoricalProperties.length || deletePropertySaving}
+                >
+                  <option value="">
+                    {deletableHistoricalProperties.length ? 'Select property' : 'No historical-only properties'}
+                  </option>
+                  {deletableHistoricalProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name} ({property.propertyId || property.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-xs"
+                data-variant="ghost"
+                disabled={!deletePropertyConfigId || deletePropertySaving}
+                onClick={handleDeleteHistoricalProperty}
+              >
+                {deletePropertySaving ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+            <div className="mt-2 space-y-1 text-[11px]">
+              <p className="text-[color:var(--text-secondary)]">
+                Only disabled historical-only property configs are shown here.
+              </p>
+              {deletePropertyError ? <p className="text-red-500">Error: {deletePropertyError}</p> : null}
+              {deletePropertyStatus ? <p className="text-[color:var(--text-secondary)]">{deletePropertyStatus}</p> : null}
+            </div>
+          </div>
+        </section>
 
         <section className="ios-card ios-animate-up space-y-4 p-6" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4">
