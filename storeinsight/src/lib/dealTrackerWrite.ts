@@ -102,7 +102,7 @@ async function ensureAiColumns(
   ref: GraphDriveItemRef,
   tableName: string,
 ): Promise<Record<AiColumnName, GraphColumn>> {
-  let columns = await listColumns(token, ref, tableName);
+  const columns = await listColumns(token, ref, tableName);
   const existingByName = new Map(columns.map((c) => [c.name, c]));
   const missing = AI_COLUMNS.filter((c) => !existingByName.has(c));
 
