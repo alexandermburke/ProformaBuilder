@@ -1165,7 +1165,7 @@ async function maybeGenerateSnapshotDescriptionWithAi(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const model = process.env.OPENAI_MODEL ?? 'gpt-5-mini';
+  const model = process.env.OPENAI_MODEL ?? 'gpt-5.5';
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {

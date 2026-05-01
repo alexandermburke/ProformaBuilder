@@ -31,10 +31,10 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
   const body = bodyUnknown;
 
-  const apiKey = process.env.OPENAI_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.log('[ai] OPENAI_KEY missing');
-    return new Response(JSON.stringify({ error: 'OPENAI_KEY missing' }), { status: 500 });
+    console.log('[ai] OPENAI_API_KEY missing');
+    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY missing' }), { status: 500 });
   }
 
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'; 

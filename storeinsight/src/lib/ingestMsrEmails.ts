@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import { firestore } from "@/server/firebaseAdmin";
+import { getGraphAccessToken } from "./graph";
 
 export type MsrEmailRecord = {
   messageId: string;
@@ -144,40 +145,6 @@ function getMailboxUserId(userId?: string): string {
     throw new Error("Missing mailbox user id (set MSR_MAILBOX_USER_ID or MS_GRAPH_USER_ID).");
   }
   return mailboxUser;
-}
-
-async function getGraphAccessToken(): Promise<string> {
-  const tenantId = process.env.MS_GRAPH_TENANT_ID;
-  const clientId = process.env.MS_GRAPH_CLIENT_ID;
-  const clientSecret = process.env.MS_GRAPH_CLIENT_SECRET;
-
-  if (!tenantId || !clientId || !clientSecret) {
-    throw new Error("Missing MS Graph credentials (tenant, client id, or client secret).");
-  }
-
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    scope: "https://graph.microsoft.com/.default",
-    grant_type: "client_credentials",
-  });
-
-  const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Unable to obtain Graph token (${res.status}): ${text.slice(0, 300)}`);
-  }
-
-  const json = (await res.json()) as { access_token?: string };
-  if (!json.access_token) {
-    throw new Error("Graph token response missing access_token");
-  }
-  return json.access_token;
 }
 
 async function fetchMsrMessages(params: {

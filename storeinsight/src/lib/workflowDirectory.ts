@@ -251,6 +251,20 @@ export const workflowCategories: WorkflowCategory[] = [
         href: '/pptx-mail',
       },
       {
+        id: 'deal-analysis',
+        title: 'Deal Analysis',
+        description: 'Upload broker financials and get an LLM recommendation on whether to pursue a deal.',
+        status: 'Active',
+        tone: 'amber',
+        icon: 'target',
+        highlights: [
+          'Upload historical financials from storage operators or CRE brokers.',
+          'Parse the workbook server-side and summarize the key metrics.',
+          'Return an LLM recommendation on pursuing the property for STORE.',
+        ],
+        href: '/deal-analysis',
+      },
+      {
         id: 'comp-sets',
         title: 'Comp Sets',
         description: 'Benchmark STORE assets against competitor pricing.',
