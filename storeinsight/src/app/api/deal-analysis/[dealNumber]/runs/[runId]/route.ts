@@ -26,7 +26,8 @@ export async function DELETE(
     let writeBackError: string | null = null;
     if (result.latest) {
       try {
-        const origin = req.nextUrl.origin;
+        const origin =
+          process.env.PUBLIC_BASE_URL?.replace(/\/+$/, '') ?? req.nextUrl.origin;
         await writeAiVerdictToTracker({
           dealNumber,
           recommendation: result.latest.humanOverride?.recommendation ?? result.latest.analysis.recommendation,
@@ -84,7 +85,8 @@ export async function PATCH(
     let writeBackError: string | null = null;
     if (result.latest && result.latest.runId === runId) {
       try {
-        const origin = req.nextUrl.origin;
+        const origin =
+          process.env.PUBLIC_BASE_URL?.replace(/\/+$/, '') ?? req.nextUrl.origin;
         await writeAiVerdictToTracker({
           dealNumber,
           recommendation: obj.recommendation,

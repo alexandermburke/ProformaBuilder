@@ -80,7 +80,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
   }
 
-  const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
+  // Deal Analysis is locked to gpt-5.5 by design. Do not switch back to
+  // smaller models or read this from env — the smaller models produce
+  // materially worse pursue/pass calls for this use case.
+  const model = 'gpt-5.5';
   const { system, user } = buildAnalysisPrompt({
     summary,
     trackerContext: trackerEntry ? formatTrackerEntryForPrompt(trackerEntry) : null,
@@ -143,7 +146,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         analysis,
       });
       savedRunId = stored.runId;
-      const origin = req.nextUrl.origin;
+      const origin =
+        process.env.PUBLIC_BASE_URL?.replace(/\/+$/, '') ?? req.nextUrl.origin;
       const analysisLink = `${origin}/deal-analysis/${encodeURIComponent(trackerEntry.dealNumber)}`;
       try {
         await writeAiVerdictToTracker({
