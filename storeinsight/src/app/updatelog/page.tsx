@@ -114,7 +114,7 @@ export default async function UpdateLogPage(): Promise<JSX.Element> {
                     </span>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="ios-pill text-[10px]" data-tone="neutral">
-                        {entry.session}
+                        alex@storestorage.com
                       </span>
                       <span className="ios-pill text-[10px]" data-tone={entry.validationTone}>
                         {entry.validation}
