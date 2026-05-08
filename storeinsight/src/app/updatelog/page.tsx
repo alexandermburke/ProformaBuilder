@@ -17,7 +17,6 @@ type LogEntry = {
   id: string;
   date: string;
   session: string;
-  files: string[];
   summary: string;
   validation: string;
   validationTone: ValidationTone;
@@ -40,17 +39,12 @@ function parseLogLine(line: string, index: number): LogEntry | null {
   const parts = trimmed.split(" | ").map((part) => part.trim());
   if (parts.length < 4) return null;
 
-  const [date, session, filesField, summary, validation = "Not run", followUps = ""] = parts;
-  const files = filesField
-    .split(/;\s*/)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+  const [date, session, , summary, validation = "Not run", followUps = ""] = parts;
 
   return {
     id: `${date}-${index}`,
     date,
     session,
-    files,
     summary,
     validation,
     validationTone: classifyValidation(validation),
@@ -122,18 +116,6 @@ export default async function UpdateLogPage(): Promise<JSX.Element> {
                     </div>
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-[color:var(--text-primary)]">{entry.summary}</p>
-                  {entry.files.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {entry.files.map((file) => (
-                        <span
-                          key={`${entry.id}-${file}`}
-                          className="rounded-md bg-[color:var(--surface-muted,rgba(148,163,184,0.16))] px-2 py-0.5 font-mono text-[10px] text-[color:var(--text-secondary)]"
-                        >
-                          {file}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                   {entry.followUps && entry.followUps.toLowerCase() !== "none" && (
                     <p className="mt-2 text-xs text-[color:var(--text-muted)]">
                       <span className="font-semibold uppercase tracking-wide">Follow-ups:</span> {entry.followUps}
