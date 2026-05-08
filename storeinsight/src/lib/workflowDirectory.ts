@@ -265,6 +265,20 @@ export const workflowCategories: WorkflowCategory[] = [
         href: '/deal-analysis',
       },
       {
+        id: 'lsa-automation',
+        title: 'LSA Automation',
+        description: 'Parse Google Ads / LSA statement PDFs into a consolidated activity spreadsheet.',
+        status: 'Active',
+        tone: 'purple',
+        icon: 'receipt',
+        highlights: [
+          'Upload one or more LSA statement PDFs or a ZIP archive of them.',
+          'Extract account name, statement range, and per-line charges and payments.',
+          'Download a single workbook of new activity and payments received.',
+        ],
+        href: '/lsa-automation',
+      },
+      {
         id: 'comp-sets',
         title: 'Comp Sets',
         description: 'Benchmark STORE assets against competitor pricing.',
