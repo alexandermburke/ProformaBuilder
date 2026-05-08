@@ -274,3 +274,14 @@ Prefer:
   - validation run
   - known follow-ups
 - Keep the log factual and brief.
+
+### Update log page (`/updatelog`)
+
+- The `/updatelog` route at `src/app/updatelog/page.tsx` reads `src/context/agent-update-log.txt` directly at request time and renders every entry as a video-game-style scrollable patch-notes list (newest first).
+- Every entry appended to `src/context/agent-update-log.txt` automatically appears on `/updatelog`. Do not maintain a parallel hardcoded list in the page file.
+- Preserve the established line format exactly so the parser keeps working:
+  - one entry per line, fields separated by ` | ` (space, pipe, space)
+  - field order: `date | session | files | summary | validation | follow-ups`
+  - within the `files` field, separate paths with `; ` (semicolon, space)
+  - do not introduce additional pipes inside a field; rephrase summaries that would need them
+- If the log line format must change, update both the parser in `src/app/updatelog/page.tsx` and this section together.
