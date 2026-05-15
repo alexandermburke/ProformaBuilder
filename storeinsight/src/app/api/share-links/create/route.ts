@@ -20,6 +20,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const propertyId = body?.propertyId?.toString().trim() ?? '';
   const investorId = body?.investorId?.toString().trim() ?? '';
   const snapshotMonthIso = body?.snapshotMonthIso?.toString().trim() ?? '';
+  const snapshotDateIso = body?.snapshotDateIso?.toString().trim() ?? '';
   const ttlHoursRaw = Number(body?.ttlHours);
   const ttlHours = Number.isFinite(ttlHoursRaw) ? ttlHoursRaw : null;
 
@@ -28,12 +29,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const { id, token, expiresAt } = await createShareLink(propertyId, investorId, {
+    const { id, token, expiresAt, snapshotMonthIso: storedSnapshotMonthIso, snapshotDateIso: storedSnapshotDateIso } = await createShareLink(propertyId, investorId, {
       snapshotMonthIso: snapshotMonthIso || null,
+      snapshotDateIso: snapshotDateIso || null,
       ttlHours,
     });
     const url = `${DASHBOARD_PUBLIC_ORIGIN}/dash/t/${token}`;
-    return NextResponse.json({ id, url, expiresAt, snapshotMonthIso: snapshotMonthIso || null, ttlHours });
+    return NextResponse.json({
+      id,
+      url,
+      expiresAt,
+      snapshotMonthIso: storedSnapshotMonthIso,
+      snapshotDateIso: storedSnapshotDateIso,
+      ttlHours,
+    });
   } catch {
     return NextResponse.json({ ok: false, message: 'Failed to create share link.' }, { status: 500 });
   }

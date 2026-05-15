@@ -13,6 +13,7 @@ type ShareLinkRecord = {
   propertyId: string;
   investorId: string;
   snapshotMonthIso: string | null;
+  snapshotDateIso: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string | null;
@@ -49,6 +50,7 @@ const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord
   propertyId: (data.property_id ?? '').toString(),
   investorId: (data.investor_id ?? '').toString(),
   snapshotMonthIso: typeof data.snapshot_month_iso === 'string' ? data.snapshot_month_iso : null,
+  snapshotDateIso: typeof data.snapshot_date_iso === 'string' ? data.snapshot_date_iso : null,
   expiresAt: toIsoString(data.expires_at),
   revokedAt: toIsoString(data.revoked_at),
   createdAt: toIsoString(data.created_at),

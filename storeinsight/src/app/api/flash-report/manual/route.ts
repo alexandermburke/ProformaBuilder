@@ -21,6 +21,7 @@ import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { createShareLink } from "@/lib/shareLinks";
 import { formatFlashAsOfDate } from "@/lib/flash/asOfDate";
 import { firestore, storage } from "@/server/firebaseAdmin";
+import { resolvePropertyFromLabels } from "@/lib/dailySummaryPropertyMatch";
 
 export const runtime = "nodejs";
 
@@ -698,7 +699,7 @@ async function sendFlashReportEmail(
   }
 
   let dashboardUrl: string | null = null;
-  const sharePropertyId = resolveDashboardEmailPropertyId(property.propertyId, property.id);
+  const sharePropertyId = resolveDashboardEmailPropertyId(property.propertyId, property.id, property.propertyCode);
   const useAppleStyle = Boolean(sharePropertyId);
   if (sharePropertyId) {
     try {
@@ -824,25 +825,40 @@ export async function POST(req: NextRequest) {
   }
 
   const properties = await listProperties();
-  const property = properties.find((p) => p.id === propertyId || p.propertyId === propertyId);
+  const selectedProperty = properties.find((p) => p.id === propertyId || p.propertyId === propertyId);
+  const workbookProperty = resolvePropertyFromLabels(properties, [
+    typeof tokens.FACILITYCODE === "string" ? tokens.FACILITYCODE : undefined,
+    typeof tokens.PROPERTYDISPLAYNAME === "string" ? tokens.PROPERTYDISPLAYNAME : undefined,
+    typeof tokens.FACILITYSHORTNAME === "string" ? tokens.FACILITYSHORTNAME : undefined,
+  ]);
+  const property = workbookProperty ?? selectedProperty;
   if (!property) {
     return NextResponse.json({ error: "Unknown propertyId" }, { status: 404 });
   }
+  if (workbookProperty && selectedProperty && workbookProperty.id !== selectedProperty.id) {
+    console.warn("[flash-report/manual] uploaded MSR property differed from selected property; using workbook match", {
+      selectedPropertyId: selectedProperty.id,
+      workbookPropertyId: workbookProperty.id,
+      facilityCode: tokens.FACILITYCODE,
+      propertyDisplayName: tokens.PROPERTYDISPLAYNAME,
+    });
+  }
+  const resolvedPropertyId = property.propertyId || property.tenantPropertyId || property.id || propertyId;
 
   const resolvedMoMSeries = buildPlaceholderMoMSeries(12, {
     months: property.momPlaceholderMonths,
     grossAccruedRent: property.momPlaceholderGrossAccruedRent,
     occupiedPct: property.momPlaceholderOccupiedPct,
   });
-  const markerConfig = resolveStoreManagedMarkerConfig(property, propertyId);
+  const markerConfig = resolveStoreManagedMarkerConfig(property, resolvedPropertyId);
   const facilityOpenDate = property.facilityOpenDate;
   if (facilityOpenDate) {
     tokens.FACILITYOPENDATE = facilityOpenDate;
   }
 
   const [rentChartJpeg, momOccupancyChartJpeg] = await Promise.all([
-    renderMoMGrossAccruedRentChart(resolvedMoMSeries, propertyId, markerConfig),
-    renderMoMOccupancyChart(resolvedMoMSeries, propertyId, markerConfig),
+    renderMoMGrossAccruedRentChart(resolvedMoMSeries, resolvedPropertyId, markerConfig),
+    renderMoMOccupancyChart(resolvedMoMSeries, resolvedPropertyId, markerConfig),
   ]);
 
   const templatePath = path.join(process.cwd(), "public", "FLASHTEMPLATE.pptx");
@@ -880,7 +896,7 @@ export async function POST(req: NextRequest) {
     console.error("[flash-report/manual] unable to convert PPTX to PDF (non-fatal, link will be unavailable)", err);
   }
 
-  const safePropertyId = propertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
+  const safePropertyId = resolvedPropertyId.replace(/[^A-Za-z0-9._-]+/g, "_");
   const filename = `DailyFlash-${safePropertyId}-${asOfDate}.pptx`;
   const safeAsOfSegment = (asOfDate || "latest").replace(/[^0-9A-Za-z._-]+/g, "_");
   let pdfDownloadUrl: string | null = null;

@@ -14,6 +14,7 @@ import { Trash2 } from 'lucide-react';
 import type { PropertyConfig } from '@/types/dailySummary';
 import type { FlashCloudStatus, FlashStatus } from './types';
 import type { CloudRunState, CloudStatusResponse } from '@/types/cloudStatus';
+import { resolvePropertyFromLabels } from '@/lib/dailySummaryPropertyMatch';
 
 type PropertyFormState = {
   id?: string;
@@ -23,6 +24,7 @@ type PropertyFormState = {
   tenantPropertyId: string;
   sendTimeLocal: string;
   ownerEmails: string;
+  facilityOpenDate: string;
   momPlaceholderMonths: string;
   momPlaceholderGrossAccruedRent: string;
   momPlaceholderOccupiedPct: string;
@@ -43,6 +45,7 @@ const createEmptyForm = (): PropertyFormState => ({
   tenantPropertyId: '',
   sendTimeLocal: DEFAULT_TIME,
   ownerEmails: '',
+  facilityOpenDate: '',
   momPlaceholderMonths: '',
   momPlaceholderGrossAccruedRent: '',
   momPlaceholderOccupiedPct: '',
@@ -158,13 +161,7 @@ export default function DailySummaryPage() {
       if (!propertyLabel && !date) return {};
       let found: PropertyConfig | undefined;
       if (propertyLabel) {
-        const normalized = propertyLabel.toLowerCase();
-        found =
-          propertyList.find((p) => p.name.toLowerCase() === normalized) ||
-          propertyList.find((p) => (p.propertyCode ?? '').toLowerCase() === normalized) ||
-          propertyList.find((p) => (p.propertyId ?? '').toLowerCase() === normalized) ||
-          propertyList.find((p) => p.tenantPropertyId.toLowerCase() === normalized) ||
-          propertyList.find((p) => p.id.toLowerCase() === normalized);
+        found = resolvePropertyFromLabels(propertyList, [propertyLabel]);
       }
       return { foundProperty: found, date };
     },
@@ -383,6 +380,7 @@ export default function DailySummaryPage() {
         tenantPropertyId: prop.tenantPropertyId ?? prop.propertyId ?? prop.id,
         sendTimeLocal: prop.sendTimeLocal,
       ownerEmails: prop.ownerEmails.join(', '),
+      facilityOpenDate: prop.facilityOpenDate ?? '',
       momPlaceholderMonths: (prop.momPlaceholderMonths ?? []).join(', '),
       momPlaceholderGrossAccruedRent: (prop.momPlaceholderGrossAccruedRent ?? []).join(', '),
       momPlaceholderOccupiedPct: (prop.momPlaceholderOccupiedPct ?? []).join(', '),
@@ -432,6 +430,7 @@ export default function DailySummaryPage() {
           .split(',')
           .map((email) => email.trim())
           .filter(Boolean),
+        facilityOpenDate: draft.facilityOpenDate.trim(),
         momPlaceholderMonths: parseMonthCsv(draft.momPlaceholderMonths),
         momPlaceholderGrossAccruedRent: parseNumericCsv(draft.momPlaceholderGrossAccruedRent),
         momPlaceholderOccupiedPct: parseNumericCsv(draft.momPlaceholderOccupiedPct),
@@ -476,6 +475,7 @@ export default function DailySummaryPage() {
       tenantPropertyId: prop.tenantPropertyId,
       sendTimeLocal: prop.sendTimeLocal,
       ownerEmails: prop.ownerEmails.join(', '),
+      facilityOpenDate: prop.facilityOpenDate ?? '',
       momPlaceholderMonths: (prop.momPlaceholderMonths ?? []).join(', '),
       momPlaceholderGrossAccruedRent: (prop.momPlaceholderGrossAccruedRent ?? []).join(', '),
       momPlaceholderOccupiedPct: (prop.momPlaceholderOccupiedPct ?? []).join(', '),
@@ -1115,6 +1115,22 @@ export default function DailySummaryPage() {
                     className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
                     placeholder="owner@example.com, ops@example.com"
                   />
+                </div>
+                {/* Never remove: this writes facilityOpenDate, which fills {{FACILITYOPENDATE}} in the flash footer. */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                    STORE Managed since
+                  </label>
+                  <input
+                    name="facilityOpenDate"
+                    value={formState.facilityOpenDate}
+                    onChange={handleFormChange}
+                    className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                    placeholder="e.g. May 2026"
+                  />
+                  <span className="text-[11px] text-[color:var(--text-muted)]">
+                    Fills the STORE Managed since line at the bottom of the Daily Flash report.
+                  </span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">

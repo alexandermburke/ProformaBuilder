@@ -28,6 +28,22 @@ test('normalizeHistoricalSnapshots normalizes month iso values from mixed raw sn
   assert.equal(snapshots[1]?.monthIso, '2026-03');
 });
 
+test('filterSnapshotsByPinnedMonth respects exact pinned dates when provided', () => {
+  const snapshots = normalizeHistoricalSnapshots([
+    { reportDate: '2026-02-28', propertyName: 'STORE on Baseline' },
+    { reportDate: '2026-03-28', propertyName: 'STORE on Baseline' },
+    { reportDate: '2026-03-31', propertyName: 'STORE on Baseline' },
+    { reportDate: '2026-04-01', propertyName: 'STORE on Baseline' },
+  ]);
+
+  const visible = filterSnapshotsByPinnedMonth(snapshots, '2026-03', '2026-03-31');
+
+  assert.deepEqual(
+    visible.map((snapshot) => snapshot.reportDate),
+    ['2026-02-28', '2026-03-28', '2026-03-31'],
+  );
+});
+
 test('resolveHistoricalPropertyName prefers stored property names before falling back', () => {
   const resolved = resolveHistoricalPropertyName(
     { property_name: 'STORE on Pittman' },

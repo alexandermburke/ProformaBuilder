@@ -18,6 +18,7 @@ type ShareLinkRecord = {
   propertyId: string;
   investorId: string;
   snapshotMonthIso: string | null;
+  snapshotDateIso: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string | null;
@@ -30,6 +31,7 @@ type CreateResult = {
   url: string;
   expiresAt: string;
   snapshotMonthIso?: string | null;
+  snapshotDateIso?: string | null;
   ttlHours?: number | null;
 };
 
@@ -83,7 +85,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
 
   const [propertyId, setPropertyId] = useState('');
   const [investorId, setInvestorId] = useState('');
-  const [snapshotMonthIso, setSnapshotMonthIso] = useState('');
+  const [snapshotDateIso, setSnapshotDateIso] = useState('');
   const [ttlHours, setTtlHours] = useState('24');
   const [createResult, setCreateResult] = useState<CreateResult | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -195,7 +197,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         body: JSON.stringify({
           propertyId,
           investorId,
-          snapshotMonthIso: snapshotMonthIso || null,
+          snapshotDateIso: snapshotDateIso || null,
           ttlHours: ttlHoursNumber,
         }),
       });
@@ -308,7 +310,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         body: JSON.stringify({
           propertyId,
           investorId,
-          snapshotMonthIso: snapshotMonthIso || null,
+          snapshotDateIso: snapshotDateIso || null,
           ttlHours: ttlHoursNumber,
         }),
       });
@@ -514,7 +516,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
             <div className="space-y-1">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
               <p className="text-xs text-[color:var(--text-secondary)]">
-                Optionally pin the token to data through a specific month and customize the TTL in hours.
+                Optionally pin the token to data through a specific date and customize the TTL in hours.
               </p>
             </div>
 
@@ -556,10 +558,10 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <input
-                type="month"
+                type="date"
                 className="owner-field-input rounded-2xl px-4 py-2 text-sm"
-                value={snapshotMonthIso}
-                onChange={(event) => setSnapshotMonthIso(event.target.value)}
+                value={snapshotDateIso}
+                onChange={(event) => setSnapshotDateIso(event.target.value)}
               />
               <input
                 type="number"
@@ -612,7 +614,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                 <div className="text-[color:var(--text-secondary)]">id: {createResult.id}</div>
                 <div className="text-[color:var(--text-secondary)]">expires: {createResult.expiresAt}</div>
                 <div className="text-[color:var(--text-secondary)]">
-                  pinned month: {createResult.snapshotMonthIso ?? 'latest'}
+                  pinned date: {createResult.snapshotDateIso ?? createResult.snapshotMonthIso ?? 'latest'}
                 </div>
                 <div className="text-[color:var(--text-secondary)]">ttl hours: {createResult.ttlHours ?? '24'}</div>
                 <a
@@ -689,7 +691,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                     <div className="text-[color:var(--text-secondary)]">property: {validateResult.record.propertyId}</div>
                     <div className="text-[color:var(--text-secondary)]">investor: {validateResult.record.investorId}</div>
                     <div className="text-[color:var(--text-secondary)]">
-                      pinned month: {validateResult.record.snapshotMonthIso ?? 'latest'}
+                      pinned date: {validateResult.record.snapshotDateIso ?? validateResult.record.snapshotMonthIso ?? 'latest'}
                     </div>
                     <div className="text-[color:var(--text-secondary)]">expires: {validateResult.record.expiresAt}</div>
                     <div className="text-[color:var(--text-secondary)]">revoked: {validateResult.record.revokedAt ?? 'n/a'}</div>
@@ -784,7 +786,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                   <span className="col-span-2">Token id</span>
                   <span>Property</span>
                   <span>Investor</span>
-                  <span>Month</span>
+                  <span>Date</span>
                   <span>Expires</span>
                   <span>Usage</span>
                 </div>
@@ -814,7 +816,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                           </div>
                           <div>{token.propertyId}</div>
                           <div>{token.investorId}</div>
-                          <div>{token.snapshotMonthIso ?? 'latest'}</div>
+                          <div>{token.snapshotDateIso ?? token.snapshotMonthIso ?? 'latest'}</div>
                           <div>{token.expiresAt ?? 'n/a'}</div>
                           <div>{token.useCount}</div>
                         </div>

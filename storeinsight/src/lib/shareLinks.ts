@@ -26,6 +26,7 @@ export type ShareLinkRecord = {
   propertyId: string;
   investorId: string;
   snapshotMonthIso: string | null;
+  snapshotDateIso: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string | null;
@@ -62,6 +63,7 @@ const buildRecord = (id: string, data: Record<string, unknown>): ShareLinkRecord
   propertyId: (data.property_id ?? '').toString(),
   investorId: (data.investor_id ?? '').toString(),
   snapshotMonthIso: typeof data.snapshot_month_iso === 'string' ? data.snapshot_month_iso : null,
+  snapshotDateIso: typeof data.snapshot_date_iso === 'string' ? data.snapshot_date_iso : null,
   expiresAt: toIsoString(data.expires_at),
   revokedAt: toIsoString(data.revoked_at),
   createdAt: toIsoString(data.created_at),
@@ -74,6 +76,14 @@ const normalizeSnapshotMonthIso = (value: string | null | undefined): string | n
   if (!value) return null;
   const normalized = value.trim();
   return /^\d{4}-\d{2}$/.test(normalized) ? normalized : null;
+};
+
+const normalizeSnapshotDateIso = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const normalized = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized ? null : normalized;
 };
 
 const normalizeTtlMs = (ttlHours?: number | null): number => {
@@ -135,14 +145,15 @@ const resolveShareLinkByToken = async (
 export async function createShareLink(
   propertyId: string,
   investorId: string,
-  options?: { snapshotMonthIso?: string | null; ttlHours?: number | null },
-): Promise<{ id: string; token: string; expiresAt: string }> {
+  options?: { snapshotMonthIso?: string | null; snapshotDateIso?: string | null; ttlHours?: number | null },
+): Promise<{ id: string; token: string; expiresAt: string; snapshotMonthIso: string | null; snapshotDateIso: string | null }> {
   if (!firestore) {
     throw new Error('Firebase is not configured.');
   }
   const normalizedProperty = propertyId.trim();
   const normalizedInvestor = investorId.trim();
-  const snapshotMonthIso = normalizeSnapshotMonthIso(options?.snapshotMonthIso);
+  const snapshotDateIso = normalizeSnapshotDateIso(options?.snapshotDateIso);
+  const snapshotMonthIso = snapshotDateIso?.slice(0, 7) ?? normalizeSnapshotMonthIso(options?.snapshotMonthIso);
   if (!normalizedProperty || !normalizedInvestor) {
     throw new Error('propertyId and investorId are required.');
   }
@@ -158,6 +169,7 @@ export async function createShareLink(
     property_id: normalizedProperty,
     investor_id: normalizedInvestor,
     snapshot_month_iso: snapshotMonthIso,
+    snapshot_date_iso: snapshotDateIso,
     expires_at: admin.firestore.Timestamp.fromDate(expiresAt),
     revoked_at: null,
     created_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -170,6 +182,8 @@ export async function createShareLink(
     id: docRef.id,
     token,
     expiresAt: expiresAt.toISOString(),
+    snapshotMonthIso,
+    snapshotDateIso,
   };
 }
 

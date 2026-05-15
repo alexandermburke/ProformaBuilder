@@ -103,12 +103,14 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
   }
 
   const pinnedMonthIso = validation.record.snapshotMonthIso;
-  const visibleSnapshots = filterSnapshotsByPinnedMonth(historicalRecord.snapshots, pinnedMonthIso);
+  const pinnedDateIso = validation.record.snapshotDateIso;
+  const visibleSnapshots = filterSnapshotsByPinnedMonth(historicalRecord.snapshots, pinnedMonthIso, pinnedDateIso);
 
   if (!visibleSnapshots.length) {
+    const pinnedLabel = pinnedDateIso ?? pinnedMonthIso;
     return renderStatus({
-      title: 'Pinned month unavailable',
-      message: `No historical snapshots are available on or before ${pinnedMonthIso}.`,
+      title: 'Pinned period unavailable',
+      message: `No historical snapshots are available on or before ${pinnedLabel}.`,
     });
   }
 

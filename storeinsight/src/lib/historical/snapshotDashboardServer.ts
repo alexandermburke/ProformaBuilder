@@ -56,6 +56,30 @@ const deepMergeSnapshotValues = (base: unknown, overlay: unknown): unknown => {
 const getSnapshotMonthIso = (snapshot: MsrSnapshot): string | null =>
   normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate);
 
+const normalizeDateIso = (value: unknown): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  }
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'number') {
+    return new Date(value).toISOString().slice(0, 10);
+  }
+  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate().toISOString().slice(0, 10);
+  }
+  return null;
+};
+
+const getSnapshotDateIso = (snapshot: MsrSnapshot): string | null =>
+  normalizeDateIso(snapshot.reportDate ?? snapshot.asOfDate);
+
 export const mergeHistoricalSnapshotsByMonth = (
   canonicalSnapshots: MsrSnapshot[],
   overlayCandidates: HistoricalSnapshotAliasBundle[],
@@ -108,18 +132,27 @@ export const mergeHistoricalSnapshotsByMonth = (
 export const filterSnapshotsByPinnedMonth = (
   snapshots: MsrSnapshot[],
   pinnedMonthIso: string | null | undefined,
+  pinnedDateIso?: string | null,
 ): MsrSnapshot[] => {
+  const normalizedPinnedDate = normalizeDateIso(pinnedDateIso);
   const normalizedPinnedMonth = normalizeMonthIso(pinnedMonthIso);
-  if (!normalizedPinnedMonth) {
+  if (!normalizedPinnedDate && !normalizedPinnedMonth) {
     return snapshots;
   }
 
   return snapshots.filter((snapshot) => {
+    if (normalizedPinnedDate) {
+      const dateIso = getSnapshotDateIso(snapshot);
+      if (dateIso) {
+        return dateIso <= normalizedPinnedDate;
+      }
+    }
+
     const monthIso = getSnapshotMonthIso(snapshot);
     if (!monthIso) {
       return false;
     }
-    return monthIso <= normalizedPinnedMonth;
+    return monthIso <= (normalizedPinnedMonth ?? normalizedPinnedDate?.slice(0, 7) ?? '');
   });
 };
 

@@ -8,6 +8,13 @@ const DASHBOARD_EMAIL_PROPERTY_ID_BY_KEY = new Map<string, string>([
   ["BASELINE", "W003"],
   ["PROP_PITTMAN", "prop-pittman"],
   ["PITTMAN", "prop-pittman"],
+  ["P006", "P006"],
+  ["STOREINPLYMOUTH", "P006"],
+  ["STORE_IN_PLYMOUTH", "P006"],
+  ["PLYMOUTH", "P006"],
+  ["STOREONVICKSBURG", "P006"],
+  ["STORE_ON_VICKSBURG", "P006"],
+  ["VICKSBURG", "P006"],
 ]);
 
 export const DASHBOARD_BETA_INVESTOR_ID = "test-investor";

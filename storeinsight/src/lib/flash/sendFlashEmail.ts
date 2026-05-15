@@ -262,7 +262,11 @@ export async function sendFlashEmail(options: {
       `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
     const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
     let dashboardUrl: string | null = null;
-    const sharePropertyId = resolveDashboardEmailPropertyId(options.property.propertyId, options.property.id);
+    const sharePropertyId = resolveDashboardEmailPropertyId(
+      options.property.propertyId,
+      options.property.id,
+      options.property.propertyCode,
+    );
     const useAppleStyle = Boolean(sharePropertyId);
     if (sharePropertyId) {
       try {
