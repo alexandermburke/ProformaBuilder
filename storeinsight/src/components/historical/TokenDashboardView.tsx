@@ -1741,8 +1741,8 @@ export function HistoricalSnapshotDashboardView({
             display: none !important;
           }
           @page {
-            size: landscape;
-            margin: 0.45in;
+            size: 11in 8.5in;
+            margin: 0.4in;
           }
           html,
           body {
@@ -1929,6 +1929,230 @@ export function HistoricalSnapshotDashboardView({
             padding: 6px 8px;
             font-size: 10px;
             border-bottom: 1px solid #e5e7eb;
+          }
+          .token-dashboard-print-report .investor-one-pager {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            color: #111827;
+          }
+          .token-dashboard-print-report .investor-one-pager {
+            display: grid;
+            grid-template-rows: auto 1fr 0.6in auto;
+            height: 7.6in;
+            max-height: 7.6in;
+            overflow: hidden;
+            padding: 0.04in 0.08in;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            color: #0b1120;
+          }
+          .token-dashboard-print-report .one-pager-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.18in;
+            min-height: 0;
+            overflow: hidden;
+          }
+          .token-dashboard-print-report .one-pager-footer-gap {
+            display: block;
+          }
+          .token-dashboard-print-report .one-pager-body > .one-pager-row {
+            flex: 1 1 0;
+            margin-bottom: 0;
+          }
+          .token-dashboard-print-report .one-pager-body > .one-pager-row--spark {
+            flex: 1.2 1 0;
+          }
+          .token-dashboard-print-report .one-pager-body > .one-pager-row > .one-pager-card,
+          .token-dashboard-print-report .one-pager-body > .one-pager-row > .one-pager-spark-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+          }
+          .token-dashboard-print-report .one-pager-body > .one-pager-row > .one-pager-spark-panel .one-pager-spark-svg {
+            flex: 1 1 auto;
+            height: auto;
+          }
+          .token-dashboard-print-report .one-pager-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-bottom: 0.1in;
+            margin-bottom: 0.14in;
+            position: relative;
+          }
+          .token-dashboard-print-report .one-pager-header::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 1px;
+            background: linear-gradient(90deg, #2563eb 0%, #2563eb 0.6in, rgba(178, 198, 255, 0.5) 0.6in, rgba(178, 198, 255, 0.5) 100%);
+          }
+          .token-dashboard-print-report .one-pager-title {
+            font-size: 22pt;
+            font-weight: 700;
+            color: #0b1120;
+            line-height: 1.05;
+            letter-spacing: -0.022em;
+          }
+          .token-dashboard-print-report .one-pager-subtitle {
+            margin-top: 0.06in;
+            font-size: 10pt;
+            color: #535f79;
+            letter-spacing: -0.005em;
+          }
+          .token-dashboard-print-report .one-pager-asof {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.06in;
+            padding: 0.04in 0.12in;
+            border-radius: 999px;
+            background: #e9efff;
+            color: #1d4ed8;
+            font-size: 9pt;
+            font-weight: 600;
+            letter-spacing: 0.005em;
+          }
+          .token-dashboard-print-report .one-pager-asof-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 999px;
+            background: #2563eb;
+            display: inline-block;
+          }
+          .token-dashboard-print-report .one-pager-row {
+            display: grid;
+            gap: 0.16in;
+            margin-bottom: 0.14in;
+          }
+          .token-dashboard-print-report .one-pager-row-2 {
+            grid-template-columns: 1fr 1fr;
+          }
+          .token-dashboard-print-report .one-pager-row-3 {
+            grid-template-columns: 1fr 1fr 1fr;
+          }
+          .token-dashboard-print-report .one-pager-block {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .token-dashboard-print-report .one-pager-card {
+            background: #ffffff;
+            border: 1px solid rgba(178, 198, 255, 0.5);
+            border-radius: 18px;
+            padding: 0.14in 0.18in;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+          }
+          .token-dashboard-print-report .one-pager-section-title {
+            font-size: 8pt;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: #2563eb;
+            margin-bottom: 0.06in;
+            padding-bottom: 0.04in;
+            border-bottom: 1px solid rgba(178, 198, 255, 0.5);
+          }
+          .token-dashboard-print-report .one-pager-table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          .token-dashboard-print-report .one-pager-table td {
+            font-size: 10.5pt;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(178, 198, 255, 0.32);
+            color: #0b1120;
+            letter-spacing: -0.005em;
+          }
+          .token-dashboard-print-report .one-pager-table tr:last-child td {
+            border-bottom: none;
+          }
+          .token-dashboard-print-report .one-pager-label {
+            color: #535f79;
+            font-weight: 500;
+          }
+          .token-dashboard-print-report .one-pager-value {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: #0b1120;
+            font-weight: 600;
+          }
+          .token-dashboard-print-report .one-pager-spark-panel {
+            background: #ffffff;
+            border: 1px solid rgba(178, 198, 255, 0.5);
+            border-radius: 18px;
+            padding: 0.14in 0.18in;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+          }
+          .token-dashboard-print-report .one-pager-spark-label {
+            font-size: 8pt;
+            font-weight: 600;
+            color: #2563eb;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            margin-bottom: 0.04in;
+            padding-bottom: 0.04in;
+            border-bottom: 1px solid rgba(178, 198, 255, 0.5);
+          }
+          .token-dashboard-print-report .one-pager-spark-svg {
+            display: block;
+            width: 100%;
+            height: 0.6in;
+          }
+          .token-dashboard-print-report .one-pager-empty-note {
+            font-size: 10pt;
+            font-style: italic;
+            color: #535f79;
+          }
+          .token-dashboard-print-report .one-pager-footer {
+            padding-top: 0.1in;
+            text-align: center;
+          }
+          .token-dashboard-print-report .one-pager-footer-banner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.04in;
+            padding: 0.16in 0.4in;
+            border-radius: 16px;
+            background: linear-gradient(180deg, #ffffff 0%, rgba(254, 242, 242, 0.7) 100%);
+            border: 1px solid rgba(190, 50, 50, 0.32);
+            box-shadow: 0 4px 16px rgba(127, 29, 29, 0.1);
+            width: 100%;
+          }
+          .token-dashboard-print-report .one-pager-footer-stamp {
+            font-size: 18pt;
+            font-weight: 700;
+            letter-spacing: 0.56em;
+            color: #991b1b;
+            text-transform: uppercase;
+            line-height: 1;
+            padding-left: 0.56em;
+          }
+          .token-dashboard-print-report .one-pager-footer-notice {
+            font-size: 8.5pt;
+            font-weight: 600;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: #b91c1c;
+          }
+          .token-dashboard-print-report .one-pager-footer-copyright {
+            margin-top: 0.12in;
+            font-size: 8.5pt;
+            color: #535f79;
+            letter-spacing: -0.002em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.1in;
+          }
+          .token-dashboard-print-report .one-pager-footer-logo {
+            width: 0.24in;
+            height: 0.24in;
+            object-fit: contain;
+            opacity: 0.92;
           }
         }
       `}</style>
@@ -2227,47 +2451,14 @@ export function HistoricalSnapshotDashboardView({
       {isPrintMode ? (
       <div className="token-dashboard-print-only">
         <div className="token-dashboard-print-report mx-auto max-w-none">
-          <PrintReportHeader
+          <InvestorOnePagerReport
             propertyName={resolvedPrintPropertyName}
-            asOfDate={latestDateLabel ?? 'N/A'}
-            sectionLabel={currentSectionLabel}
+            asOfDate={latestDateLabel ?? 'Date unavailable'}
             rangeLabel={range}
-            items={printSummaryItems}
+            latestSnapshot={latestSnapshot ?? undefined}
+            seriesEntries={seriesEntries}
+            laggedFinancialSeriesEntries={financialSeriesEntries}
           />
-          {section === 'overview' ? (
-            <PrintReportSection
-              title="Overview"
-              subtitle={
-                isInternal
-                  ? 'Selected internal overview graphs reformatted for paper output.'
-                  : 'Selected owner-view graphs reformatted for paper output.'
-              }
-            >
-              {printOverviewCards.length ? (
-                <div className="print-report-grid-2">{printOverviewCards}</div>
-              ) : (
-                <PrintBlock title="Overview" subtitle="No printable chart data">
-                  <div className="print-report-note">No overview widgets currently have data for this range.</div>
-                </PrintBlock>
-              )}
-            </PrintReportSection>
-          ) : null}
-          {section === 'collections' ? (
-            <PrintCollectionsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          ) : null}
-          {section === 'pricing' ? (
-            <PrintPricingReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          ) : null}
-          {section === 'drilldowns' ? (
-            <PrintOperationsReport latestSnapshot={latestSnapshot} seriesEntries={seriesEntries} />
-          ) : null}
-          {section === 'accounting' ? (
-            <PrintFinancialsReport
-              latestSnapshot={latestSnapshot}
-              seriesEntries={seriesEntries}
-              laggedFinancialSeriesEntries={financialSeriesEntries}
-            />
-          ) : null}
         </div>
       </div>
       ) : null}
@@ -5465,3 +5656,367 @@ const MemoCollectionsSection = memo(CollectionsSection);
 const MemoPricingSection = memo(PricingSection);
 const MemoOperationalSection = memo(OperationalSection);
 const MemoFinancialsSection = memo(FinancialsSection);
+
+type InvestorOnePagerReportProps = {
+  propertyName: string;
+  asOfDate: string;
+  rangeLabel: string;
+  latestSnapshot: MsrSnapshot | undefined;
+  seriesEntries: SnapshotEntry[];
+  laggedFinancialSeriesEntries: SnapshotEntry[];
+};
+
+function MiniSparkline({
+  values,
+  formatValue,
+}: {
+  values: number[];
+  formatValue: (n: number) => string;
+}): JSX.Element {
+  if (values.length < 2) {
+    return (
+      <div className="one-pager-empty-note">Trend appears after 2 months of data</div>
+    );
+  }
+  const width = 520;
+  const height = 80;
+  const padX = 12;
+  const padTop = 10;
+  const padBottom = 18;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const step = (width - padX * 2) / (values.length - 1);
+  const usableHeight = height - padTop - padBottom;
+  const points = values.map((value, index) => {
+    const x = padX + index * step;
+    const y = padTop + ((max - value) / range) * usableHeight;
+    return { x, y };
+  });
+  const linePath = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+    .join(' ');
+  const baselineY = height - padBottom;
+  const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(1)} ${baselineY} L ${points[0].x.toFixed(1)} ${baselineY} Z`;
+  const first = points[0];
+  const last = points[points.length - 1];
+  const firstValue = values[0];
+  const lastValue = values[values.length - 1];
+  const gradientId = `spark-fill-${Math.random().toString(36).slice(2, 9)}`;
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      preserveAspectRatio="none"
+      className="one-pager-spark-svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#2563eb" stopOpacity={0.22} />
+          <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
+      <path d={linePath} fill="none" stroke="#2563eb" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={first.x} cy={first.y} r={3.5} fill="#ffffff" stroke="#2563eb" strokeWidth={2} />
+      <circle cx={last.x} cy={last.y} r={3.5} fill="#1d4ed8" stroke="#ffffff" strokeWidth={2} />
+      <text x={padX} y={height - 3} fontSize={10} fill="#535f79" fontWeight={500}>
+        {formatValue(firstValue)}
+      </text>
+      <text x={width - padX} y={height - 3} fontSize={10} fill="#1d4ed8" fontWeight={700} textAnchor="end">
+        {formatValue(lastValue)}
+      </text>
+    </svg>
+  );
+}
+
+const ONE_PAGER_NA = '-';
+
+const formatOnePagerCurrency = (value: number | null | undefined): string =>
+  isFiniteNumber(value) ? formatCurrency(value) : ONE_PAGER_NA;
+
+const formatOnePagerCompactCurrency = (value: number | null | undefined): string =>
+  isFiniteNumber(value) ? formatCompactCurrency(value) : ONE_PAGER_NA;
+
+const formatOnePagerNumber = (value: number | null | undefined): string =>
+  isFiniteNumber(value) ? formatNumber(value) : ONE_PAGER_NA;
+
+const formatOnePagerPercent = (value: number | null | undefined, decimals = 1): string =>
+  isFiniteNumber(value) ? formatPercent(value, decimals) : ONE_PAGER_NA;
+
+const formatOnePagerSigned = (value: number | null | undefined): string => {
+  if (!isFiniteNumber(value)) return ONE_PAGER_NA;
+  if (value === 0) return '0';
+  const sign = value > 0 ? '+' : '-';
+  return `${sign}${formatNumber(Math.abs(value))}`;
+};
+
+function InvestorOnePagerReport({
+  propertyName,
+  asOfDate,
+  rangeLabel,
+  latestSnapshot,
+  seriesEntries,
+  laggedFinancialSeriesEntries,
+}: InvestorOnePagerReportProps): JSX.Element {
+  const occupancyValue = latestSnapshot?.occupancy?.rsfOccPct;
+  const projRent = latestSnapshot?.revenue?.economicOccupancy;
+  const grossPotentialRent = latestSnapshot?.revenue?.grossPotentialRevenue;
+  const moveIns = latestSnapshot?.rentals?.moveInsMtd;
+  const moveOuts = latestSnapshot?.rentals?.moveOutsMtd;
+  const netMoveIns =
+    isFiniteNumber(latestSnapshot?.rentals?.netMtd)
+      ? latestSnapshot?.rentals?.netMtd
+      : isFiniteNumber(moveIns) && isFiniteNumber(moveOuts)
+        ? Number(moveIns) - Number(moveOuts)
+        : null;
+
+  const latestNetRevenue = latestSnapshot
+    ? getSnapshotNumber(latestSnapshot, NET_REVENUE_VALUE_PATHS)
+    : null;
+
+  // Find the most recent lagged entry that actually has closed-books data (expenses or NOI).
+  // Budget comparisons typically lag the MSR by 1-2 months while accountants close the books,
+  // so the very latest lagged entry might have net revenue but no expenses/NOI yet. Walk back
+  // until we find a month with real closed financials.
+  const closedFinancialEntry =
+    [...laggedFinancialSeriesEntries]
+      .reverse()
+      .find((entry) =>
+        isFiniteNumber(getSnapshotNumber(entry.snapshot, EXPENSES_VALUE_PATHS)) ||
+        isFiniteNumber(getSnapshotNumber(entry.snapshot, NOI_VALUE_PATHS)),
+      ) ?? laggedFinancialSeriesEntries[laggedFinancialSeriesEntries.length - 1];
+  const closedSnapshot = closedFinancialEntry?.snapshot ?? null;
+  const FULL_MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const formatFullMonth = (monthIso: string): string | null => {
+    const [, mm] = monthIso.split('-');
+    const index = Number(mm) - 1;
+    return FULL_MONTH_NAMES[index] ?? null;
+  };
+  const closedMonthLabel = closedFinancialEntry?.monthIso
+    ? formatMonthLabel(closedFinancialEntry.monthIso)
+    : null;
+  const closedMonthFullName = closedFinancialEntry?.monthIso
+    ? formatFullMonth(closedFinancialEntry.monthIso)
+    : null;
+  const closedRowSuffix = closedMonthFullName ? ` (Month End ${closedMonthFullName})` : '';
+  // Net revenue comes from the current month MTD on the latest snapshot, not from the
+  // closed-books snapshot. Expenses and NOI lag while accountants close the books, but
+  // net revenue is captured live, so labeling it with the closed month would be wrong.
+  const currentMtdNetRevenue = latestSnapshot
+    ? getSnapshotNumber(latestSnapshot, NET_REVENUE_VALUE_PATHS)
+    : null;
+  const closedNetRevenue = closedSnapshot
+    ? getSnapshotNumber(closedSnapshot, NET_REVENUE_VALUE_PATHS)
+    : null;
+  const closedExpenses = closedSnapshot
+    ? getSnapshotNumber(closedSnapshot, EXPENSES_VALUE_PATHS)
+    : null;
+  const directNoi = closedSnapshot ? getSnapshotNumber(closedSnapshot, NOI_VALUE_PATHS) : null;
+  const closedNoi =
+    isFiniteNumber(directNoi)
+      ? directNoi
+      : isFiniteNumber(closedNetRevenue) && isFiniteNumber(closedExpenses)
+        ? closedNetRevenue - closedExpenses
+        : null;
+  const noiMarginPct =
+    isFiniteNumber(closedNoi) && isFiniteNumber(closedNetRevenue) && closedNetRevenue !== 0
+      ? (closedNoi / closedNetRevenue) * 100
+      : null;
+
+  const last6Snapshots = seriesEntries.slice(-6);
+  const netRevenueValues = last6Snapshots
+    .map((entry) => getSnapshotNumber(entry.snapshot, NET_REVENUE_VALUE_PATHS))
+    .filter((value): value is number => isFiniteNumber(value));
+  const occupancyValues = last6Snapshots
+    .map((entry) => {
+      const raw = getSnapshotNumber(entry.snapshot, OCCUPANCY_VALUE_PATHS);
+      const pct01 = toPct01(raw);
+      return isFiniteNumber(pct01) ? pct01 * 100 : null;
+    })
+    .filter((value): value is number => isFiniteNumber(value));
+
+  const ar = latestSnapshot?.ar;
+  const totalPastDue = ar?.totalPastDue;
+  const pastDue61Plus = ar?.pastDue61Plus;
+  const delinquentTenants = ar?.delinquentTenantCount;
+  const overlockedUnits = ar?.overlockedUnitCount;
+
+  const channelData = latestSnapshot?.leads?.byChannelMtd ?? {};
+  const channelSum = [channelData.web, channelData.phone, channelData.walkIn, channelData.other]
+    .filter(isFiniteNumber)
+    .reduce((sum, value) => sum + value, 0);
+  const leadsTotal = isFiniteNumber(latestSnapshot?.leads?.totalMtd)
+    ? latestSnapshot?.leads?.totalMtd
+    : channelSum > 0
+      ? channelSum
+      : null;
+  const conversionPct =
+    isFiniteNumber(leadsTotal) && isFiniteNumber(moveIns) && leadsTotal > 0
+      ? (Number(moveIns) / Number(leadsTotal)) * 100
+      : null;
+
+  return (
+    <div className="investor-one-pager">
+      <header className="one-pager-header">
+        <div>
+          <div className="one-pager-title">{propertyName || 'Property'}</div>
+          <div className="one-pager-subtitle">Investor summary, {rangeLabel} historical</div>
+        </div>
+        <div className="one-pager-asof">
+          <span className="one-pager-asof-dot" aria-hidden="true" />
+          As of {asOfDate}
+        </div>
+      </header>
+
+      <div className="one-pager-body">
+      <div className="one-pager-row one-pager-row-2">
+        <div className="one-pager-block one-pager-card">
+          <div className="one-pager-section-title">Vital signs</div>
+          <table className="one-pager-table">
+            <tbody>
+              <tr>
+                <td className="one-pager-label">Occupancy (RSF)</td>
+                <td className="one-pager-value">{formatOnePagerPercent(occupancyValue)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Net move-ins</td>
+                <td className="one-pager-value">{formatOnePagerSigned(netMoveIns)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Projected rent</td>
+                <td className="one-pager-value">{formatOnePagerCompactCurrency(projRent)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Gross potential rent</td>
+                <td className="one-pager-value">{formatOnePagerCompactCurrency(grossPotentialRent)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="one-pager-block one-pager-card">
+          <div className="one-pager-section-title">Financials</div>
+          {closedSnapshot ? (
+            <table className="one-pager-table">
+              <tbody>
+                <tr>
+                  <td className="one-pager-label">Net revenue MTD</td>
+                  <td className="one-pager-value">{formatOnePagerCurrency(currentMtdNetRevenue)}</td>
+                </tr>
+                {isFiniteNumber(closedExpenses) || isFiniteNumber(closedNoi) || isFiniteNumber(noiMarginPct) ? (
+                  <>
+                    <tr>
+                      <td className="one-pager-label">Expenses{closedRowSuffix}</td>
+                      <td className="one-pager-value">{formatOnePagerCurrency(closedExpenses)}</td>
+                    </tr>
+                    <tr>
+                      <td className="one-pager-label">NOI{closedRowSuffix}</td>
+                      <td className="one-pager-value">{formatOnePagerCurrency(closedNoi)}</td>
+                    </tr>
+                    <tr>
+                      <td className="one-pager-label">NOI margin{closedRowSuffix}</td>
+                      <td className="one-pager-value">{formatOnePagerPercent(noiMarginPct)}</td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr>
+                    <td colSpan={2} className="one-pager-empty-note" style={{ paddingTop: '0.06in' }}>
+                      Budget comparison not uploaded yet, expenses and NOI will appear here once available.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          ) : (
+            <div className="one-pager-empty-note">Closed financials not uploaded yet.</div>
+          )}
+        </div>
+      </div>
+
+      <div className="one-pager-row one-pager-row-2 one-pager-row--spark">
+        <div className="one-pager-block one-pager-spark-panel">
+          <div className="one-pager-spark-label">Net revenue trend (6M)</div>
+          <MiniSparkline values={netRevenueValues} formatValue={formatCompactCurrency} />
+        </div>
+        <div className="one-pager-block one-pager-spark-panel">
+          <div className="one-pager-spark-label">Occupancy trend (6M)</div>
+          <MiniSparkline values={occupancyValues} formatValue={(value) => `${value.toFixed(1)}%`} />
+        </div>
+      </div>
+
+      <div className="one-pager-row one-pager-row-2">
+        <div className="one-pager-block one-pager-card">
+          <div className="one-pager-section-title">Operations</div>
+          <table className="one-pager-table">
+            <tbody>
+              <tr>
+                <td className="one-pager-label">Move-ins</td>
+                <td className="one-pager-value">{formatOnePagerNumber(moveIns)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Move-outs</td>
+                <td className="one-pager-value">{formatOnePagerNumber(moveOuts)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Net activity</td>
+                <td className="one-pager-value">{formatOnePagerSigned(netMoveIns)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Leads</td>
+                <td className="one-pager-value">{formatOnePagerNumber(leadsTotal)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Conversion</td>
+                <td className="one-pager-value">{formatOnePagerPercent(conversionPct)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="one-pager-block one-pager-card">
+          <div className="one-pager-section-title">Delinquency</div>
+          <table className="one-pager-table">
+            <tbody>
+              <tr>
+                <td className="one-pager-label">Total past due</td>
+                <td className="one-pager-value">{formatOnePagerCurrency(totalPastDue)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">61+ days</td>
+                <td className="one-pager-value">{formatOnePagerCurrency(pastDue61Plus)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Tenants</td>
+                <td className="one-pager-value">{formatOnePagerNumber(delinquentTenants)}</td>
+              </tr>
+              <tr>
+                <td className="one-pager-label">Overlocked units</td>
+                <td className="one-pager-value">{formatOnePagerNumber(overlockedUnits)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      </div>
+
+      <div className="one-pager-footer-gap" aria-hidden="true" />
+
+      <footer className="one-pager-footer">
+        <div className="one-pager-footer-banner">
+          <div className="one-pager-footer-stamp">Confidential</div>
+          <div className="one-pager-footer-notice">Do not distribute without authorization</div>
+        </div>
+        <div className="one-pager-footer-copyright">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/favicon_trans.png" alt="STORE Management" className="one-pager-footer-logo" />
+          <span>Copyright {'©'} {new Date().getFullYear()} STORE Management. All Rights Reserved.</span>
+        </div>
+      </footer>
+    </div>
+  );
+}
