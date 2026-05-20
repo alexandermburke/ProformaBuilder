@@ -1937,7 +1937,7 @@ export function HistoricalSnapshotDashboardView({
           }
           .token-dashboard-print-report .investor-one-pager {
             display: grid;
-            grid-template-rows: auto 1fr 0.6in auto;
+            grid-template-rows: auto minmax(0, 1fr) 0.45in auto;
             height: 7.6in;
             max-height: 7.6in;
             overflow: hidden;
@@ -2059,8 +2059,8 @@ export function HistoricalSnapshotDashboardView({
             border-collapse: collapse;
           }
           .token-dashboard-print-report .one-pager-table td {
-            font-size: 10.5pt;
-            padding: 4px 0;
+            font-size: 10pt;
+            padding: 3px 0;
             border-bottom: 1px solid rgba(178, 198, 255, 0.32);
             color: #0b1120;
             letter-spacing: -0.005em;
