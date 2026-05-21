@@ -1742,7 +1742,7 @@ export function HistoricalSnapshotDashboardView({
           }
           @page {
             size: 11in 8.5in;
-            margin: 0.4in;
+            margin: 0.6in;
           }
           html,
           body {
@@ -1936,15 +1936,55 @@ export function HistoricalSnapshotDashboardView({
             color: #111827;
           }
           .token-dashboard-print-report .investor-one-pager {
+            position: relative;
             display: grid;
-            grid-template-rows: auto minmax(0, 1fr) 0.45in auto;
-            height: 7.6in;
-            max-height: 7.6in;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            height: 7.3in;
+            max-height: 7.3in;
             overflow: hidden;
             padding: 0.04in 0.08in;
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
             -webkit-font-smoothing: antialiased;
             color: #0b1120;
+          }
+          .token-dashboard-print-report .one-pager-watermark {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+          }
+          .token-dashboard-print-report .one-pager-watermark-stack {
+            transform: rotate(-22deg);
+            text-align: center;
+            white-space: nowrap;
+          }
+          .token-dashboard-print-report .one-pager-watermark-stamp {
+            font-size: 96pt;
+            font-weight: 900;
+            letter-spacing: 0.32em;
+            color: rgba(153, 27, 27, 0.09);
+            text-transform: uppercase;
+            line-height: 1;
+            padding-left: 0.32em;
+          }
+          .token-dashboard-print-report .one-pager-watermark-notice {
+            margin-top: 0.18in;
+            font-size: 14pt;
+            font-weight: 700;
+            letter-spacing: 0.45em;
+            color: rgba(153, 27, 27, 0.12);
+            text-transform: uppercase;
+            padding-left: 0.45em;
+          }
+          .token-dashboard-print-report .one-pager-body,
+          .token-dashboard-print-report .one-pager-header,
+          .token-dashboard-print-report .one-pager-footer {
+            position: relative;
+            z-index: 2;
           }
           .token-dashboard-print-report .one-pager-body {
             display: flex;
@@ -2106,40 +2146,10 @@ export function HistoricalSnapshotDashboardView({
             color: #535f79;
           }
           .token-dashboard-print-report .one-pager-footer {
-            padding-top: 0.1in;
+            padding-top: 0.14in;
             text-align: center;
           }
-          .token-dashboard-print-report .one-pager-footer-banner {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 0.04in;
-            padding: 0.16in 0.4in;
-            border-radius: 16px;
-            background: linear-gradient(180deg, #ffffff 0%, rgba(254, 242, 242, 0.7) 100%);
-            border: 1px solid rgba(190, 50, 50, 0.32);
-            box-shadow: 0 4px 16px rgba(127, 29, 29, 0.1);
-            width: 100%;
-          }
-          .token-dashboard-print-report .one-pager-footer-stamp {
-            font-size: 18pt;
-            font-weight: 700;
-            letter-spacing: 0.56em;
-            color: #991b1b;
-            text-transform: uppercase;
-            line-height: 1;
-            padding-left: 0.56em;
-          }
-          .token-dashboard-print-report .one-pager-footer-notice {
-            font-size: 8.5pt;
-            font-weight: 600;
-            letter-spacing: 0.22em;
-            text-transform: uppercase;
-            color: #b91c1c;
-          }
           .token-dashboard-print-report .one-pager-footer-copyright {
-            margin-top: 0.12in;
             font-size: 8.5pt;
             color: #535f79;
             letter-spacing: -0.002em;
@@ -5864,6 +5874,12 @@ function InvestorOnePagerReport({
 
   return (
     <div className="investor-one-pager">
+      <div className="one-pager-watermark" aria-hidden="true">
+        <div className="one-pager-watermark-stack">
+          <div className="one-pager-watermark-stamp">Confidential</div>
+          <div className="one-pager-watermark-notice">Do not distribute without authorization</div>
+        </div>
+      </div>
       <header className="one-pager-header">
         <div>
           <div className="one-pager-title">{propertyName || 'Property'}</div>
@@ -6004,13 +6020,7 @@ function InvestorOnePagerReport({
       </div>
       </div>
 
-      <div className="one-pager-footer-gap" aria-hidden="true" />
-
       <footer className="one-pager-footer">
-        <div className="one-pager-footer-banner">
-          <div className="one-pager-footer-stamp">Confidential</div>
-          <div className="one-pager-footer-notice">Do not distribute without authorization</div>
-        </div>
         <div className="one-pager-footer-copyright">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/favicon_trans.png" alt="STORE Management" className="one-pager-footer-logo" />
