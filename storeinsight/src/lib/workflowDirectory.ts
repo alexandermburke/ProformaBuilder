@@ -307,6 +307,20 @@ export const workflowCategories: WorkflowCategory[] = [
         href: '/occupancy-cleanup',
       },
       {
+        id: 'invoice-routing',
+        title: 'Invoice Routing',
+        description: 'Route approved FacilIQ invoices from billing@ to the right property inbox.',
+        status: 'Prototype',
+        tone: 'amber',
+        icon: 'receipt',
+        highlights: [
+          'Parse approved FacilIQ invoices that land at billing@storestorage.com.',
+          'Capture site, service date, GL code, work details, amount, and ticket number.',
+          'Tag CapEx vs R&M by ticket prefix, then forward to the property inbox.',
+        ],
+        href: '/invoice-routing',
+      },
+      {
         id: 'comp-sets',
         title: 'Comp Sets',
         description: 'Benchmark STORE assets against competitor pricing.',

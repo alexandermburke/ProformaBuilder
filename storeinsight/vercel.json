@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/daily-flash",
       "schedule": "15 15 * * *"
+    },
+    {
+      "path": "/api/cron/invoice-ingest",
+      "schedule": "0 * * * *"
     }
   ]
 }
