@@ -13,6 +13,7 @@ import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import WorkflowIcon from '@/components/WorkflowIcon';
 import { workflowCategories, type WorkflowCard, type WorkflowTone } from '@/lib/workflowDirectory';
+import { getAutoDownloadPptx, setAutoDownloadPptx } from '@/lib/flashPrefs';
 
 type DirectoryCard = WorkflowCard & { href: string };
 
@@ -87,6 +88,7 @@ export default function DirectoryPage(): JSX.Element {
   const [devModeSaving, setDevModeSaving] = useState(false);
   const [devModeError, setDevModeError] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [autoDownloadPptx, setAutoDownloadPptxState] = useState(true);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -124,6 +126,10 @@ export default function DirectoryPage(): JSX.Element {
       active = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    setAutoDownloadPptxState(getAutoDownloadPptx());
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -191,6 +197,11 @@ export default function DirectoryPage(): JSX.Element {
     } finally {
       setDevModeSaving(false);
     }
+  };
+  const toggleAutoDownloadPptx = () => {
+    const next = !autoDownloadPptx;
+    setAutoDownloadPptxState(next);
+    setAutoDownloadPptx(next);
   };
   const openSettings = () => setIsSettingsOpen(true);
   const closeSettings = () => setIsSettingsOpen(false);
@@ -425,6 +436,22 @@ export default function DirectoryPage(): JSX.Element {
                   onClick={toggleDarkMode}
                   aria-pressed={isDark}
                   className={toggleButtonClass(isDark)}
+                >
+                  <span className={togglePillClass} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-[color:var(--text-primary)]">Auto-download PPTX</div>
+                  <p className="text-xs text-[color:var(--text-secondary)]">
+                    When enabled, generating a manual Daily Flash also downloads the .pptx to this browser. The email still sends either way.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleAutoDownloadPptx}
+                  aria-pressed={autoDownloadPptx}
+                  className={toggleButtonClass(autoDownloadPptx)}
                 >
                   <span className={togglePillClass} />
                 </button>

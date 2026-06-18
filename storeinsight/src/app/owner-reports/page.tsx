@@ -521,6 +521,9 @@ export default function OwnerReportsPage() {
   const [msrStatus, setMsrStatus] = useState<{ variant: "success" | "error"; text: string } | null>(null);
   const [msrLoading, setMsrLoading] = useState(false);
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
+  // L001 (Hibernia Camelback) exports a variant "Budget vs. Actuals" layout; this
+  // toggle routes parsing to the separate L001 parser, leaving the standard one untouched.
+  const [l001Format, setL001Format] = useState(false);
   const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
   const [iprcFile, setIprcFile] = useState<File | null>(null);
   const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
@@ -705,7 +708,7 @@ export default function OwnerReportsPage() {
   const [budgetLoading, setBudgetLoading] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [budgetPage, setBudgetPage] = useState(0);
-  const lastProcessedFiles = useRef<{ budget: File | null }>({ budget: null });
+  const lastProcessedFiles = useRef<{ budget: File | null; format: string }>({ budget: null, format: "standard" });
   const budgetLinesByPage = useMemo(
     () => [
       BUDGET_LINES.filter((line) => line.page === 0),
@@ -845,6 +848,7 @@ export default function OwnerReportsPage() {
       if (!nextBudget) {
         lastProcessedFiles.current = {
           budget: null,
+          format: l001Format ? "l001" : "standard",
         };
         startTransition(() => {
           setBudgetTokens({});
@@ -860,6 +864,7 @@ export default function OwnerReportsPage() {
       }
       lastProcessedFiles.current = {
         budget: nextBudget,
+        format: l001Format ? "l001" : "standard",
       };
       setBudgetLoading(true);
       setBudgetError(null);
@@ -868,6 +873,7 @@ export default function OwnerReportsPage() {
         const { tokens, details, count, debug, templateTokens, ownerGroup } = await extractBudgetTableFields(
           budgetBuffer,
           undefined,
+          l001Format ? "l001" : "standard",
         );
         startTransition(() => {
           setBudgetTokens(tokens);
@@ -954,15 +960,19 @@ export default function OwnerReportsPage() {
         setBudgetLoading(false);
       }
     },
-    [],
+    [l001Format],
   );
 
   useEffect(() => {
-    if (budgetFile === lastProcessedFiles.current.budget) {
+    const currentFormat = l001Format ? "l001" : "standard";
+    if (
+      budgetFile === lastProcessedFiles.current.budget &&
+      currentFormat === lastProcessedFiles.current.format
+    ) {
       return;
     }
     void runBudgetExtract(budgetFile);
-  }, [budgetFile, runBudgetExtract]);
+  }, [budgetFile, l001Format, runBudgetExtract]);
 
   useEffect(() => {
     if (step === 3) setBudgetPage(0);
@@ -1296,6 +1306,7 @@ export default function OwnerReportsPage() {
       if (budgetFile) {
         form.append("budget", budgetFile);
       }
+      form.append("budgetFormat", l001Format ? "l001" : "standard");
       if (hummingbirdFile) {
         form.append("inventory", hummingbirdFile);
       }
@@ -1574,7 +1585,7 @@ export default function OwnerReportsPage() {
     setMsrTokens({});
     setMsrStatus(null);
     setMsrLoading(false);
-    lastProcessedFiles.current = { budget: null };
+    lastProcessedFiles.current = { budget: null, format: "standard" };
     setBudgetTokens({});
     setDetectedCount(0);
     setBudgetOverrides({});
@@ -1826,6 +1837,20 @@ export default function OwnerReportsPage() {
                           Selected: <span className="font-medium text-[color:var(--text-primary)]">{budgetFile.name}</span>
                         </p>
                       )}
+                      <label className="flex items-center gap-2 text-xs font-medium text-[color:var(--text-secondary)]">
+                        <input
+                          type="checkbox"
+                          checked={l001Format}
+                          onChange={(event) => setL001Format(event.target.checked)}
+                          className="h-4 w-4"
+                        />
+                        <span>
+                          L001 format{" "}
+                          <span className="font-normal text-[color:var(--text-muted)]">
+                            (use only for L001&rsquo;s &ldquo;Budget vs. Actuals&rdquo; export)
+                          </span>
+                        </span>
+                      </label>
                       <p className="text-[11px] text-[color:var(--text-muted)]">
                         Preview is available on Step 3 in the Budget mapper.
                       </p>

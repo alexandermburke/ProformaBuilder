@@ -194,6 +194,7 @@ export async function POST(req: NextRequest) {
   const inventoryTokensRaw = form.get("inventoryTokens");
   const performanceOptionsRaw = form.get("performanceOptions");
   const ppcFile = form.get("ppcFile");
+  const budgetFormat = form.get("budgetFormat") === "l001" ? "l001" : "standard";
 
   if (!(file instanceof Blob)) {
     return NextResponse.json({ error: "Upload an .xlsx file as 'file'." }, { status: 400 });
@@ -349,7 +350,7 @@ export async function POST(req: NextRequest) {
   let budgetDetails: Record<string, BudgetTokenDetail> | undefined;
   if (budgetBuffer) {
     try {
-      const extraction = await extractBudgetTableFields(budgetBuffer, undefined);
+      const extraction = await extractBudgetTableFields(budgetBuffer, undefined, budgetFormat);
       budgetTokens = extraction.tokens;
       budgetDetails = extraction.details;
     } catch (err) {
@@ -421,23 +422,22 @@ export async function POST(req: NextRequest) {
   const budgetTokensNumeric = budgetTokens ?? {};
   console.log("[budget] detected", Object.keys(budgetTokensNumeric).length, "numeric tokens");
 
-  // PPC performance tokens (IMPRE, CLICKS, CONV, COSCON) from the marketing sheet
+  // PPC top-line tokens (GOOIMPRES, GOOCLICKS, GOOCONV=CTR, GOOCOSCON=Cost/Click).
+  // The PPC export holds every property's campaigns in one sheet, so we match the
+  // target property by name + address (catches the Performance Max campaigns too)
+  // and aggregate. The parser returns display-formatted strings.
   let ppcTokens: Record<string, string | number> | undefined;
   try {
-  const buffersForPpc = ppcBuffers.length > 0 ? ppcBuffers : [buffer];
-    const propertyHint =
-      propertyForEmail?.name ||
-      propertyForEmail?.propertyId ||
-      propertyForEmail?.tenantPropertyId ||
-      data?.ADDRESS ||
-      propertyKey ||
-      "";
-    const ppcNumeric = extractPpcPerformanceTokens(buffersForPpc, propertyHint);
-    if (ppcNumeric && Object.keys(ppcNumeric).length > 0) {
-      ppcTokens = {};
-      for (const [key, value] of Object.entries(ppcNumeric)) {
-        ppcTokens[key] = typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(2)) : value;
-      }
+    const buffersForPpc = ppcBuffers.length > 0 ? ppcBuffers : [buffer];
+    const ppcContext = {
+      name: propertyForEmail?.name ?? null,
+      address: typeof data?.ADDRESS === "string" ? data.ADDRESS : null,
+      propertyCode: propertyForEmail?.propertyCode ?? null,
+      propertyId: propertyForEmail?.propertyId ?? propertyForEmail?.tenantPropertyId ?? propertyKey ?? null,
+    };
+    const extracted = extractPpcPerformanceTokens(buffersForPpc, ppcContext);
+    if (extracted && Object.keys(extracted).length > 0) {
+      ppcTokens = extracted;
     }
   } catch (err) {
     console.warn("[owner-reports] PPC extraction failed", err);

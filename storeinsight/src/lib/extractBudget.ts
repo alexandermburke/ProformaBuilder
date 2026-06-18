@@ -407,12 +407,13 @@ const buildRowStates = (
   header: HeaderMatch,
   sheetName: string,
   sheet: XLSX.WorkSheet,
+  resolveBase: (value: CellValue) => string | null = resolveLabelBase,
 ): RowState[] => {
   const rows: RowState[] = [];
   for (let r = header.rowIndex + 1; r < grid.length; r += 1) {
     const row = grid[r] ?? [];
     const labelCell = row[header.labelColumn];
-    const base = resolveLabelBase(labelCell);
+    const base = resolveBase(labelCell);
     if (!base) continue;
     const labelText = String(labelCell ?? "").trim() || base;
     const meta = {} as Record<BudgetSuffix, RowValueMeta>;
@@ -573,9 +574,342 @@ const applyTokensAndLogs = (
   }
 };
 
+// --- QuickBooks "Budget vs. Actuals" support ---------------------------------
+// QuickBooks exports a different layout than the legacy Yardi budget comparison:
+//   - Column headers are Actual / Budget / Over budget by / Percent of budget,
+//     repeated for the period (e.g. "May 2026") and the running "Total" (YTD).
+//   - Row labels carry GL account numbers ("4100 Rental Income") and QB-style
+//     "Total for <account>" subtotals.
+//   - The "Percent of budget" column is actual / budget, NOT a variance %, so we
+//     deliberately ignore it and compute the variance % from (variance / budget),
+//     matching the template's "% Var" columns and the legacy Yardi behavior.
+// Internal token bases stay identical to the Yardi parser so buildOwnerPptx's
+// existing alias map (LATFEE<-LATEFEE, MGMTSTF<-MGMSTF, SUP<-SUPP, RETA<-RETPROD,
+// TOTOTHEXP<-TOTOTHEREXP, ...) keeps mapping them onto the template tokens.
+const isQbActual = (cell: CellValue): boolean => normalizeHeaderText(cell) === "actual";
+const isQbBudget = (cell: CellValue): boolean => normalizeHeaderText(cell) === "budget";
+const isQbOverBudget = (cell: CellValue): boolean => normalizeHeaderText(cell).includes("over budget");
+const isQbPercentOfBudget = (cell: CellValue): boolean =>
+  normalizeHeaderText(cell).includes("percent of budget");
+
+// A QuickBooks budget header row carries one Actual/Budget/Over budget by/Percent of
+// budget column GROUP per period, plus a final "Total" group. The row directly above
+// holds the period labels ("May 2026", ..., "Total"). Exports can be a single month
+// ([Month][Total]) or many months ([Jan][Feb]...[May][Total]); in both cases we map
+// the CURRENT month (the last month group, immediately before Total) to MTD and the
+// "Total" group to YTD. Intentionally omit VARPER / YTDVARPER: QB's "percent of
+// budget" is actual/budget, not a variance %, so those are computed downstream.
+const findQbHeader = (grid: Grid): HeaderMatch | null => {
+  for (let r = 0; r < grid.length; r += 1) {
+    const row = grid[r] ?? [];
+    const groupStarts: number[] = [];
+    for (let c = 0; c + 3 < row.length; ) {
+      if (
+        isQbActual(row[c]) &&
+        isQbBudget(row[c + 1]) &&
+        isQbOverBudget(row[c + 2]) &&
+        isQbPercentOfBudget(row[c + 3])
+      ) {
+        groupStarts.push(c);
+        c += 4;
+      } else {
+        c += 1;
+      }
+    }
+    if (groupStarts.length === 0) continue;
+
+    // Period labels sit in the row above, aligned over each group's "Actual" column.
+    const superRow = grid[r - 1] ?? [];
+    const totalGroupIndex = groupStarts.findIndex((start) =>
+      normalizeHeaderText(superRow[start]).includes("total"),
+    );
+
+    let mtdStart: number;
+    let ytdStart: number;
+    if (totalGroupIndex >= 0) {
+      ytdStart = groupStarts[totalGroupIndex];
+      const monthStarts = groupStarts.filter((_, i) => i !== totalGroupIndex);
+      mtdStart = monthStarts.length > 0 ? monthStarts[monthStarts.length - 1] : ytdStart;
+    } else {
+      // No "Total" column: use the most recent month group for both MTD and YTD.
+      mtdStart = groupStarts[groupStarts.length - 1];
+      ytdStart = mtdStart;
+    }
+
+    const columnBySuffix = new Map<BudgetSuffix, number>([
+      ["CM", mtdStart],
+      ["PTD", mtdStart + 1],
+      ["VAR", mtdStart + 2],
+      ["YTD", ytdStart],
+      ["YTDBUD", ytdStart + 1],
+      ["YTDVAR", ytdStart + 2],
+    ]);
+    const columnMap = new Map<number, BudgetSuffix>();
+    for (const [suffix, columnIndex] of columnBySuffix) columnMap.set(columnIndex, suffix);
+    return {
+      rowIndex: r,
+      labelColumn: Math.max(0, groupStarts[0] - 1),
+      columnMap,
+      columnBySuffix,
+    };
+  }
+  return null;
+};
+
+const locateQbBudgetSheet = (
+  workbook: XLSX.WorkBook,
+): { grid: Grid; header: HeaderMatch; sheetName: string } | null => {
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    const grid = sheetToGrid(sheet);
+    const header = findQbHeader(grid);
+    if (header) return { grid, header, sheetName: name };
+  }
+  return null;
+};
+
+const stripLeadingAccountCode = (label: string): string => label.replace(/^\d{3,6}\s+/, "").trim();
+
+const qbResolveLabelBase = (value: CellValue): string | null => {
+  const normalized = normalizeLabelText(value);
+  if (!normalized) return null;
+
+  // QB subtotals: "Total for <account> <name>". Map the ones with a template row;
+  // skip the rest so they never clobber the underlying line items.
+  if (normalized.startsWith("total for")) {
+    const rest = stripLeadingAccountCode(normalized.slice("total for".length).trim());
+    if (rest.includes("rental income")) return "TOTRENINC";
+    if (rest.includes("other tenant income")) return null; // no template row
+    if (rest.includes("other expenses")) return "TOTOTHEREXP";
+    if (rest.includes("utilities")) return "UTIL"; // template has one Utilities line
+    if (rest === "income") return "TOTALINC";
+    if (rest === "expenses") return "TOTALPROP";
+    return null;
+  }
+
+  const stripped = stripLeadingAccountCode(normalized);
+  // QuickBooks merges Office Supplies + Supplies - Building into one account.
+  if (stripped.includes("office") && stripped.includes("supplies")) return "OFFSUP";
+  // QB-only expense lines that the template now itemizes (so the expense column foots).
+  if (stripped.includes("bank charge")) return "BANKCHG";
+  if (stripped.includes("travel")) return "TRAVEL";
+  return resolveLabelBase(stripped);
+};
+
+// Template has a Total Expenses row but QuickBooks has no single matching line,
+// so derive it from Total Operating Expenses + Total Other Expenses.
+const computeQbTotalExpenses = (
+  tokens: Record<string, number>,
+  details: Record<string, BudgetTokenDetail>,
+): void => {
+  const moneySuffixes: BudgetSuffix[] = ["CM", "PTD", "VAR", "YTD", "YTDBUD", "YTDVAR"];
+  let produced = false;
+  for (const suffix of moneySuffixes) {
+    const operating = tokens[`TOTALPROP${suffix}`];
+    const other = tokens[`TOTOTHEREXP${suffix}`];
+    if (operating === undefined && other === undefined) continue;
+    const total = normalizeZero(roundMoney((operating ?? 0) + (other ?? 0)));
+    tokens[`TOTEXP${suffix}`] = total;
+    details[`TOTEXP${suffix}`] = {
+      value: total,
+      sheet: "Budget Comparison",
+      cell: "-",
+      note: "computed: Total Operating Expenses + Total Other Expenses",
+    };
+    produced = true;
+  }
+  if (!produced) return;
+  const percentPairs: Array<[BudgetSuffix, BudgetSuffix, BudgetSuffix]> = [
+    ["VARPER", "VAR", "PTD"],
+    ["YTDVARPER", "YTDVAR", "YTDBUD"],
+  ];
+  for (const [target, varSuffix, budgetSuffix] of percentPairs) {
+    const variance = tokens[`TOTEXP${varSuffix}`];
+    const budget = tokens[`TOTEXP${budgetSuffix}`];
+    if (variance === undefined || budget === undefined || Math.abs(budget) < 1e-6) continue;
+    const pct = normalizeZero(roundPercent((variance / budget) * 100));
+    tokens[`TOTEXP${target}`] = pct;
+    details[`TOTEXP${target}`] = { value: pct, sheet: "Budget Comparison", cell: "-", note: "computed" };
+  }
+};
+
+const extractQuickBooksBudget = (
+  workbook: XLSX.WorkBook,
+  located: { grid: Grid; header: HeaderMatch; sheetName: string },
+): BudgetExtraction => {
+  const { grid, header, sheetName } = located;
+  const ownerGroup = extractOwnerGroupFromGrid(grid);
+  const rows = buildRowStates(grid, header, sheetName, workbook.Sheets[sheetName]!, qbResolveLabelBase);
+
+  const tokens: Record<string, number> = {};
+  const details: Record<string, BudgetTokenDetail> = {};
+  const debug: string[] = [];
+
+  for (const row of rows) {
+    computeDerivedValues(row, header);
+    applyTokensAndLogs(row, tokens, details, debug);
+  }
+  computeQbTotalExpenses(tokens, details);
+
+  const count = Object.keys(tokens).length;
+  console.log(`[budget][qb] detected ${count} numeric tokens from QuickBooks export`);
+  return { tokens, details, count, debug, ownerGroup };
+};
+
+// --- L001 (Hibernia Camelback) "Budget vs. Actuals" variant ------------------
+// Same column layout as the standard QB export (month groups + a Total group) but
+// with different header text ("over Budget" / "% of Budget") and QuickBooks-desktop
+// subtotal labels ("Total 4099 Net Rental Income", "Total Income", "Total Expenses",
+// "Total Other Expenses") that carry leading-whitespace indentation. This path runs
+// ONLY when the caller selects format "l001", so the standard parser is never touched.
+const isL001PercentOfBudget = (cell: CellValue): boolean =>
+  normalizeHeaderText(cell).includes("of budget");
+
+const findL001Header = (grid: Grid): HeaderMatch | null => {
+  for (let r = 0; r < grid.length; r += 1) {
+    const row = grid[r] ?? [];
+    const groupStarts: number[] = [];
+    for (let c = 0; c + 3 < row.length; ) {
+      if (
+        isQbActual(row[c]) &&
+        isQbBudget(row[c + 1]) &&
+        isQbOverBudget(row[c + 2]) &&
+        isL001PercentOfBudget(row[c + 3])
+      ) {
+        groupStarts.push(c);
+        c += 4;
+      } else {
+        c += 1;
+      }
+    }
+    if (groupStarts.length === 0) continue;
+    const superRow = grid[r - 1] ?? [];
+    const totalGroupIndex = groupStarts.findIndex((start) =>
+      normalizeHeaderText(superRow[start]).includes("total"),
+    );
+    let mtdStart: number;
+    let ytdStart: number;
+    if (totalGroupIndex >= 0) {
+      ytdStart = groupStarts[totalGroupIndex];
+      const monthStarts = groupStarts.filter((_, i) => i !== totalGroupIndex);
+      mtdStart = monthStarts.length > 0 ? monthStarts[monthStarts.length - 1] : ytdStart;
+    } else {
+      mtdStart = groupStarts[groupStarts.length - 1];
+      ytdStart = mtdStart;
+    }
+    const columnBySuffix = new Map<BudgetSuffix, number>([
+      ["CM", mtdStart],
+      ["PTD", mtdStart + 1],
+      ["VAR", mtdStart + 2],
+      ["YTD", ytdStart],
+      ["YTDBUD", ytdStart + 1],
+      ["YTDVAR", ytdStart + 2],
+    ]);
+    const columnMap = new Map<number, BudgetSuffix>();
+    for (const [suffix, columnIndex] of columnBySuffix) columnMap.set(columnIndex, suffix);
+    return { rowIndex: r, labelColumn: Math.max(0, groupStarts[0] - 1), columnMap, columnBySuffix };
+  }
+  return null;
+};
+
+const locateL001BudgetSheet = (
+  workbook: XLSX.WorkBook,
+): { grid: Grid; header: HeaderMatch; sheetName: string } | null => {
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    const grid = sheetToGrid(sheet);
+    const header = findL001Header(grid);
+    if (header) return { grid, header, sheetName: name };
+  }
+  return null;
+};
+
+const stripL001Code = (label: string): string => label.replace(/^\d{3,5}\s+/, "").trim();
+
+const l001ResolveLabelBase = (value: CellValue): string | null => {
+  const norm = normalizeLabelText(value); // lowercased, &->and, punctuation+indent stripped, trimmed
+  if (!norm) return null;
+
+  if (norm.startsWith("total")) {
+    if (/^total\s+\d/.test(norm)) {
+      // Coded subtotal, e.g. "Total 4099 Net Rental Income" / "Total 4000 Income".
+      const rest = stripL001Code(norm.replace(/^total\s+/, ""));
+      if (rest.includes("other tenant income")) return null;
+      if (rest.includes("rental income")) return "TOTRENINC";
+      if (rest.includes("utilities")) return "UTIL";
+      if (rest === "income") return "TOTRENINC"; // "Total 4000 Income" == rental subtotal here
+      return null;
+    }
+    // Plain subtotal with no code.
+    const rest = norm.replace(/^total\s+/, "").trim();
+    if (rest === "income") return "TOTALINC";
+    if (rest === "expenses") return "TOTALPROP"; // L001 "Total Expenses" = operating expenses
+    if (rest.includes("other expenses")) return "TOTOTHEREXP";
+    if (rest.includes("rental income")) return "TOTRENINC";
+    if (rest.includes("other tenant income")) return null;
+    if (rest.includes("utilities")) return "UTIL";
+    return null;
+  }
+
+  const s = stripL001Code(norm);
+  if (s.includes("rental income")) return "RENTINC";
+  if (s.includes("discount")) return "DISC";
+  if (s.includes("admin")) return "ADMFEE"; // "Fee Income - Admin"
+  if (s.includes("late fee")) return "LATEFEE";
+  if (s.includes("secure payment")) return "SECPP";
+  if (s.includes("tenant protection")) return "INSUR";
+  if (s.includes("retail sales")) return "RETSAL";
+  if (s.includes("advertising")) return "ADVER";
+  if (s.includes("auction")) return "AUCT";
+  if (s.includes("bank charge")) return "BANKCHG";
+  if (s.includes("cam charge") || s.includes("cam ")) return "CAM";
+  if (s.includes("credit card")) return "CCM";
+  if (s.includes("dues")) return "DUES";
+  if (s.includes("fire prevention")) return "FIRE";
+  if (/\binsurance\b/.test(s) && !s.includes("tenant")) return "INSURXP";
+  if (s.includes("licenses")) return "PERM";
+  if (s.includes("management fee")) return "MGMT";
+  if (s.includes("office") && s.includes("supplies")) return "OFFSUP";
+  if (s.includes("payroll")) return "MGMSTF";
+  if (s.includes("professional")) return "PROF";
+  if (s.includes("property tax")) return "PROPTAX"; // L001-only account (no token in standard map)
+  if (s.includes("repairs")) return "REP";
+  if (s.includes("retail products")) return "RETPROD";
+  if (/\bsecurity\b/.test(s)) return "SEC";
+  if (s.includes("software")) return "SOFT";
+  if (s.includes("telephone")) return "INTER";
+  if (s.includes("utilities")) return "UTIL"; // utility parent / subrows (overwritten by the Total)
+  if (s.includes("interest income")) return "INTINC";
+  if (s.includes("net income")) return "NETINC"; // not "net operating income" / "net other income"
+  return null; // below-the-line items roll into Total Other Expenses
+};
+
+const extractL001Budget = (
+  workbook: XLSX.WorkBook,
+  located: { grid: Grid; header: HeaderMatch; sheetName: string },
+): BudgetExtraction => {
+  const { grid, header, sheetName } = located;
+  const ownerGroup = extractOwnerGroupFromGrid(grid);
+  const rows = buildRowStates(grid, header, sheetName, workbook.Sheets[sheetName]!, l001ResolveLabelBase);
+  const tokens: Record<string, number> = {};
+  const details: Record<string, BudgetTokenDetail> = {};
+  const debug: string[] = [];
+  for (const row of rows) {
+    computeDerivedValues(row, header);
+    applyTokensAndLogs(row, tokens, details, debug);
+  }
+  computeQbTotalExpenses(tokens, details);
+  const count = Object.keys(tokens).length;
+  console.log(`[budget][l001] detected ${count} numeric tokens from L001 export`);
+  return { tokens, details, count, debug, ownerGroup };
+};
+
 export async function extractBudgetTableFields(
   budgetBuffer: WorkbookInput,
   financialsBuffer?: WorkbookInput,
+  format: "standard" | "l001" = "standard",
 ): Promise<BudgetExtraction> {
   let workbook: XLSX.WorkBook;
   try {
@@ -583,6 +917,28 @@ export async function extractBudgetTableFields(
   } catch (error) {
     console.warn("[budget] unable to read budget workbook", error);
     return { tokens: {}, details: {}, count: 0, debug: [], ownerGroup: null };
+  }
+
+  // Explicit override: force the L001 parser when the caller asks for it.
+  if (format === "l001") {
+    const forced = locateL001BudgetSheet(workbook);
+    if (forced) {
+      return extractL001Budget(workbook, forced);
+    }
+    console.warn("[budget][l001] L001 header not found despite l001 format; auto-detecting");
+  }
+
+  // Auto-detect by layout. Standard QB ("Percent of budget") is tried FIRST so a
+  // standard file is always matched before L001 is considered and never reaches the
+  // L001 parser. L001 ("% of Budget") is only used when standard detection fails.
+  const qbLocated = locateQbBudgetSheet(workbook);
+  if (qbLocated) {
+    return extractQuickBooksBudget(workbook, qbLocated);
+  }
+
+  const l001AutoLocated = locateL001BudgetSheet(workbook);
+  if (l001AutoLocated) {
+    return extractL001Budget(workbook, l001AutoLocated);
   }
 
   const located = locateBudgetSheet(workbook);

@@ -8,6 +8,7 @@ import path from "node:path";
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const budget = form.get("budget");
+  const budgetFormat = form.get("budgetFormat") === "l001" ? "l001" : "standard";
   const budgetBuffer =
     budget instanceof Blob
       ? Buffer.from(await budget.arrayBuffer())
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await extractBudgetTableFields(budgetBuffer, undefined);
+    const result = await extractBudgetTableFields(budgetBuffer, undefined, budgetFormat);
     return NextResponse.json({
       tokens: result.tokens,
       count: result.count,

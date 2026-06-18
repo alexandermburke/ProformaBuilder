@@ -1,8 +1,5 @@
-﻿import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
-import fs from "node:fs";
+﻿import { createHash } from "node:crypto";
 import { promises as fsp } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
@@ -22,6 +19,12 @@ import { createShareLink } from "@/lib/shareLinks";
 import { formatFlashAsOfDate } from "@/lib/flash/asOfDate";
 import { firestore, storage } from "@/server/firebaseAdmin";
 import { resolvePropertyFromLabels } from "@/lib/dailySummaryPropertyMatch";
+import { convertPptxRemote } from "@/lib/convertPptxRemote";
+import {
+  convertPptxBufferToPdfLocal,
+  convertPptxBufferToPngLocal,
+  resolveSofficePath,
+} from "@/lib/flash/convertPptxLocal";
 
 export const runtime = "nodejs";
 
@@ -119,28 +122,6 @@ const getFlashDevMode = async (): Promise<boolean> => {
   return false;
 };
 
-function resolveSofficePath(): string {
-  const envPath = process.env.LIBREOFFICE_PATH;
-  if (envPath) return envPath;
-  if (process.platform === "win32") {
-    const candidates = [
-      "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-      "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
-      "C:\\Program Files\\LibreOffice\\program\\soffice.com",
-      "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com",
-    ];
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) return candidate;
-    }
-  } else {
-    const candidates = ["/usr/bin/soffice", "/usr/local/bin/soffice", "/snap/bin/libreoffice"];
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) return candidate;
-    }
-  }
-  return "soffice";
-}
-
 function renderChartBuffer(
   configuration: ChartConfiguration<"line", Array<number | null>, string>,
   mimeType: "image/png" | "image/jpeg",
@@ -151,78 +132,6 @@ function renderChartBuffer(
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   new ChartJS(ctx as unknown as CanvasRenderingContext2D, configuration);
   return mimeType === "image/png" ? canvas.toBuffer("image/png") : canvas.toBuffer("image/jpeg");
-}
-
-async function convertPptxBufferToPngLocal(pptBuffer: Buffer): Promise<Buffer> {
-  if (!pptBuffer || pptBuffer.length === 0) {
-    throw new Error("PPTX buffer is empty");
-  }
-  const sofficePath = resolveSofficePath();
-  console.info("[flash-report/manual] using soffice path", sofficePath);
-  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "flash-ppt-"));
-  const pptPath = path.join(tempDir, "flash.pptx");
-  try {
-    await fsp.writeFile(pptPath, pptBuffer);
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        sofficePath,
-        ["--headless", "--convert-to", "png", "--outdir", tempDir, pptPath],
-        (error, stdout, stderr) => {
-          if (error) {
-            error.message += `; stdout: ${stdout}; stderr: ${stderr}`;
-            reject(error);
-            return;
-          }
-          resolve();
-        },
-      );
-    });
-    const files = await fsp.readdir(tempDir);
-    const pngName = files.find((f) => f.toLowerCase().endsWith(".png"));
-    if (!pngName) {
-      throw new Error("LibreOffice convert did not produce a PNG");
-    }
-    const pngBuffer = await fsp.readFile(path.join(tempDir, pngName));
-    return pngBuffer;
-  } finally {
-    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-  }
-}
-
-async function convertPptxBufferToPdfLocal(pptBuffer: Buffer): Promise<Buffer> {
-  if (!pptBuffer || pptBuffer.length === 0) {
-    throw new Error("PPTX buffer is empty");
-  }
-  const sofficePath = resolveSofficePath();
-  console.info("[flash-report/manual] converting pptx to pdf with soffice", sofficePath);
-  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "flash-pdf-"));
-  const pptPath = path.join(tempDir, "flash.pptx");
-  try {
-    await fsp.writeFile(pptPath, pptBuffer);
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        sofficePath,
-        ["--headless", "--convert-to", "pdf", "--outdir", tempDir, pptPath],
-        (error, stdout, stderr) => {
-          if (error) {
-            error.message += `; stdout: ${stdout}; stderr: ${stderr}`;
-            reject(error);
-            return;
-          }
-          resolve();
-        },
-      );
-    });
-    const files = await fsp.readdir(tempDir);
-    const pdfName = files.find((f) => f.toLowerCase().endsWith(".pdf"));
-    if (!pdfName) {
-      throw new Error("LibreOffice convert did not produce a PDF");
-    }
-    const pdfBuffer = await fsp.readFile(path.join(tempDir, pdfName));
-    return pdfBuffer;
-  } finally {
-    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-  }
 }
 
 async function loadImageBufferFromData(data: string): Promise<Buffer | null> {
@@ -883,17 +792,54 @@ export async function POST(req: NextRequest) {
   zip.file("ppt/media/image4.jpeg", momOccupancyChartJpeg);
   scrubHiddenCharactersFromZip(zip);
   const rendered = await renderTokensIntoZip(zip, tokens);
+  // Render the inline email PNG and the PDF (download link). Prefer the remote converter
+  // (PPTX_CONVERT_URL) because deployed hosts have no LibreOffice; fall back to local
+  // soffice when it is available (e.g. local dev). This mirrors the nightly auto/daily
+  // route so manual and automated flashes behave identically.
   let slidePngBuffer: Buffer | null = null;
   let pdfBuffer: Buffer | null = null;
-  try {
-    slidePngBuffer = await convertPptxBufferToPngLocal(rendered);
-  } catch (err) {
-    console.error("[flash-report/manual] unable to convert PPTX to PNG (non-fatal)", err);
+
+  const convertUrl = process.env.PPTX_CONVERT_URL || process.env.LIBRE_CONVERT_URL;
+  if (convertUrl) {
+    try {
+      const remote = await convertPptxRemote({
+        convertUrl,
+        pptxBuffer: rendered,
+        pptxFilename: `DailyFlash-${resolvedPropertyId}.pptx`,
+      });
+      if (remote.pngBuffer) slidePngBuffer = remote.pngBuffer;
+      if (remote.pdfBuffer) pdfBuffer = remote.pdfBuffer;
+      console.info("[flash-report/manual] remote pptx convert result", {
+        pngFromRemote: Boolean(remote.pngBuffer),
+        pdfFromRemote: Boolean(remote.pdfBuffer),
+      });
+    } catch (err) {
+      console.warn("[flash-report/manual] remote pptx convert failed; trying local soffice", err);
+    }
   }
-  try {
-    pdfBuffer = await convertPptxBufferToPdfLocal(rendered);
-  } catch (err) {
-    console.error("[flash-report/manual] unable to convert PPTX to PDF (non-fatal, link will be unavailable)", err);
+
+  const hasSoffice = Boolean(resolveSofficePath());
+  if (!slidePngBuffer) {
+    if (hasSoffice) {
+      try {
+        slidePngBuffer = await convertPptxBufferToPngLocal(rendered);
+      } catch (err) {
+        console.error("[flash-report/manual] unable to convert PPTX to PNG (non-fatal)", err);
+      }
+    } else {
+      console.warn("[flash-report/manual] PNG not generated (no remote converter result, no local LibreOffice)");
+    }
+  }
+  if (!pdfBuffer) {
+    if (hasSoffice) {
+      try {
+        pdfBuffer = await convertPptxBufferToPdfLocal(rendered);
+      } catch (err) {
+        console.error("[flash-report/manual] unable to convert PPTX to PDF (non-fatal, link will be unavailable)", err);
+      }
+    } else {
+      console.warn("[flash-report/manual] PDF not generated (no remote converter result, no local LibreOffice)");
+    }
   }
 
   const safePropertyId = resolvedPropertyId.replace(/[^A-Za-z0-9._-]+/g, "_");

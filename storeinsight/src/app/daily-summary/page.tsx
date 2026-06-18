@@ -15,6 +15,7 @@ import type { PropertyConfig } from '@/types/dailySummary';
 import type { FlashCloudStatus, FlashStatus } from './types';
 import type { CloudRunState, CloudStatusResponse } from '@/types/cloudStatus';
 import { resolvePropertyFromLabels } from '@/lib/dailySummaryPropertyMatch';
+import { getAutoDownloadPptx } from '@/lib/flashPrefs';
 
 type PropertyFormState = {
   id?: string;
@@ -137,6 +138,7 @@ export default function DailySummaryPage() {
   const [toast, setToast] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [manualEmailBody, setManualEmailBody] = useState('');
+  const [autoDownloadPptx, setAutoDownloadPptx] = useState(true);
   const propertiesRef = useRef<PropertyConfig[]>([]);
   const parsedOwnerEmails = useMemo(
     () =>
@@ -370,6 +372,15 @@ export default function DailySummaryPage() {
     return () => window.clearTimeout(id);
   }, [toast]);
 
+  // Reflect the Settings auto-download preference here (it is toggled on the home
+  // page). Re-read on window focus so returning from Settings shows the latest value.
+  useEffect(() => {
+    const sync = () => setAutoDownloadPptx(getAutoDownloadPptx());
+    sync();
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
+  }, []);
+
   const openModal = (prop?: PropertyConfig) => {
     if (prop) {
       setFormState({
@@ -550,21 +561,25 @@ export default function DailySummaryPage() {
       }
 
       const blob = await res.blob();
-      const property = properties.find((p) => p.id === selectedPropertyId);
-      const propertyLabel =
-        property?.propertyId || property?.tenantPropertyId || property?.name || property?.propertyCode || selectedPropertyId;
-      const safeProperty = propertyLabel.replace(/[^A-Za-z0-9._-]+/g, '_');
-      const filename = `DailyFlash-${safeProperty}-${asOfDate}.pptx`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
 
-      setManualMessage('Daily Flash PPTX generated.');
+      if (getAutoDownloadPptx()) {
+        const property = properties.find((p) => p.id === selectedPropertyId);
+        const propertyLabel =
+          property?.propertyId || property?.tenantPropertyId || property?.name || property?.propertyCode || selectedPropertyId;
+        const safeProperty = propertyLabel.replace(/[^A-Za-z0-9._-]+/g, '_');
+        const filename = `DailyFlash-${safeProperty}-${asOfDate}.pptx`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setManualMessage('Daily Flash PPTX generated and downloaded.');
+      } else {
+        setManualMessage('Daily Flash generated and emailed. Auto-download is off (toggle it in Settings).');
+      }
     } catch (err) {
       console.error('[flash-report/manual] generation failed', err);
       setToast('Unable to generate Daily Flash PPTX.');
@@ -977,6 +992,13 @@ export default function DailySummaryPage() {
               >
                 {manualSubmitting ? 'Generating...' : 'Generate Daily Flash PPTX'}
               </button>
+              <p className="text-[11px] text-[color:var(--text-muted)]">
+                Auto-download PPTX is{' '}
+                <span className="font-semibold text-[color:var(--text-secondary)]">
+                  {autoDownloadPptx ? 'on' : 'off'}
+                </span>
+                . The email sends either way. Change this in Settings on the home page.
+              </p>
               {manualSubmitting && (
                 <div className="relative h-2 w-full overflow-hidden rounded-full bg-[color:var(--surface-subtle)]">
                   <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(37,99,235,0.15),rgba(125,179,255,0.3),rgba(37,99,235,0.15))]" />
