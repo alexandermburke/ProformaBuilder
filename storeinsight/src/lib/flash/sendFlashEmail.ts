@@ -257,9 +257,13 @@ export async function sendFlashEmail(options: {
       options.property.name ||
       options.property.id;
     const reportDate = options.reportDateDisplay || (options.tokens?.ASOFDATE as string) || "";
-    const subject =
+    const baseSubject =
       options.subjectOverride ??
       `Daily Flash - ${propertyLabel}${reportDate ? ` (${reportDate})` : ""}`;
+    // Dev mode emails only alex@storestorage.com; flag the subject so these are
+    // obviously not owner-facing. Off => subject is left exactly as before.
+    const subject =
+      options.devModeOverride === true ? `DEVELOPMENT MODE: ${baseSubject}` : baseSubject;
     const inlinePng = options.slidePngBuffer?.length ? options.slidePngBuffer : options.pngBuffer || undefined;
     let dashboardUrl: string | null = null;
     const sharePropertyId = resolveDashboardEmailPropertyId(

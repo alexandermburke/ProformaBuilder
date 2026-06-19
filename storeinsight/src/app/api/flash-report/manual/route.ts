@@ -646,7 +646,9 @@ async function sendFlashReportEmail(
       property.name ||
       property.id;
     const reportDate = (tokens.ASOFDATE as string) || asOfDate || "Latest";
-    const subject = `Daily Flash - ${propertyLabel} (${reportDate})`;
+    const baseSubject = `Daily Flash - ${propertyLabel} (${reportDate})`;
+    // Dev mode emails only alex@storestorage.com; flag the subject. Off => unchanged.
+    const subject = devModeOverride ? `DEVELOPMENT MODE: ${baseSubject}` : baseSubject;
     const html = buildFlashEmailHtmlFromPng(tokens, customBody, {
       pdfUrl,
       dashboardUrl,
