@@ -10,6 +10,7 @@ import type { PropertyConfig } from "@/types/dailySummary";
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { buildPlaceholderMoMSeries, type MoMSeries } from "@/lib/flash/momSeries";
 import { formatFlashAsOfDate } from "@/lib/flash/asOfDate";
+import { isManagedBeforeChart } from "@/lib/flash/managedSince";
 
 export type TokenMap = Record<string, string | number | unknown[]>;
 type StoreManagedMarkerConfig = {
@@ -100,7 +101,10 @@ export async function generateFlashFromMsr(
     occupiedPct: options.propertyConfig?.momPlaceholderOccupiedPct,
   });
 
-  const markerConfig = resolveStoreManagedMarkerConfig(options.propertyConfig, propertyId);
+  // Oldest month shown on the MoM charts (charts use the most recent 7 months).
+  const chartWindowMonths = resolvedMoMSeries.months.slice(0, 7);
+  const earliestChartMonth = chartWindowMonths[chartWindowMonths.length - 1] ?? null;
+  const markerConfig = resolveStoreManagedMarkerConfig(options.propertyConfig, propertyId, earliestChartMonth);
   const [rentChartJpeg, occupancyChartJpeg] = await Promise.all([
     renderMoMGrossAccruedRentChart(resolvedMoMSeries, propertyId, markerConfig),
     renderMoMOccupancyChart(resolvedMoMSeries, propertyId, markerConfig),
@@ -789,7 +793,13 @@ const isValidMarkerMonth = (value?: string | null): value is string =>
 function resolveStoreManagedMarkerConfig(
   propertyConfig: PropertyConfig | undefined,
   propertyId: string,
+  earliestChartMonth?: string | null,
 ): StoreManagedMarkerConfig | null {
+  // If STORE has managed the property since before the chart's window begins, there
+  // is no meaningful "managed since" point on the graph, so hide the marker.
+  if (isManagedBeforeChart(propertyConfig?.facilityOpenDate, earliestChartMonth)) {
+    return null;
+  }
   const configuredMonth = propertyConfig?.storeManagedMarkerMonth?.trim();
   const configuredText = propertyConfig?.storeManagedMarkerText?.trim() || "STORE Managed";
   if (isValidMarkerMonth(configuredMonth)) {

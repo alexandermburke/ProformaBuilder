@@ -7,7 +7,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import type { FormEvent, JSX } from 'react';
 
@@ -36,7 +36,6 @@ export default function LoginPage(): JSX.Element {
 }
 
 function LoginPageContent(): JSX.Element {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = searchParams?.get('redirect') ?? '/';
   const [status, setStatus] = useState<string | null>(null);
@@ -67,7 +66,13 @@ function LoginPageContent(): JSX.Element {
       }
 
       setStatus('Authenticated. Redirecting...');
-      router.push(redirectPath);
+      // Hard navigation (full reload) so the just-set session cookie is sent on the
+      // next request and seen by the middleware/auth check. A soft router.push can
+      // reuse a pre-auth cached route and bounce back to /login, leaving the page
+      // stuck on "Authenticated. Redirecting...". Guard against open redirects.
+      const safeRedirect =
+        redirectPath.startsWith('/') && !redirectPath.startsWith('//') ? redirectPath : '/';
+      window.location.assign(safeRedirect);
     } catch (err) {
       console.error('Login error', err);
       setStatus('Network error while signing in. Please retry.');

@@ -17,6 +17,7 @@ import { DASHBOARD_BETA_INVESTOR_ID, resolveDashboardEmailPropertyId } from "@/l
 import { stripHiddenTokenCharacters } from "@/lib/pptTokens";
 import { createShareLink } from "@/lib/shareLinks";
 import { formatFlashAsOfDate } from "@/lib/flash/asOfDate";
+import { isManagedBeforeChart } from "@/lib/flash/managedSince";
 import { firestore, storage } from "@/server/firebaseAdmin";
 import { resolvePropertyFromLabels } from "@/lib/dailySummaryPropertyMatch";
 import { convertPptxRemote } from "@/lib/convertPptxRemote";
@@ -345,7 +346,12 @@ const isValidMarkerMonth = (value?: string | null): value is string =>
 function resolveStoreManagedMarkerConfig(
   property: PropertyConfig | undefined,
   propertyId: string,
+  earliestChartMonth?: string | null,
 ): StoreManagedMarkerConfig | null {
+  // Hide the marker when STORE has managed the property since before the chart window.
+  if (isManagedBeforeChart(property?.facilityOpenDate, earliestChartMonth)) {
+    return null;
+  }
   const configuredMonth = property?.storeManagedMarkerMonth?.trim();
   const configuredText = property?.storeManagedMarkerText?.trim() || "STORE Managed";
   if (isValidMarkerMonth(configuredMonth)) {
@@ -761,7 +767,9 @@ export async function POST(req: NextRequest) {
     grossAccruedRent: property.momPlaceholderGrossAccruedRent,
     occupiedPct: property.momPlaceholderOccupiedPct,
   });
-  const markerConfig = resolveStoreManagedMarkerConfig(property, resolvedPropertyId);
+  const chartWindowMonths = resolvedMoMSeries.months.slice(0, 7);
+  const earliestChartMonth = chartWindowMonths[chartWindowMonths.length - 1] ?? null;
+  const markerConfig = resolveStoreManagedMarkerConfig(property, resolvedPropertyId, earliestChartMonth);
   const facilityOpenDate = property.facilityOpenDate;
   if (facilityOpenDate) {
     tokens.FACILITYOPENDATE = facilityOpenDate;
