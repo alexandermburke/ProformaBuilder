@@ -107,6 +107,9 @@ export async function POST(req: NextRequest) {
   const asOfDate = String(formData.get("asOfDate") ?? "").trim();
   const outputFormatRaw = String(formData.get("outputFormat") ?? "pptx").trim().toLowerCase();
   const outputFormat: OutputFormat = outputFormatRaw === "xlsx" ? "xlsx" : "pptx";
+  // Square-footage weighted averages by default; the comp-set page can toggle this off
+  // to use the simple (per-size / per-unit) averages instead.
+  const weighted = String(formData.get("weighted") ?? "true").trim().toLowerCase() !== "false";
   const file = formData.get("file");
 
   if (!subjectName) {
@@ -195,7 +198,7 @@ export async function POST(req: NextRequest) {
 
   const selectedComps = sortedComps.slice(0, 6);
 
-  const marketRates = computeMarketRates(rows);
+  const marketRates = computeMarketRates(rows, weighted);
 
   const tokens: Record<string, string> = {
     MONTHYEAR: monthYear || DASH,
@@ -229,7 +232,7 @@ export async function POST(req: NextRequest) {
     }
     tokens[`PP${propNumber}DIST`] = formatMiles(distanceMiles);
 
-    const pricing = computePropertyPricing(property.rows);
+    const pricing = computePropertyPricing(property.rows, weighted);
     tokens[`PP${propNumber}FIRSTFLOORORAC`] = pricing.label;
     for (const sizeDef of SIZE_DEFS) {
       tokens[`PP${propNumber}${sizeDef.key}`] = formatRate(pricing.bySize[sizeDef.key]);
@@ -263,6 +266,7 @@ export async function POST(req: NextRequest) {
       asOfDate,
       monthYear,
       marketRates,
+      weighted,
     });
     const response = new NextResponse(xlsxBuffer as unknown as BodyInit, {
       status: 200,
@@ -304,6 +308,7 @@ function buildCompSetWorkbookBuffer(input: {
   asOfDate: string;
   monthYear: string;
   marketRates: { overall: number | null; climate: number | null; firstFloor: number | null };
+  weighted: boolean;
 }): Buffer {
   const workbook = XLSX.utils.book_new();
 
@@ -321,7 +326,7 @@ function buildCompSetWorkbookBuffer(input: {
   XLSX.utils.book_append_sheet(workbook, metadataSheet, "Summary");
 
   const compsRows = input.selectedComps.map((property) => {
-    const pricing = computePropertyPricing(property.rows);
+    const pricing = computePropertyPricing(property.rows, input.weighted);
     return {
       Property: property.name,
       Address: formatFullAddress(property),
@@ -555,27 +560,41 @@ function formatFullAddress(property: { address: string; city: string; state: str
   return parts.join(", ").trim();
 }
 
-function computeMarketRates(rows: CompSetRow[]): { overall: number | null; climate: number | null; firstFloor: number | null } {
-  const allRates: number[] = [];
-  const climateRates: number[] = [];
-  const firstFloorRates: number[] = [];
+function computeMarketRates(
+  rows: CompSetRow[],
+  weighted: boolean,
+): { overall: number | null; climate: number | null; firstFloor: number | null } {
+  type Bucket = { rates: number[]; price: number; area: number };
+  const make = (): Bucket => ({ rates: [], price: 0, area: 0 });
+  const all = make();
+  const climate = make();
+  const firstFloor = make();
 
   for (const row of rows) {
-    const rate = getRowRate(row);
-    if (rate == null) continue;
-    allRates.push(rate);
-    if (isClimateRow(row)) climateRates.push(rate);
-    if (isFirstFloorRow(row)) firstFloorRates.push(rate);
+    // getRowPriceArea applies the same guards as getRowRate (excludes empty / $0
+    // prices and zero/negative areas), so empty units never skew either average.
+    const pa = getRowPriceArea(row);
+    if (!pa) continue;
+    const rate = pa.price / pa.area;
+    const add = (bucket: Bucket) => {
+      bucket.rates.push(rate);
+      bucket.price += pa.price;
+      bucket.area += pa.area;
+    };
+    add(all);
+    if (isClimateRow(row)) add(climate);
+    if (isFirstFloorRow(row)) add(firstFloor);
   }
 
-  return {
-    overall: average(allRates),
-    climate: average(climateRates),
-    firstFloor: average(firstFloorRates),
-  };
+  // Weighted: blended $/sqft (total price / total sqft). Unweighted: mean of the
+  // individual unit $/sqft rates.
+  const resolve = (bucket: Bucket): number | null =>
+    weighted ? (bucket.area > 0 ? bucket.price / bucket.area : null) : average(bucket.rates);
+
+  return { overall: resolve(all), climate: resolve(climate), firstFloor: resolve(firstFloor) };
 }
 
-function computePropertyPricing(rows: CompSetRow[]): { label: string; bySize: Record<string, number | null>; average: number | null } {
+function computePropertyPricing(rows: CompSetRow[], weighted: boolean): { label: string; bySize: Record<string, number | null>; average: number | null } {
   const climateRows = rows.filter((row) => isClimateRow(row));
   const firstFloorRows = rows.filter((row) => isFirstFloorRow(row));
   let filterLabel = "Standard";
@@ -591,22 +610,41 @@ function computePropertyPricing(rows: CompSetRow[]): { label: string; bySize: Re
 
   const bySize: Record<string, number | null> = {};
   let fallbackUsed = false;
+  // AVG is a square-footage weighted blend (total monthly price / total sq ft) across
+  // the same comp units that feed the per-size columns, so larger units count
+  // proportionally. Replaces the old equal-per-size-bucket average of averages.
+  let blendedPrice = 0;
+  let blendedArea = 0;
 
   for (const sizeDef of SIZE_DEFS) {
     const sizeRates = collectRatesForSize(filteredRows, sizeDef);
+    let priceAreas = collectPriceAreaForSize(filteredRows, sizeDef);
     if (sizeRates.length === 0 && filteredRows !== rows) {
       fallbackUsed = true;
       sizeRates.push(...collectRatesForSize(rows, sizeDef));
+      priceAreas = collectPriceAreaForSize(rows, sizeDef);
     }
     bySize[sizeDef.key] = average(sizeRates);
+    for (const { price, area } of priceAreas) {
+      blendedPrice += price;
+      blendedArea += area;
+    }
   }
 
   if (fallbackUsed && filterLabel !== "Standard") {
     filterLabel = "First Floor / A/C";
   }
 
-  const sizeValues = Object.values(bySize).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  const averageValue = average(sizeValues);
+  const sizeValues = Object.values(bySize).filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value),
+  );
+  // Weighted: square-footage blended ($ / sqft across the units). Unweighted: the
+  // original equal-per-size-bucket average of the size averages.
+  const averageValue = weighted
+    ? blendedArea > 0
+      ? blendedPrice / blendedArea
+      : null
+    : average(sizeValues);
 
   return { label: filterLabel, bySize, average: averageValue };
 }
@@ -621,6 +659,36 @@ function collectRatesForSize(rows: CompSetRow[], sizeDef: (typeof SIZE_DEFS)[num
     rates.push(rate);
   }
   return rates;
+}
+
+function collectPriceAreaForSize(
+  rows: CompSetRow[],
+  sizeDef: (typeof SIZE_DEFS)[number],
+): { price: number; area: number }[] {
+  const out: { price: number; area: number }[] = [];
+  for (const row of rows) {
+    if (resolveSizeKey(row) !== sizeDef.key) continue;
+    const pa = getRowPriceArea(row);
+    if (pa) out.push(pa);
+  }
+  return out;
+}
+
+// Same price/area selection as getRowRate, but returns the components so the AVG can
+// be a true square-footage weighted blend rather than an average of per-unit rates.
+function getRowPriceArea(row: CompSetRow): { price: number; area: number } | null {
+  const width = row.width ?? Number.NaN;
+  const length = row.length ?? Number.NaN;
+  if (!Number.isFinite(width) || !Number.isFinite(length)) return null;
+  const area = Math.abs(width * length);
+  if (!Number.isFinite(area) || area <= 0) return null;
+  const price = Number.isFinite(row.onlinePrice ?? Number.NaN)
+    ? (row.onlinePrice as number)
+    : Number.isFinite(row.regularPrice ?? Number.NaN)
+      ? (row.regularPrice as number)
+      : Number.NaN;
+  if (!Number.isFinite(price) || price <= 0) return null;
+  return { price, area };
 }
 
 function resolveSizeKey(row: CompSetRow): string | null {

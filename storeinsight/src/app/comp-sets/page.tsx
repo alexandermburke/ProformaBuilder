@@ -40,6 +40,8 @@ export default function CompSetsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState('');
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('pptx');
+  // Square-footage weighted averages by default; can switch to the simple averages.
+  const [weighted, setWeighted] = useState(true);
   const [addressCheck, setAddressCheck] = useState<AddressCheckState>({
     status: 'idle',
     message: 'Distance ranking uses subject address only. Start typing to verify geocoding.',
@@ -214,6 +216,7 @@ export default function CompSetsPage() {
       form.append('preparedFor', preparedFor.trim());
       form.append('asOfDate', asOfDate);
       form.append('outputFormat', outputFormat);
+      form.append('weighted', weighted ? 'true' : 'false');
       form.append('file', uploadFile);
       if (manualNotes.trim()) {
         form.append('notes', manualNotes.trim());
@@ -389,6 +392,20 @@ export default function CompSetsPage() {
                 >
                   <option value="pptx">PowerPoint (.pptx)</option>
                   <option value="xlsx">Excel Spreadsheet (.xlsx)</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                  Averages
+                </label>
+                <select
+                  value={weighted ? 'weighted' : 'unweighted'}
+                  onChange={(e) => setWeighted(e.target.value !== 'unweighted')}
+                  className="owner-field-input rounded-lg border border-[color:var(--border-soft)] bg-[color:var(--surface)]/70 px-3 py-2 text-sm text-[color:var(--text-primary)] shadow-inner focus:border-[color:var(--accent)] focus:outline-none"
+                >
+                  <option value="weighted">Weighted (by sq ft)</option>
+                  <option value="unweighted">Unweighted (simple average)</option>
                 </select>
               </div>
 
