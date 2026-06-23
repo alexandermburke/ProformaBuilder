@@ -11,9 +11,11 @@ export const runtime = "nodejs";
 const TEMPLATE_PATH = path.join(process.cwd(), "public", "COMPSETTEMPLATE.pptx");
 const DASH = "-";
 // Max characters the facility name token generates. Names at or under this length
-// pass through whole; longer names are sliced to (MAX - 2) chars plus a ".." marker,
-// so the token never exceeds this width in the template slot.
-const PROP_NAME_MAX = 12;
+// pass through whole; longer names are sliced to (MAX - 2) chars plus a ".." marker.
+// The template's name cell is a merged 2-column header (~3.65in) at 25pt, which fits
+// ~19-20 characters on one line, so 20 shows common brands ("Public Storage",
+// "Extra Space Storage") in full and only truncates names long enough to wrap anyway.
+const PROP_NAME_MAX = 20;
 const PREPARED_FOR_MAX = 80;
 
 const SIZE_DEFS = [
