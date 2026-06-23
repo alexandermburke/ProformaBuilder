@@ -10,7 +10,10 @@ export const runtime = "nodejs";
 
 const TEMPLATE_PATH = path.join(process.cwd(), "public", "COMPSETTEMPLATE.pptx");
 const DASH = "-";
-const PROP_NAME_MAX = 10;
+// Max characters the facility name token generates. Names at or under this length
+// pass through whole; longer names are sliced to (MAX - 2) chars plus a ".." marker,
+// so the token never exceeds this width in the template slot.
+const PROP_NAME_MAX = 12;
 const PREPARED_FOR_MAX = 80;
 
 const SIZE_DEFS = [
@@ -679,8 +682,10 @@ function collectPriceAreaForSize(
 function getRowPriceArea(row: CompSetRow): { price: number; area: number } | null {
   const width = row.width ?? Number.NaN;
   const length = row.length ?? Number.NaN;
-  if (!Number.isFinite(width) || !Number.isFinite(length)) return null;
-  const area = Math.abs(width * length);
+  // Reject non-finite or non-positive dimensions so negative sentinels (e.g. -1)
+  // never slip past the area guard via Math.abs.
+  if (!Number.isFinite(width) || !Number.isFinite(length) || width <= 0 || length <= 0) return null;
+  const area = width * length;
   if (!Number.isFinite(area) || area <= 0) return null;
   const price = Number.isFinite(row.onlinePrice ?? Number.NaN)
     ? (row.onlinePrice as number)
@@ -692,9 +697,11 @@ function getRowPriceArea(row: CompSetRow): { price: number; area: number } | nul
 }
 
 function resolveSizeKey(row: CompSetRow): string | null {
-  if (!Number.isFinite(row.width ?? Number.NaN) || !Number.isFinite(row.length ?? Number.NaN)) return null;
-  const width = Math.abs(row.width ?? 0);
-  const length = Math.abs(row.length ?? 0);
+  // Reject negative / sentinel dimensions outright (matches getRowRate/getRowPriceArea)
+  // instead of abs()-ing them into a valid size bucket.
+  const width = row.width ?? Number.NaN;
+  const length = row.length ?? Number.NaN;
+  if (!Number.isFinite(width) || !Number.isFinite(length) || width <= 0 || length <= 0) return null;
   const min = Math.min(width, length);
   const max = Math.max(width, length);
   for (const sizeDef of SIZE_DEFS) {
@@ -710,8 +717,10 @@ function resolveSizeKey(row: CompSetRow): string | null {
 function getRowRate(row: CompSetRow): number | null {
   const width = row.width ?? Number.NaN;
   const length = row.length ?? Number.NaN;
-  if (!Number.isFinite(width) || !Number.isFinite(length)) return null;
-  const area = Math.abs(width * length);
+  // Reject non-finite or non-positive dimensions so negative sentinels (e.g. -1)
+  // never slip past the area guard via Math.abs.
+  if (!Number.isFinite(width) || !Number.isFinite(length) || width <= 0 || length <= 0) return null;
+  const area = width * length;
   if (!Number.isFinite(area) || area <= 0) return null;
   const price = Number.isFinite(row.onlinePrice ?? Number.NaN)
     ? (row.onlinePrice as number)
