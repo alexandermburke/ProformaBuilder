@@ -14,6 +14,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import WorkflowIcon from '@/components/WorkflowIcon';
 import { workflowCategories, type WorkflowCard, type WorkflowTone } from '@/lib/workflowDirectory';
 import { getAutoDownloadPptx, setAutoDownloadPptx } from '@/lib/flashPrefs';
+import AdminUserPanel from '@/components/admin/AdminUserPanel';
 
 type DirectoryCard = WorkflowCard & { href: string };
 
@@ -93,6 +94,7 @@ export default function DirectoryPage(): JSX.Element {
   const [isAdmin, setIsAdmin] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -396,6 +398,14 @@ export default function DirectoryPage(): JSX.Element {
         </footer>
       </div>
 
+      {isAdmin ? (
+        <AdminUserPanel
+          open={adminPanelOpen}
+          onClose={() => setAdminPanelOpen(false)}
+          currentEmail={sessionEmail}
+        />
+      ) : null}
+
       {isSettingsOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)]/70 px-4 py-10 backdrop-blur-sm">
           <div className="ios-card ios-animate-up w-full max-w-md space-y-6 p-6">
@@ -475,6 +485,24 @@ export default function DirectoryPage(): JSX.Element {
                     className={toggleButtonClass(flashDevMode)}
                   >
                     <span className={togglePillClass} />
+                  </button>
+                </div>
+              ) : null}
+              {isAdmin ? (
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-[color:var(--text-primary)]">User Management</div>
+                    <p className="text-xs text-[color:var(--text-secondary)]">
+                      Add, edit, or remove logins and reset passwords directly, without the terminal or Firebase console.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAdminPanelOpen(true)}
+                    className="ios-button shrink-0 px-4 py-2 text-sm"
+                    data-variant="secondary"
+                  >
+                    Manage
                   </button>
                 </div>
               ) : null}
