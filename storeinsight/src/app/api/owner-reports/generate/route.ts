@@ -228,10 +228,10 @@ export async function POST(req: NextRequest) {
   if (inventory instanceof Blob) {
     inventoryBuffer = Buffer.from(await inventory.arrayBuffer());
   }
-  let iprcText: string | undefined;
+  // Tenant "Review Rent Changes" workbook (replaces the legacy Veritec IPRC CSV).
+  let rentChangeBuffer: Buffer | undefined;
   if (iprc instanceof Blob) {
-    const buffer = Buffer.from(await iprc.arrayBuffer());
-    iprcText = buffer.toString("utf8");
+    rentChangeBuffer = Buffer.from(await iprc.arrayBuffer());
   }
   let availableSpacesBuffer: Buffer | undefined;
   if (availableSpaces instanceof Blob) {
@@ -375,7 +375,7 @@ export async function POST(req: NextRequest) {
     try {
       const result = computeOwnerPerformance({
         hummingbirdWorkbook: inventoryBuffer,
-        iprcCsvText: iprcText ?? "",
+        rentChangeWorkbook: rentChangeBuffer,
         options: performanceOptions,
       });
       if (result.ok) {

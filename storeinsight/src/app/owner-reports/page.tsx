@@ -315,7 +315,7 @@ const UPLOAD_FIELD_HINTS = {
     "Promo counts/percent and length-of-stay averages",
   ],
   iprcChangeHistory: [
-    "Letters repriced / units touched",
+    "Approved rent changes effective in the report month",
     "Total square feet repriced",
     "Base revenue vs new revenue and total increase",
     "Average percent increase for repriced units",
@@ -623,14 +623,14 @@ export default function OwnerReportsPage() {
       setPerformanceLoading(true);
       setPerformanceStatus(null);
       try {
-        const [hbBuffer, iprcText] = await Promise.all([
+        const [hbBuffer, rentChangeBuffer] = await Promise.all([
           hb.arrayBuffer(),
-          iprc ? iprc.text() : Promise.resolve(""),
+          iprc ? iprc.arrayBuffer() : Promise.resolve(undefined),
         ]);
         if (performanceRequestRef.current !== requestId) return;
         const result = computeOwnerPerformance({
           hummingbirdWorkbook: hbBuffer,
-          iprcCsvText: iprcText,
+          rentChangeWorkbook: rentChangeBuffer,
           options: {
             currentMonthOverride: currentMonthOverride.trim() || undefined,
             includeCurrentMonthInTrailing: includeCurrentMonth,
@@ -645,7 +645,7 @@ export default function OwnerReportsPage() {
                 ? null
                 : {
                     variant: "warning",
-                    text: "IPRC CSV not uploaded. Move activity is populated from the workbook, but rate management fields will remain blank.",
+                    text: "Tenant rent changes workbook not uploaded. Move activity is populated from the workbook, but rate management fields will remain blank.",
                   },
             );
           });
@@ -1032,13 +1032,15 @@ export default function OwnerReportsPage() {
       }
       const name = next.name?.toLowerCase() ?? "";
       const mime = next.type?.toLowerCase() ?? "";
-      const isCsv = name.endsWith(".csv") || mime === "text/csv" || mime === "application/vnd.ms-excel";
-      if (!isCsv) {
+      const isXlsx =
+        name.endsWith(".xlsx") ||
+        mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      if (!isXlsx) {
         setIprcFile(null);
         resetPerformanceUpload();
         setPerformanceStatus({
           variant: "error",
-          text: "Upload the IPRC Change History export (.csv).",
+          text: "Upload the Tenant rent changes export (.xlsx).",
         });
         setPerformanceLoading(false);
         return;
@@ -1900,11 +1902,11 @@ export default function OwnerReportsPage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">IPRC Change History (.csv)</p>
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Tenant Rent Changes (.xlsx)</p>
                             <UploadFieldHint title="Rate management fields" fields={UPLOAD_FIELD_HINTS.iprcChangeHistory} />
                           </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Upload the Shows In Place Rate Changes export (.csv) to populate Rate Management (letters, sqft, revenue, avg % increase).
+                            Upload the Tenant &ldquo;Review Rent Changes&rdquo; export (.xlsx) to populate Rate Management (letters, sqft, revenue, avg % increase). Only Approved changes effective in the report month are counted.
                           </p>
                         </div>
                         {iprcFile && (
@@ -1921,7 +1923,7 @@ export default function OwnerReportsPage() {
                       </div>
                       <input
                         type="file"
-                        accept=".csv,text/csv,application/vnd.ms-excel"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         className="text-sm text-[color:var(--text-primary)]"
                         onChange={(event) => {
                           const nextFile = event.target.files?.[0] ?? null;
@@ -2429,7 +2431,7 @@ export default function OwnerReportsPage() {
                         <div>
                           <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Performance tokens</p>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Auto-filled from the Hummingbird Move-In/Move-Out Activity + IPRC Change History uploads
+                            Auto-filled from the Hummingbird Move-In/Move-Out Activity + Tenant Rent Changes uploads
                           </p>
                         </div>
                         {(hummingbirdFile || iprcFile) && (
@@ -2441,7 +2443,7 @@ export default function OwnerReportsPage() {
                             )}
                             {iprcFile && (
                               <p className="truncate">
-                                IPRC: {iprcFile.name}
+                                Rent Changes: {iprcFile.name}
                               </p>
                             )}
                           </div>

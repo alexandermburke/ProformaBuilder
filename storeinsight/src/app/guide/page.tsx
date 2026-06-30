@@ -71,7 +71,7 @@ const guides: GuideContent[] = [
         title: "Optional uploads",
         items: [
           "Hummingbird Move-In/Move-Out Activity",
-          "IPRC Change History",
+          "Tenant Rent Changes (Review Rent Changes export)",
           "Available Spaces + PPC performance",
           "Repairs ledger (appendix)",
         ],

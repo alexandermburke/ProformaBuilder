@@ -142,12 +142,14 @@ export type OwnerPerformanceResult =
       message: string;
     };
 
-type IprcRow = {
-  monthKey: string | null;
-  inEffectMonthKey: string | null;
+type RentChangeRow = {
+  effectiveMonthKey: string | null;
+  // One row = one rent-change notice. Old/New Rent and Space Size are taken as
+  // shown and NOT multiplied by "No. of Spaces", so the totals match Tenant's own
+  // aggregation (its summed Variance $ for the month).
   areaSqft: number;
-  currentRent: number;
-  newRent: number;
+  baseRevenue: number;
+  newRevenue: number;
   percentIncrease: number | null;
 };
 
@@ -183,11 +185,11 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
 
 export function computeOwnerPerformance({
   hummingbirdWorkbook,
-  iprcCsvText,
+  rentChangeWorkbook,
   options,
 }: {
   hummingbirdWorkbook: WorkbookInput;
-  iprcCsvText: string;
+  rentChangeWorkbook?: WorkbookInput;
   options?: OwnerPerformanceOptions;
 }): OwnerPerformanceResult {
   let workbook: XLSX.WorkBook;
@@ -365,18 +367,18 @@ export function computeOwnerPerformance({
     PROMOLM: formatPercent(ratio(previousStats.moveInsPromoCount, previousStats.moveIns)),
   };
 
-  // Do not make slide-4 move activity depend on the IPRC CSV.
+  // Do not make slide-4 move activity depend on the rent-change workbook.
   // The Hummingbird workbook must always populate move-ins / move-outs / trailing
   // windows even if rate-management data is missing or malformed.
   let iprcRows = 0;
   let iprcRowsMatched = 0;
   let rateTokens: RateManagementTokens = createEmptyRateManagementTokens();
 
-  if (iprcCsvText && iprcCsvText.trim()) {
-    const iprcParse = parseIprcCsv(iprcCsvText);
-    if (iprcParse.ok) {
-      iprcRows = iprcParse.rows.length;
-      const rateStats = aggregateIprc(iprcParse.rows, rateTargetMonthKey);
+  if (rentChangeWorkbook) {
+    const rentParse = parseRentChangeWorkbook(rentChangeWorkbook);
+    if (rentParse.ok) {
+      iprcRows = rentParse.rows.length;
+      const rateStats = aggregateRentChanges(rentParse.rows, rateTargetMonthKey);
       iprcRowsMatched = rateStats.count;
       rateTokens = {
         NUMREN: formatInteger(rateStats.count),
@@ -615,138 +617,103 @@ function normalizeHeaderCell(cell: string): string {
   return cell.replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
-function parseIprcCsv(text: string):
-  | { ok: true; rows: IprcRow[] }
+// Parses the Tenant "Review Rent Changes" export (.xlsx). Replaces the legacy
+// Veritec IPRC CSV: same Rate Management stats, but sourced from Tenant because
+// Veritec's exports proved unreliable. Only rows with Rent Change Status
+// "Approved" are kept (Cancelled / Skipped are typically the Veritec-typed
+// duplicates and must never inflate the totals). The row count is variable.
+function parseRentChangeWorkbook(input: WorkbookInput):
+  | { ok: true; rows: RentChangeRow[] }
   | { ok: false; code: OwnerPerformanceErrorCode; message: string } {
-  const sanitized = text.replace(/^\uFEFF/, "");
-  const trimmed = sanitized.trim();
-  if (!trimmed) {
-    return {
-      ok: false,
-      code: "iprc_parse_error",
-      message: "The IPRC CSV is empty.",
-    };
-  }
-
-  let rows: string[][];
+  let workbook: XLSX.WorkBook;
   try {
-    rows = parseDelimitedRows(trimmed);
+    workbook = XLSX.read(toArrayBuffer(input), { type: "array" });
   } catch (err) {
     return {
       ok: false,
       code: "iprc_parse_error",
       message:
-        err instanceof Error ? err.message : "Unable to parse the IPRC CSV. Confirm the file is valid.",
+        err instanceof Error ? err.message : "Unable to read the rent changes workbook.",
     };
   }
 
-  if (rows.length < 2) {
+  const sheetName =
+    workbook.SheetNames.find((name) => /review\s*rent\s*changes/i.test(name)) ??
+    workbook.SheetNames[0];
+  const sheet = sheetName ? workbook.Sheets[sheetName] : undefined;
+  if (!sheet) {
     return {
       ok: false,
       code: "iprc_parse_error",
-      message: "No data rows were detected in the IPRC CSV.",
+      message: "No worksheet was found in the rent changes workbook.",
     };
   }
 
-  const header = rows[0].map((cell) => normalizeHeaderCell(cell));
+  const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, blankrows: false });
+  if (grid.length < 2) {
+    return {
+      ok: false,
+      code: "iprc_parse_error",
+      message: "No data rows were detected in the rent changes workbook.",
+    };
+  }
+
+  const header = (grid[0] as unknown[]).map((cell) => normalizeHeaderCell(String(cell ?? "")));
   const findIndex = (candidates: string[]) => header.findIndex((value) => candidates.includes(value));
-  const dtDateIdx = findIndex(["dtdate", "processeddate"]);
-  const inEffectIdx = findIndex(["dtineffect", "ineffect", "effectivedate", "dtineffectdate"]);
-  const queueIdx = findIndex(["queue"]);
-  const lenIdx = findIndex(["fltlength", "length"]);
-  const widthIdx = findIndex(["fltwidth", "width"]);
-  const curRentIdx = findIndex(["mnycurrentrent", "currentrent", "currentrate"]);
-  const newRentIdx = findIndex(["mnynewrate", "newrent", "newrate"]);
+  const oldRentIdx = findIndex(["oldrent"]);
+  const newRentIdx = findIndex(["newrent"]);
+  const effectiveIdx = findIndex(["effectivedate"]);
+  const statusIdx = findIndex(["rentchangestatus", "status"]);
+  const sizeIdx = findIndex(["spacesize", "size"]);
 
-  if (inEffectIdx === -1) {
+  if ([oldRentIdx, newRentIdx, effectiveIdx, statusIdx].some((idx) => idx === -1)) {
     return {
       ok: false,
       code: "iprc_missing_columns",
-      message: "The IPRC CSV is missing dtInEffect (effective date), which is required for Rate Management.",
+      message:
+        "The rent changes export is missing one of: Old Rent, New Rent, Effective Date, or Rent Change Status.",
     };
   }
 
-  if ([dtDateIdx, queueIdx, lenIdx, widthIdx, curRentIdx, newRentIdx].some((idx) => idx === -1)) {
-    return {
-      ok: false,
-      code: "iprc_missing_columns",
-      message: "The IPRC CSV is missing one or more required columns.",
-    };
-  }
-
-  const parsed: IprcRow[] = [];
-  for (let i = 1; i < rows.length; i += 1) {
-    const row = rows[i];
+  const rows: RentChangeRow[] = [];
+  for (let i = 1; i < grid.length; i += 1) {
+    const row = grid[i] as unknown[];
     if (!row || row.length === 0) continue;
-    const processedDate = parseDateFromCell(row[dtDateIdx]);
-    const inEffectDate = parseDateFromCell(row[inEffectIdx]);
-    const queue = row[queueIdx] ?? "";
-    const length = toNumber(row[lenIdx]);
-    const width = toNumber(row[widthIdx]);
-    const currentRent = toNumber(row[curRentIdx]);
+    // Only "Approved" changes actually take effect. Cancelled / Skipped / blank
+    // are excluded so the unreliable duplicates never reach the totals.
+    const status = String(row[statusIdx] ?? "").trim().toLowerCase();
+    if (status !== "approved") continue;
+
+    const oldRent = toNumber(row[oldRentIdx]);
     const newRent = toNumber(row[newRentIdx]);
-    const areaSqft = length * width;
-    const letterMonth = deriveLetterMonth(queue, processedDate);
-    const month = letterMonth ?? (processedDate ? startOfMonth(processedDate) : null);
-    const inEffectMonthKey = inEffectDate ? monthKey(startOfMonth(inEffectDate)) : null;
-    parsed.push({
-      monthKey: month ? monthKey(month) : null,
-      inEffectMonthKey,
-      areaSqft,
-      currentRent,
-      newRent,
+    const effectiveDate = parseWorkbookDate(row[effectiveIdx]);
+    const unitSqft = sizeIdx === -1 ? 0 : parseSpaceSizeSqft(String(row[sizeIdx] ?? ""));
+
+    rows.push({
+      effectiveMonthKey: effectiveDate ? monthKey(startOfMonth(effectiveDate)) : null,
+      areaSqft: unitSqft,
+      baseRevenue: oldRent,
+      newRevenue: newRent,
       percentIncrease:
-        currentRent > 0 && Number.isFinite(currentRent) ? (newRent - currentRent) / currentRent : null,
+        oldRent > 0 && Number.isFinite(oldRent) ? (newRent - oldRent) / oldRent : null,
     });
   }
 
-  return { ok: true, rows: parsed };
+  return { ok: true, rows };
 }
 
-function parseDateFromCell(value: string | undefined): Date | null {
-  if (!value) return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+// "10' x 5'" -> 50. Pulls the first two numbers and multiplies them.
+function parseSpaceSizeSqft(raw: string): number {
+  const matches = raw.match(/\d+(?:\.\d+)?/g);
+  if (!matches || matches.length < 2) return 0;
+  const width = Number(matches[0]);
+  const length = Number(matches[1]);
+  if (!Number.isFinite(width) || !Number.isFinite(length)) return 0;
+  return width * length;
 }
 
-function deriveLetterMonth(queue: string | undefined, processedDate: Date | null): Date | null {
-  if (!queue) return null;
-  const match = queue.match(/letter\s+to\s+be\s+sent\s+([A-Za-z]+)\s+(\d{1,2})/i);
-  if (!match) return null;
-  const monthName = match[1].toLowerCase();
-  const day = Number(match[2]);
-  const monthIndex = monthNameToIndex(monthName);
-  if (monthIndex == null || !Number.isFinite(day)) return null;
-  const year = processedDate?.getFullYear() ?? new Date().getFullYear();
-  return new Date(year, monthIndex, day);
-}
-
-function monthNameToIndex(name: string): number | null {
-  const lookup: Record<string, number> = {
-    january: 0,
-    february: 1,
-    march: 2,
-    april: 3,
-    may: 4,
-    june: 5,
-    july: 6,
-    august: 7,
-    september: 8,
-    october: 9,
-    november: 10,
-    december: 11,
-  };
-  const normalized = name.toLowerCase();
-  if (normalized in lookup) return lookup[normalized];
-  const short = normalized.slice(0, 3);
-  if (short in lookup) return lookup[short];
-  return null;
-}
-
-function aggregateIprc(rows: IprcRow[], targetMonthKey: string): RateManagementStats {
-  const initial: RateManagementStats = {
+function aggregateRentChanges(rows: RentChangeRow[], targetMonthKey: string): RateManagementStats {
+  const stats: RateManagementStats = {
     count: 0,
     totalSqft: 0,
     baseRevenue: 0,
@@ -756,63 +723,20 @@ function aggregateIprc(rows: IprcRow[], targetMonthKey: string): RateManagementS
   };
 
   for (const row of rows) {
-    // Rate management should align to the effective date, not when letters were processed/queued.
-    if (!row.inEffectMonthKey || row.inEffectMonthKey !== targetMonthKey) continue;
-    initial.count += 1;
-    initial.totalSqft += row.areaSqft;
-    initial.baseRevenue += row.currentRent;
-    initial.newRevenue += row.newRent;
-    initial.totalIncrease += row.newRent - row.currentRent;
+    // Align to the effective month (when the increase takes effect), the same
+    // way the prior IPRC parser aligned on dtInEffect.
+    if (!row.effectiveMonthKey || row.effectiveMonthKey !== targetMonthKey) continue;
+    stats.count += 1;
+    stats.totalSqft += row.areaSqft;
+    stats.baseRevenue += row.baseRevenue;
+    stats.newRevenue += row.newRevenue;
+    stats.totalIncrease += row.newRevenue - row.baseRevenue;
     if (row.percentIncrease != null) {
-      initial.percentIncreases.push(row.percentIncrease);
+      stats.percentIncreases.push(row.percentIncrease);
     }
   }
 
-  return initial;
-}
-
-function parseDelimitedRows(text: string): string[][] {
-  const rows: string[][] = [];
-  let currentRow: string[] = [];
-  let currentCell = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (char === '"') {
-      if (inQuotes && text[i + 1] === '"') {
-        currentCell += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if ((char === "," || char === "\t") && !inQuotes) {
-      currentRow.push(currentCell);
-      currentCell = "";
-      continue;
-    }
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && text[i + 1] === "\n") {
-        i += 1;
-      }
-      currentRow.push(currentCell);
-      if (currentRow.some((cell) => cell.trim().length > 0)) {
-        rows.push(currentRow);
-      }
-      currentRow = [];
-      currentCell = "";
-      continue;
-    }
-    currentCell += char;
-  }
-
-  currentRow.push(currentCell);
-  if (currentRow.some((cell) => cell.trim().length > 0)) {
-    rows.push(currentRow);
-  }
-  return rows;
+  return stats;
 }
 
 const PREVIEW_FIELDS: Array<{
