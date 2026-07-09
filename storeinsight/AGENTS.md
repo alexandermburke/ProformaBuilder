@@ -266,7 +266,7 @@ Prefer:
 
 - If `src/context/agent-update-log.txt` exists, review it before making changes.
 - If a task materially changes architecture or data-flow decisions, document the change or create the log file if it is missing.
-- After making changes, append a concise factual entry to `src/context/agent-update-log.txt` with:
+- For every material agent-made code, config, test, documentation, or context-file update, append a concise factual entry to `src/context/agent-update-log.txt` with:
   - date
   - agent/session
   - files touched
@@ -274,6 +274,14 @@ Prefer:
   - validation run
   - known follow-ups
 - Keep the log factual and brief.
+- For the same material update, increment the app version in `package.json` and `package-lock.json` as part of the change.
+- Use conservative semver-style sizing:
+  - patch for bug fixes, small workflow adjustments, safe config changes, internal process changes, and other low-risk maintenance updates
+  - minor for new user-facing features, new workflows, material enhancements, and new integrations
+  - major only for breaking changes, large overhauls, or data/model migrations with compatibility impact
+- Do not add multiple version bumps for one task. Choose one bump that matches the net impact of the completed change.
+- Tiny copy, label, text, formatting, or no-op cleanup changes do not need an update-log entry or version bump unless they are part of a larger material change.
+- When a version is bumped, mention the new version in the update-log entry summary or follow-ups.
 
 ### Update log page (`/updatelog`)
 

@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import type { FormEvent, JSX } from 'react';
+import packageJson from '../../../package.json';
 
 const labelClass =
   'text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)] select-none';
@@ -26,6 +27,8 @@ const toggleButtonClass = (active: boolean): string =>
 
 const togglePillClass =
   'inline-block h-5 w-5 rounded-full bg-white shadow-[0_6px_16px_rgba(15,23,42,0.2)] transition-transform duration-500';
+
+const appVersion = packageJson.version;
 
 export default function LoginPage(): JSX.Element {
   return (
@@ -218,6 +221,10 @@ function LoginPageContent(): JSX.Element {
             <Link href="/signup" className="font-semibold text-[color:var(--accent)] underline-offset-4 hover:underline">
               Request access
             </Link>
+          </p>
+
+          <p className="text-center text-[11px] text-[color:var(--text-secondary)] opacity-75">
+            Version {appVersion}
           </p>
         </section>
       </div>
