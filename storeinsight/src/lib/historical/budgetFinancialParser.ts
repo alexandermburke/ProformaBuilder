@@ -1,6 +1,11 @@
 import * as XLSX from 'xlsx';
 import { extractBudgetTableFields } from '@/lib/extractBudget';
 import type { MsrSnapshotPayload } from '@/lib/historical/msrSnapshotParser';
+import {
+  isQuickBooksFinancialWorkbook,
+  parseQuickBooksFinancials,
+} from '@/lib/historical/quickbooksFinancialParser';
+import { isL001FinancialWorkbook, parseL001Financials } from '@/lib/historical/l001FinancialParser';
 
 type WorkbookInput = ArrayBuffer | Uint8Array | Buffer;
 type GridValue = string | number | boolean | Date | null | undefined;
@@ -14,10 +19,28 @@ type BudgetValueSource = {
   formula?: string;
 };
 
+export type BudgetFinancialFormat = 'quickbooks' | 'yardi' | 'l001';
+
 export type BudgetFinancialParseResult = {
   snapshot: MsrSnapshotPayload;
   warnings: string[];
   sourceSheet: string;
+  /** Which workbook layout the values were read from. */
+  format: BudgetFinancialFormat;
+  formatLabel: string;
+  /**
+   * Context values that are not persisted with the snapshot but let the preview
+   * show how NOI was arrived at. QuickBooks states these directly; the Yardi
+   * layout only exposes total income.
+   */
+  context?: {
+    totalIncome?: BudgetValueSource & { value: number };
+    netIncome?: BudgetValueSource & { value: number };
+    /** L001 only: interest income booked below the NOI line. */
+    otherIncome?: BudgetValueSource & { value: number };
+    /** L001 only: the owning entity from the sheet header (not the property name). */
+    entityName?: string;
+  };
   sources: {
     propertyExpenses: BudgetValueSource;
     totalExpenses: BudgetValueSource;
@@ -130,8 +153,324 @@ function parsePropertyName(grid: Grid): string | undefined {
   return undefined;
 }
 
-export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promise<BudgetFinancialParseResult> {
+export type ParseBudgetFinancialOptions = {
+  /**
+   * Force a layout instead of auto-detecting. The upload UI always sends this so
+   * a mislabeled file fails loudly rather than being parsed the wrong way.
+   */
+  format?: BudgetFinancialFormat;
+};
+
+/**
+ * Entry point for the historical budget/financial upload. Supports both the
+ * QuickBooks financial package (current default) and the legacy Yardi budget
+ * comparison export (kept so older months can still be backfilled).
+ *
+ * With no explicit `format`, the layout is auto-detected: the Yardi export is
+ * identified by its "Month = <Month> <Year>" header, which QuickBooks never
+ * emits.
+ */
+export async function parseBudgetFinancialWorkbook(
+  input: WorkbookInput,
+  options?: ParseBudgetFinancialOptions,
+): Promise<BudgetFinancialParseResult> {
   const workbook = readWorkbook(input);
+  const looksYardi = Boolean(findBudgetSheet(workbook));
+  const looksQuickBooks = isQuickBooksFinancialWorkbook(workbook);
+
+  // L001 is opt-in only. Its Financials export also satisfies the QuickBooks
+  // check, so auto-detect must never silently pick it; the caller asks for it.
+  if (options?.format === 'l001') {
+    if (!isL001FinancialWorkbook(workbook)) {
+      throw new Error(
+        looksYardi
+          ? 'L001 format was selected, but this looks like a legacy Yardi Budget Comparison export.'
+          : 'L001 format was selected, but no "Profit and Loss" or "Budget vs. Actuals" sheet was found.',
+      );
+    }
+    return parseL001BudgetWorkbook(workbook);
+  }
+
+  if (options?.format === 'yardi') {
+    if (!looksYardi) {
+      throw new Error(
+        looksQuickBooks
+          ? 'Yardi format was selected, but this looks like a QuickBooks financial package. Uncheck the legacy Yardi option and parse again.'
+          : 'Yardi format was selected, but no Budget Comparison sheet with a "Month = <Month> <Year>" header was found.',
+      );
+    }
+    return parseYardiBudgetWorkbook(input, workbook);
+  }
+
+  if (options?.format === 'quickbooks') {
+    if (!looksQuickBooks) {
+      throw new Error(
+        looksYardi
+          ? 'QuickBooks format was selected, but this looks like a legacy Yardi Budget Comparison export. Check the legacy Yardi option and parse again.'
+          : 'QuickBooks format was selected, but no "Profit and Loss" sheet was found. Export the financial package with the Profit and Loss tab included.',
+      );
+    }
+    return parseQuickBooksBudgetWorkbook(workbook);
+  }
+
+  if (looksYardi) {
+    return parseYardiBudgetWorkbook(input, workbook);
+  }
+
+  if (looksQuickBooks) {
+    return parseQuickBooksBudgetWorkbook(workbook);
+  }
+
+  throw new Error(
+    'Unrecognized financial workbook. Expected a QuickBooks financial package with a "Profit and Loss" sheet, or a Yardi Budget Comparison export.',
+  );
+}
+
+function parseL001BudgetWorkbook(workbook: XLSX.WorkBook): BudgetFinancialParseResult {
+  const parsed = parseL001Financials(workbook);
+
+  const propertyExpenseValue = parsed.operatingExpenses.value;
+  const otherExpenseValue = parsed.otherExpenses?.value ?? 0;
+  const expenseValue = Math.round((propertyExpenseValue + otherExpenseValue) * 100) / 100;
+  const noiValue = parsed.noi.value;
+  const sheet = parsed.sheetName;
+
+  const warnings = [...parsed.warnings];
+  warnings.push(
+    parsed.noiDerived
+      ? 'NOI was derived from Total Income minus Total Expenses.'
+      : 'NOI is read directly from the L001 Net Operating Income row.',
+  );
+  warnings.push(
+    parsed.layout === 'budget-vs-actual'
+      ? `Read the Actual column of the Budget vs. Actuals grid for ${parsed.reportMonthIso}.`
+      : 'Read the single-month column of the Profit and Loss sheet.',
+  );
+  warnings.push(
+    'L001 is owned, so Other Expenses include interest, depreciation, amortization and asset management fees. They stay out of NOI and are added only into Total Expenses.',
+  );
+  if (parsed.otherIncome) {
+    warnings.push(
+      'L001 has Other Income (interest) below the NOI line; it is excluded from NOI and shown for reference only.',
+    );
+  }
+
+  return {
+    snapshot: {
+      // Deliberately omitted: the L001 sheets are headed by the owning entity
+      // ("Hibernia Camelback LLC"), not the property, so leave the configured
+      // property name in place on merge.
+      propertyName: undefined,
+      reportMonthIso: parsed.reportMonthIso,
+      monthIso: parsed.reportMonthIso,
+      financials: {
+        totalOperatingExpenseMtd: propertyExpenseValue,
+        expensesMtd: propertyExpenseValue,
+        totalOperatingExpense: propertyExpenseValue,
+        expenses: propertyExpenseValue,
+        propertyExpensesMtd: propertyExpenseValue,
+        propertyExpenses: propertyExpenseValue,
+        totalExpensesMtd: expenseValue,
+        totalExpenses: expenseValue,
+        otherExpensesMtd: otherExpenseValue,
+        otherExpenses: otherExpenseValue,
+        noiMtd: noiValue,
+        noi: noiValue,
+        netOperatingIncomeMtd: noiValue,
+        netOperatingIncome: noiValue,
+      },
+    },
+    warnings,
+    sourceSheet: sheet,
+    format: 'l001',
+    formatLabel:
+      parsed.layout === 'budget-vs-actual'
+        ? 'L001 owned-property (Budget vs. Actuals)'
+        : 'L001 owned-property (Profit and Loss)',
+    context: {
+      ...(parsed.entityName ? { entityName: parsed.entityName } : {}),
+      ...(parsed.totalIncome
+        ? {
+            totalIncome: {
+              token: parsed.totalIncome.label,
+              cell: parsed.totalIncome.cell,
+              sheet,
+              value: parsed.totalIncome.value,
+            },
+          }
+        : {}),
+      ...(parsed.otherIncome
+        ? {
+            otherIncome: {
+              token: parsed.otherIncome.label,
+              cell: parsed.otherIncome.cell,
+              sheet,
+              value: parsed.otherIncome.value,
+            },
+          }
+        : {}),
+      ...(parsed.netIncome
+        ? {
+            netIncome: {
+              token: parsed.netIncome.label,
+              cell: parsed.netIncome.cell,
+              sheet,
+              value: parsed.netIncome.value,
+            },
+          }
+        : {}),
+    },
+    sources: {
+      propertyExpenses: {
+        token: parsed.operatingExpenses.label,
+        cell: parsed.operatingExpenses.cell,
+        sheet,
+      },
+      totalExpenses: {
+        token: parsed.otherExpenses
+          ? `${parsed.operatingExpenses.label} + ${parsed.otherExpenses.label}`
+          : parsed.operatingExpenses.label,
+        cell: parsed.otherExpenses
+          ? `${parsed.operatingExpenses.cell} + ${parsed.otherExpenses.cell}`
+          : parsed.operatingExpenses.cell,
+        sheet,
+        formula: parsed.otherExpenses ? 'Total Expenses = Total Expenses + Total Other Expenses' : undefined,
+      },
+      ...(parsed.otherExpenses
+        ? {
+            otherExpenses: {
+              token: parsed.otherExpenses.label,
+              cell: parsed.otherExpenses.cell,
+              sheet,
+            },
+          }
+        : {}),
+      noi: {
+        token: parsed.noi.label,
+        cell: parsed.noi.cell,
+        sheet,
+        fallback: parsed.noiDerived,
+        formula: parsed.noiDerived
+          ? 'NOI = Total Income - Total Expenses'
+          : 'NOI read from the Net Operating Income row',
+      },
+    },
+  };
+}
+
+function parseQuickBooksBudgetWorkbook(workbook: XLSX.WorkBook): BudgetFinancialParseResult {
+  const parsed = parseQuickBooksFinancials(workbook);
+
+  const propertyExpenseValue = parsed.operatingExpenses.value;
+  const otherExpenseValue = parsed.otherExpenses?.value ?? 0;
+  const expenseValue = Math.round((propertyExpenseValue + otherExpenseValue) * 100) / 100;
+  const noiValue = parsed.noi.value;
+
+  const warnings = [...parsed.warnings];
+  warnings.push(
+    parsed.noiDerived
+      ? 'NOI was derived from Total Income minus Total Expenses.'
+      : 'NOI is read directly from the QuickBooks Net Operating Income row.',
+  );
+  warnings.push('Property Expenses map to "Total for Expenses" and exclude Other Expenses, matching the NOI basis.');
+  warnings.push(
+    parsed.otherExpenses
+      ? 'Total Expenses add "Total for Other Expenses" and are shown for reference only.'
+      : 'No Other Expenses section was present, so Total Expenses equal Property Expenses.',
+  );
+
+  const sheet = parsed.sheetName;
+
+  return {
+    snapshot: {
+      propertyName: parsed.propertyName,
+      reportMonthIso: parsed.reportMonthIso,
+      monthIso: parsed.reportMonthIso,
+      financials: {
+        totalOperatingExpenseMtd: propertyExpenseValue,
+        expensesMtd: propertyExpenseValue,
+        totalOperatingExpense: propertyExpenseValue,
+        expenses: propertyExpenseValue,
+        propertyExpensesMtd: propertyExpenseValue,
+        propertyExpenses: propertyExpenseValue,
+        totalExpensesMtd: expenseValue,
+        totalExpenses: expenseValue,
+        otherExpensesMtd: otherExpenseValue,
+        otherExpenses: otherExpenseValue,
+        noiMtd: noiValue,
+        noi: noiValue,
+        netOperatingIncomeMtd: noiValue,
+        netOperatingIncome: noiValue,
+      },
+    },
+    warnings,
+    sourceSheet: sheet,
+    format: 'quickbooks',
+    formatLabel: 'QuickBooks financial package (Profit and Loss)',
+    context: {
+      ...(parsed.totalIncome
+        ? {
+            totalIncome: {
+              token: parsed.totalIncome.label,
+              cell: parsed.totalIncome.cell,
+              sheet,
+              value: parsed.totalIncome.value,
+            },
+          }
+        : {}),
+      ...(parsed.netIncome
+        ? {
+            netIncome: {
+              token: parsed.netIncome.label,
+              cell: parsed.netIncome.cell,
+              sheet,
+              value: parsed.netIncome.value,
+            },
+          }
+        : {}),
+    },
+    sources: {
+      propertyExpenses: {
+        token: parsed.operatingExpenses.label,
+        cell: parsed.operatingExpenses.cell,
+        sheet,
+      },
+      totalExpenses: {
+        token: parsed.otherExpenses
+          ? `${parsed.operatingExpenses.label} + ${parsed.otherExpenses.label}`
+          : parsed.operatingExpenses.label,
+        cell: parsed.otherExpenses
+          ? `${parsed.operatingExpenses.cell} + ${parsed.otherExpenses.cell}`
+          : parsed.operatingExpenses.cell,
+        sheet,
+        formula: parsed.otherExpenses ? 'Total Expenses = Total for Expenses + Total for Other Expenses' : undefined,
+      },
+      ...(parsed.otherExpenses
+        ? {
+            otherExpenses: {
+              token: parsed.otherExpenses.label,
+              cell: parsed.otherExpenses.cell,
+              sheet,
+            },
+          }
+        : {}),
+      noi: {
+        token: parsed.noi.label,
+        cell: parsed.noi.cell,
+        sheet,
+        fallback: parsed.noiDerived,
+        formula: parsed.noiDerived
+          ? 'NOI = Total for Income - Total for Expenses'
+          : 'NOI read from the Net Operating Income row',
+      },
+    },
+  };
+}
+
+async function parseYardiBudgetWorkbook(
+  input: WorkbookInput,
+  workbook: XLSX.WorkBook,
+): Promise<BudgetFinancialParseResult> {
   const located = findBudgetSheet(workbook);
   if (!located) {
     throw new Error('Unable to locate a Budget Comparison sheet.');
@@ -202,6 +541,20 @@ export async function parseBudgetFinancialWorkbook(input: WorkbookInput): Promis
     },
     warnings,
     sourceSheet: located.name,
+    format: 'yardi',
+    formatLabel: 'Yardi Budget Comparison (legacy)',
+    context: {
+      ...(Number.isFinite(incomeValue)
+        ? {
+            totalIncome: {
+              token: incomeToken,
+              cell: incomeDetail?.cell ?? null,
+              sheet: incomeDetail?.sheet ?? located.name,
+              value: incomeValue,
+            },
+          }
+        : {}),
+    },
     sources: {
       propertyExpenses: {
         token: propertyExpenseToken,

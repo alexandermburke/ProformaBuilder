@@ -70,6 +70,55 @@ const parseMonthCsv = (value: string): string[] =>
     .map((item) => item.trim())
     .filter((item) => /^\d{4}-\d{2}$/.test(item));
 
+const HERO_IMAGE_MAX_EDGE = 2000;
+const HERO_IMAGE_QUALITY = 0.85;
+// The property config POSTs its image inline as base64 JSON. Serverless request
+// bodies cap out at 4.5MB and base64 inflates by ~33%, so a full-size camera
+// photo is rejected with a 413 before the route ever runs. Stay well under it.
+const HERO_IMAGE_MAX_ENCODED_BYTES = 3_000_000;
+
+// `Image` in this file is the next/image component, so reach for window.Image.
+const loadImageElement = (file: File): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new window.Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('That file could not be read as an image.'));
+    };
+    image.src = objectUrl;
+  });
+
+const compressHeroImage = async (file: File): Promise<string> => {
+  const image = await loadImageElement(file);
+  const longEdge = Math.max(image.naturalWidth, image.naturalHeight);
+  const scale = longEdge > HERO_IMAGE_MAX_EDGE ? HERO_IMAGE_MAX_EDGE / longEdge : 1;
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Unable to process that image in this browser.');
+  }
+  // Flatten transparency to white so a PNG does not land on a black background.
+  context.fillStyle = '#FFFFFF';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const encoded = canvas.toDataURL('image/jpeg', HERO_IMAGE_QUALITY);
+  if (encoded.length > HERO_IMAGE_MAX_ENCODED_BYTES) {
+    throw new Error('That image is too large to save. Try a smaller crop or resolution.');
+  }
+  return encoded;
+};
+
 const statusMeta: Record<FlashStatus, { label: string; tone?: 'success' | 'warning' | 'danger'; dotClass: string }> = {
   success: { label: 'Healthy', tone: 'success', dotClass: 'bg-emerald-400 dark:bg-emerald-300' },
   pending: { label: 'Pending', tone: 'warning', dotClass: 'bg-amber-400 dark:bg-amber-300' },
@@ -356,14 +405,13 @@ export default function DailySummaryPage() {
 
   const handleImageUpload = async (file: File | null | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        setFormState((prev) => ({ ...prev, propertyImageData: result, heroImageRemove: false }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressHeroImage(file);
+      setFormState((prev) => ({ ...prev, propertyImageData: compressed, heroImageRemove: false }));
+      setPropertyMessage(null);
+    } catch (err) {
+      setPropertyMessage(err instanceof Error ? err.message : 'Unable to read that image.');
+    }
   };
 
   useEffect(() => {
@@ -459,7 +507,10 @@ export default function DailySummaryPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        throw new Error('Unable to save property');
+        if (res.status === 413) {
+          throw new Error('The property image is too large to upload. Re-select it and try again.');
+        }
+        throw new Error((await parseErrorMessage(res)) ?? 'Unable to save property');
       }
       const saved = (await res.json()) as PropertyConfig;
       await refreshProperties();

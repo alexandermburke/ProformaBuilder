@@ -206,10 +206,20 @@ type BudgetFinancialPreviewSource = {
   formula?: string | null;
 };
 
+type BudgetFinancialPreviewContextValue = BudgetFinancialPreviewSource & { value?: number };
+
 type BudgetFinancialPreviewResponse = {
   snapshot: BudgetFinancialPreviewSnapshot;
   warnings: string[];
   sourceSheet?: string | null;
+  format?: 'quickbooks' | 'yardi' | 'l001' | null;
+  formatLabel?: string | null;
+  context?: {
+    totalIncome?: BudgetFinancialPreviewContextValue;
+    netIncome?: BudgetFinancialPreviewContextValue;
+    otherIncome?: BudgetFinancialPreviewContextValue;
+    entityName?: string;
+  } | null;
   sources?: {
     propertyExpenses?: BudgetFinancialPreviewSource;
     totalExpenses?: BudgetFinancialPreviewSource;
@@ -359,6 +369,9 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const [msrUpdatedAt, setMsrUpdatedAt] = useState<string | null>(null);
   const [budgetPropertyId, setBudgetPropertyId] = useState('');
   const [budgetFile, setBudgetFile] = useState<File | null>(null);
+  // QuickBooks is the current export format for managed properties; Yardi is
+  // legacy backfill, and L001 is the owned-property variant.
+  const [budgetFormat, setBudgetFormat] = useState<'quickbooks' | 'yardi' | 'l001'>('quickbooks');
   const [budgetPreview, setBudgetPreview] = useState<BudgetFinancialPreviewResponse | null>(null);
   const [budgetWarnings, setBudgetWarnings] = useState<string[]>([]);
   const [budgetError, setBudgetError] = useState<string | null>(null);
@@ -425,6 +438,20 @@ export default function HistoricalDataUploadPage(): JSX.Element {
     budgetSnapshot?.financials?.otherExpensesMtd ?? budgetSnapshot?.financials?.otherExpenses;
   const budgetNoiValue =
     budgetSnapshot?.financials?.netOperatingIncomeMtd ?? budgetSnapshot?.financials?.noiMtd;
+  const budgetContext = budgetPreview?.context ?? null;
+  const budgetTotalIncomeValue = budgetContext?.totalIncome?.value;
+  const budgetNetIncomeValue = budgetContext?.netIncome?.value;
+  const budgetOtherIncomeValue = budgetContext?.otherIncome?.value;
+  const budgetEntityName = budgetContext?.entityName;
+  const budgetFormatLabel =
+    budgetPreview?.formatLabel ??
+    (budgetPreview?.format === 'quickbooks'
+      ? 'QuickBooks financial package'
+      : budgetPreview?.format === 'yardi'
+        ? 'Yardi Budget Comparison (legacy)'
+        : budgetPreview?.format === 'l001'
+          ? 'L001 owned-property'
+          : null);
   const occupancyHeaderRow =
     occupancyDiagnostics?.headerRowIndex != null ? occupancyDiagnostics.headerRowIndex + 1 : null;
   const occupancySummarySourceLabel =
@@ -750,6 +777,19 @@ export default function HistoricalDataUploadPage(): JSX.Element {
     }
   };
 
+  // Any change to the source file or format invalidates the parsed preview, so
+  // stale numbers can never be uploaded against a different selection.
+  const resetBudgetPreviewState = () => {
+    setBudgetPreview(null);
+    setBudgetWarnings([]);
+    setBudgetExisting(false);
+    setBudgetFinancialsExisting(false);
+    setBudgetOverwrite(false);
+    setBudgetUpdatedAt(null);
+    setBudgetError(null);
+    setBudgetStatus(null);
+  };
+
   const handleBudgetParse = async () => {
     setBudgetError(null);
     setBudgetStatus(null);
@@ -774,6 +814,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
       const formData = new FormData();
       formData.append('file', budgetFile);
       formData.append('propertyId', budgetPropertyId.trim());
+      formData.append('format', budgetFormat);
       const response = await fetch('/api/firebase/property-historical/budget-financials/preview', {
         method: 'POST',
         body: formData,
@@ -1489,10 +1530,12 @@ export default function HistoricalDataUploadPage(): JSX.Element {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">
-                Upload Budget Comparison Spreadsheet (.xlsx)
+                Upload Monthly Financials Spreadsheet (.xlsx)
               </div>
               <p className="max-w-2xl text-xs text-[color:var(--text-secondary)]">
-                Parse the budget comparison workbook and preview monthly Property Expenses, Total Expenses, and NOI before upload.
+                Parse a QuickBooks financial package (reads the Profit and Loss tab) and preview monthly Property
+                Expenses, Total Expenses, and NOI before upload. Legacy Yardi Budget Comparison exports are still
+                accepted for backfilling older months.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1568,6 +1611,40 @@ export default function HistoricalDataUploadPage(): JSX.Element {
             </div>
           </div>
 
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+              <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={budgetFormat === 'l001'}
+                  onChange={(event) => {
+                    setBudgetFormat(event.target.checked ? 'l001' : 'quickbooks');
+                    resetBudgetPreviewState();
+                  }}
+                />
+                L001 owned-property format
+              </label>
+              <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={budgetFormat === 'yardi'}
+                  onChange={(event) => {
+                    setBudgetFormat(event.target.checked ? 'yardi' : 'quickbooks');
+                    resetBudgetPreviewState();
+                  }}
+                />
+                Legacy Yardi Budget Comparison format
+              </label>
+            </div>
+            <p className="pl-6 text-[10px] text-[color:var(--text-secondary)]">
+              {budgetFormat === 'l001'
+                ? 'Reading the L001 books (Profit and Loss, or the Budget vs. Actuals grid for a Revised Budget v Actual export). Subtotals are labelled "Total ..." and Other Income/Expenses cover interest, depreciation and asset management.'
+                : budgetFormat === 'yardi'
+                  ? 'Reading the Yardi Budget Comparison sheet (PTD Actual column). NOI is derived from Total Income minus Total Property Expenses.'
+                  : 'Default: QuickBooks financial package for managed properties. Reads the Profit and Loss tab, where Net Operating Income is stated directly.'}
+            </p>
+          </div>
+
           {budgetExisting && budgetFinancialsExisting ? (
             <label className="flex items-center gap-2 text-xs text-[color:var(--text-secondary)]">
               <input
@@ -1587,6 +1664,27 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                   <div>Property: {formatPreviewValue(budgetSnapshot?.propertyName)}</div>
                   <div>Report month: {formatPreviewValue(budgetSnapshot?.reportMonthIso)}</div>
                   <div>Source sheet: {formatPreviewValue(budgetPreview.sourceSheet)}</div>
+                  <div>Detected format: {formatPreviewValue(budgetFormatLabel)}</div>
+                  {budgetEntityName ? (
+                    <div>
+                      Entity: {formatPreviewValue(budgetEntityName)}
+                      <div className="text-[10px]">
+                        Owning entity from the sheet header. The configured property name is kept.
+                      </div>
+                    </div>
+                  ) : null}
+                  {budgetTotalIncomeValue != null || budgetNetIncomeValue != null ? (
+                    <div className="pt-1">
+                      Total Income: {formatBudgetPreviewCurrency(budgetTotalIncomeValue)}
+                      {budgetOtherIncomeValue != null
+                        ? ` | Other Income: ${formatBudgetPreviewCurrency(budgetOtherIncomeValue)}`
+                        : ''}
+                      {budgetNetIncomeValue != null
+                        ? ` | Net Income: ${formatBudgetPreviewCurrency(budgetNetIncomeValue)}`
+                        : ''}
+                      <div className="text-[10px]">Shown for verification; only expenses and NOI are saved.</div>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <div className="text-[color:var(--text-primary)]">Upload target</div>
@@ -1611,7 +1709,12 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                     Value:{' '}
                     {formatBudgetPreviewCurrency(budgetPropertyExpensesValue)}
                   </div>
-                  <div>Definition: Total Property Expenses</div>
+                  <div>
+                    Definition:{' '}
+                    {budgetPreview.format === 'quickbooks'
+                      ? 'Total for Expenses (operating)'
+                      : 'Total Property Expenses'}
+                  </div>
                   <div>Used in NOI: Yes</div>
                   <div>Token: {formatPreviewValue(budgetSources?.propertyExpenses?.token)}</div>
                   <div>Source: {formatPreviewValue(budgetSources?.propertyExpenses?.sheet)}</div>
@@ -1633,6 +1736,9 @@ export default function HistoricalDataUploadPage(): JSX.Element {
                     Value: {formatBudgetPreviewCurrency(budgetNoiValue)}
                   </div>
                   <div>Method: {formatPreviewValue(budgetSources?.noi?.formula ?? 'Calculated')}</div>
+                  <div>
+                    Read directly: {budgetSources?.noi?.fallback === false ? 'Yes' : 'No (derived)'}
+                  </div>
                   <div>Expense basis: Property Expenses only</div>
                   <div>Inputs: {formatPreviewValue(budgetSources?.noi?.token)}</div>
                   <div>Source: {formatPreviewValue(budgetSources?.noi?.sheet)}</div>
@@ -1642,7 +1748,9 @@ export default function HistoricalDataUploadPage(): JSX.Element {
 
               <div className="space-y-1 text-[color:var(--text-secondary)]">
                 <div>
-                  Preview math: NOI = Total Income - Total Property Expenses. Other Expenses stay out of NOI and are only included in Total Expenses.
+                  Preview math:{' '}
+                  {budgetSources?.noi?.formula ?? 'NOI = Total Income - Total Property Expenses'}. Other Expenses stay
+                  out of NOI and are only included in Total Expenses.
                 </div>
                 {budgetExisting
                   ? budgetFinancialsExisting
