@@ -23,35 +23,17 @@
 //     no timezone offset and a local-time accessor would shift the month for
 //     anyone west of UTC.
 
-import { createRequire } from 'node:module';
-import path from 'node:path';
-import type { Workbook, Worksheet } from 'exceljs';
+import ExcelJS from 'exceljs';
+import type { Worksheet } from 'exceljs';
 import type { CellValue, SheetGrid } from './types';
 
-type ExcelJSModule = {
-  Workbook: new () => Workbook;
-};
-
-function getRuntimeRequire(): (id: string) => unknown {
-  const moduleBuiltin =
-    typeof process.getBuiltinModule === 'function'
-      ? (process.getBuiltinModule('node:module') as
-          | { createRequire?: typeof createRequire }
-          | undefined)
-      : undefined;
-  const candidate = moduleBuiltin?.createRequire
-    ? moduleBuiltin.createRequire(path.join(process.cwd(), 'package.json'))
-    : createRequire(path.join(process.cwd(), 'package.json'));
-  if (typeof candidate !== 'function') {
-    throw new Error('Node require loader is unavailable in this runtime.');
-  }
-  return candidate as (id: string) => unknown;
-}
-
-/** Matches the loader used by src/lib/occupancy/lenderUnitMix.ts. */
-export function loadExcelJS(): ExcelJSModule {
-  const mod = getRuntimeRequire()('exceljs') as ExcelJSModule | { default: ExcelJSModule };
-  return ((mod as { default?: ExcelJSModule }).default ?? mod) as ExcelJSModule;
+/**
+ * Keep this as a direct import so Next/Vercel includes ExcelJS in the traced
+ * server function. A computed require works locally but leaves the deployed
+ * function with no resolvable exceljs package.
+ */
+export function loadExcelJS(): typeof ExcelJS {
+  return ExcelJS;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

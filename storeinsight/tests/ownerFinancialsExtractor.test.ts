@@ -18,7 +18,10 @@ import {
 } from "../src/lib/finance/ownerFinancials/pythonCompat";
 import { sequenceMatcherRatio } from "../src/lib/finance/ownerFinancials/difflib";
 import { CoaMapper, normalizeLabel } from "../src/lib/finance/ownerFinancials/coaMapper";
-import { cellToValue } from "../src/lib/finance/ownerFinancials/readWorkbook";
+import {
+  cellToValue,
+  loadExcelJS,
+} from "../src/lib/finance/ownerFinancials/readWorkbook";
 import {
   calculateRentRollAnalytics,
   extractOpsSum,
@@ -329,6 +332,10 @@ test("cellToValue reduces ExcelJS values to what data_only=True returns", () => 
   assert.equal(cellToValue({ formula: "1/0", result: { error: "#DIV/0!" } }), "#DIV/0!");
   assert.equal(cellToValue({ richText: [{ text: "a" }, { text: "b" }] }), "ab");
   assert.equal(cellToValue({ text: "label", hyperlink: "https://example.com" }), "label");
+});
+
+test("loadExcelJS resolves the packaged ExcelJS module", () => {
+  assert.equal(typeof loadExcelJS().Workbook, "function");
 });
 
 /* ------------------------------ EXR extractors ---------------------------- */
