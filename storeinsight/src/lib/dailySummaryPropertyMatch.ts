@@ -2,9 +2,12 @@ import type { PropertyConfig } from "@/types/dailySummary";
 
 const normalizeText = (value: string): string => value.trim().replace(/\s+/g, " ");
 
-const normalizeLookup = (value: string | undefined | null): string => normalizeText(value ?? "").toLowerCase();
+// Exported so other property-label matchers (e.g. the FacilIQ invoice import prep)
+// build their lookup keys with the same rules instead of forking normalization.
+export const normalizeLookup = (value: string | undefined | null): string =>
+  normalizeText(value ?? "").toLowerCase();
 
-const normalizeCompactLookup = (value: string | undefined | null): string =>
+export const normalizeCompactLookup = (value: string | undefined | null): string =>
   normalizeLookup(value).replace(/[^a-z0-9]+/g, "");
 
 const addCandidate = (candidates: Set<string>, value: string | undefined | null): void => {
