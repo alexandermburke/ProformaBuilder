@@ -31,6 +31,8 @@ import {
   OPS_SUM_LABELS,
   ROLLING_IS_START_LABEL,
   SHEET_PREFIXES,
+  SQ_ROLLING_IS_FALLBACK_SHEET,
+  SQ_ROLLING_IS_SHEET,
   UNIT_RATE_LABELS,
 } from './constants';
 import {
@@ -53,6 +55,11 @@ import {
   extractPsRentRollOccupancy,
   extractPsRollingIs,
 } from './extractPublicStorage';
+import {
+  extractSqPropertyNumber,
+  extractSqRollingIs,
+  extractSqStatBlock,
+} from './extractStorQuest';
 import { makeSafeFilename, pyNowIsoformat } from './pythonCompat';
 import { loadExcelJS, loadSourceWorkbook, type SourceWorkbook } from './readWorkbook';
 import {
@@ -390,6 +397,103 @@ export async function processWorkbook({
         }
       }
     }
+  } else if (managedBy === 'StorQuest') {
+    // ---------------------------------------------------------------
+    // STORQUEST (SQ) branch - everything comes off the Rolling 13 sheet:
+    // the income statement, and the statistics block above it that stands in
+    // for the Unit Rate and Ops Sum tabs. StorQuest ships no rent roll.
+    // ---------------------------------------------------------------
+    const sheetName = SQ_ROLLING_IS_SHEET;
+
+    if (!workbook.hasSheet(sheetName)) {
+      // '${SQ_ROLLING_IS_FALLBACK_SHEET}' is deliberately not used as a stand-in.
+      // It reports the same statement rolled up to section subtotals, and
+      // several of those sections are named exactly like one of the accounts
+      // inside them - "Office Supplies" is the whole group there, not the 5400
+      // account - so its rows would map to a detail COA with full confidence
+      // and quietly understate every other line the group covers.
+      log.push({
+        sheet: SQ_ROLLING_IS_SHEET,
+        status: 'WARNING',
+        message: `${SQ_ROLLING_IS_SHEET} sheet not found — the '${SQ_ROLLING_IS_FALLBACK_SHEET}' summary tab is not a substitute because its section subtotals reuse account names`,
+      });
+    } else {
+      const grid = workbook.getGrid(sheetName);
+      const propNum = extractSqPropertyNumber(grid);
+
+      const { dates, rows } = extractSqRollingIs(grid);
+      if (dates === null) {
+        log.push({
+          sheet: sheetName,
+          status: 'WARNING',
+          message: 'Could not find the month/year header rows',
+        });
+      } else if (rows === null) {
+        log.push({
+          sheet: sheetName,
+          status: 'WARNING',
+          message: `Could not find '${ROLLING_IS_START_LABEL}' label`,
+        });
+      } else {
+        rollingIsData = { propNum, dates, rows };
+        const message = `Extracted ${rows.length} line items x ${dates.length} months`;
+        log.push({ sheet: sheetName, status: 'OK', message });
+        addSummary('rolling_is', message);
+      }
+
+      // Unit Rate and Ops Sum both come out of the statistics block
+      const stats = extractSqStatBlock(grid);
+      if (!stats) {
+        log.push({
+          sheet: sheetName,
+          status: 'WARNING',
+          message: 'Could not find the statistics block above the income statement',
+        });
+      } else if (stats.isEmpty) {
+        // Publishing these zeros would put a facility with no units and no
+        // square footage into the datapack, which reads as data rather than as
+        // the blank block it is.
+        log.push({
+          sheet: sheetName,
+          status: 'WARNING',
+          message:
+            'Statistics block is present but every unit, square footage, and rental activity figure is zero — Unit Rate and Ops Sum left out rather than reported as zeros',
+        });
+      } else {
+        const metricKeys = Object.keys(stats.unitRate);
+        if (metricKeys.length === 0) {
+          log.push({ sheet: sheetName, status: 'WARNING', message: 'No Unit Rate metrics found' });
+        } else {
+          const missing = missingLabels(UNIT_RATE_LABELS, new Set(metricKeys));
+          if (missing.length > 0) {
+            log.push({
+              sheet: sheetName,
+              status: 'WARNING',
+              message: `Missing: ${missing.join(', ')}`,
+            });
+          }
+          unitRateData = { propNum, metrics: stats.unitRate };
+          const message = `Extracted ${metricKeys.length} metrics from ${stats.dates[stats.dates.length - 1] ?? 'the latest month'}`;
+          log.push({ sheet: sheetName, status: 'OK', message });
+          addSummary('unit_rate', message);
+        }
+
+        if (stats.opsSum.length === 0) {
+          log.push({ sheet: sheetName, status: 'WARNING', message: 'No Ops Sum metrics found' });
+        } else {
+          opsSumData = { propNum, dates: stats.dates, rows: stats.opsSum };
+          const message = `Extracted ${stats.opsSum.length} metrics x ${stats.dates.length} months`;
+          log.push({ sheet: sheetName, status: 'OK', message });
+          addSummary('ops_sum', message);
+        }
+      }
+    }
+
+    log.push({
+      sheet: 'Rent Roll',
+      status: 'SKIP',
+      message: 'StorQuest owner packages do not include a rent roll',
+    });
   } else {
     // ---------------------------------------------------------------
     // EXTRA SPACE (EXR) branch (also used by "Other" until that format

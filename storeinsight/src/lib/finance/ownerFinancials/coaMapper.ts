@@ -54,20 +54,28 @@ const METHOD_NONE: CoaMatchMethod = 'no_match';
  *     Public Storage) or leading before the name (CubeSmart)
  *   - Collapse internal whitespace to a single space
  *
- * 'Rental Income (4000)'         -> 'rental income'
- * 'Management Fee - ESMI (5100)' -> 'management fee - esmi'
- * 'Payroll Tax (5090)'           -> 'payroll tax'
- * '6184 Electric'                -> 'electric'
+ * 'Rental Income (4000)'                  -> 'rental income'
+ * 'Management Fee - ESMI (5100)'           -> 'management fee - esmi'
+ * 'Payroll Tax (5090)'                     -> 'payroll tax'
+ * '6184 Electric'                          -> 'electric'
+ * '108-9132-7600-4000-05 Rental Income'    -> 'rental income'
  *
- * Dropping the code is what lets an account survive a renumbering, and the
- * leading form needs four or more digits followed by a space, so an account
- * whose name simply starts with digits - '401K Match (5035)' - keeps them.
+ * Dropping the code is what lets an account survive a renumbering, and in the
+ * StorQuest form it is what lets an account match at all: the second segment of
+ * that prefix is the property number, so the same account is spelled
+ * differently at every store.
+ *
+ * The bare leading form needs four or more digits followed by a space, so an
+ * account whose name simply starts with digits - '401K Match (5035)' - keeps
+ * them, and the segmented form needs a hyphen with no space around it, so
+ * CubeSmart's '4700 Discounts Charged - Rent' is left alone.
  */
 export function normalizeLabel(text: string | null | undefined): string {
   if (text === null || text === undefined) return '';
   let s = String(text).trim().toLowerCase();
   // Parenthetical GL codes only: digits and slashes, e.g. (4000) or (5100/5090)
   s = s.replace(/\s*\([0-9][0-9/\s]*\)/g, '');
+  s = s.replace(/^[0-9]+(?:-[0-9]+)+\s+/, '');
   s = s.replace(/^[0-9]{4,}\s+/, '');
   s = s.replace(/\s+/g, ' ').trim();
   return s;
@@ -125,11 +133,12 @@ function buildTables(tableKey: CoaTableKey): MappingTables {
  *
  * PS_Rollup is deliberately absent. The Python mapper this ports checks for
  * EXR_Rollup specifically, so a Public Storage subtotal is auto-accepted, and
- * that behaviour is preserved. CubeSmart has no Python behaviour to preserve -
- * its table is maintained here - so its subtotals are flagged, which is the
- * safer default for a table that mixes pure and mixed-COA rollups.
+ * that behaviour is preserved. CubeSmart and StorQuest have no Python behaviour
+ * to preserve - their tables are maintained here - so their subtotals are
+ * flagged, which is the safer default for a table that mixes pure and
+ * mixed-COA rollups.
  */
-const REVIEWED_ROLLUP_TYPES = new Set(['EXR_ROLLUP', 'CS_ROLLUP']);
+const REVIEWED_ROLLUP_TYPES = new Set(['EXR_ROLLUP', 'CS_ROLLUP', 'SQ_ROLLUP']);
 
 /**
  * Build the standard result from a matched mapping entry.

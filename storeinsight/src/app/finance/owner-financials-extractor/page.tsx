@@ -229,9 +229,9 @@ export default function OwnerFinancialsExtractorPage(): JSX.Element {
               </h1>
               <p className="max-w-3xl text-sm leading-relaxed text-[color:var(--text-secondary)] sm:text-base">
                 Upload an owner financial workbook, name the property, pick the management company,
-                and download the extracted datapack. Extra Space, Public Storage, and CubeSmart each
-                have their own sheet layout, so the management company decides which extractor runs
-                and which Chart of Accounts table is applied.
+                and download the extracted datapack. Extra Space, Public Storage, CubeSmart, and
+                StorQuest each have their own sheet layout, so the management company decides which
+                extractor runs and which Chart of Accounts table is applied.
               </p>
             </div>
             <Link href="/finance" className="ios-button px-4 py-2 text-sm" data-variant="secondary">

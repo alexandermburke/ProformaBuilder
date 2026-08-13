@@ -17,7 +17,7 @@ export type CellValue = string | number | boolean | Date | null;
 /** A worksheet flattened to a dense row-major grid. Row index 0 == Excel row 1. */
 export type SheetGrid = CellValue[][];
 
-export type ManagedBy = 'Extra' | 'Public Storage' | 'CubeSmart' | 'Other';
+export type ManagedBy = 'Extra' | 'Public Storage' | 'CubeSmart' | 'StorQuest' | 'Other';
 
 /**
  * Log statuses emitted by the extractor.

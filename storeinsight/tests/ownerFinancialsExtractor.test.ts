@@ -43,6 +43,12 @@ import {
   extractCsRollingIs,
   extractCsUnitRate,
 } from "../src/lib/finance/ownerFinancials/extractCubeSmart";
+import {
+  extractSqPropertyNumber,
+  extractSqRollingIs,
+  extractSqStatBlock,
+  findSqDateHeader,
+} from "../src/lib/finance/ownerFinancials/extractStorQuest";
 import type { CellValue, SheetGrid } from "../src/lib/finance/ownerFinancials/types";
 
 /**
@@ -844,4 +850,190 @@ test("extractCsRentRoll reports no header when the sheet is not a rent roll", ()
     dataRows: null,
   });
   assert.deepEqual(extractCsRentRoll([]), { headers: null, dataRows: null });
+});
+
+/* ------------------------------- SQ extractors ---------------------------- */
+
+/**
+ * StorQuest splits its date header over two rows and prefixes every account
+ * with a GL string whose second segment is the property number, so the same
+ * account is spelled differently at every store.
+ */
+function sqGrid(): SheetGrid {
+  return [
+    ["WWG ENTITIES"],
+    ["9132 - SQ-Fairfield / Pittman"],
+    ["Rolling 13 Income Statement"],
+    [],
+    [null, null, null, null, null, null, "Last 12 Month"],
+    [null, "Sep", "Oct", "Nov", "Dec", "Jan", "TOTAL", "Variance"],
+    [null, "2024", "2024", "2024", "2024", "2025"],
+    ["Total Units", 500, 500, 500, 500, 500, 2500],
+    ["Occupied Units- Beg", 400, 410, 420, 430, 440, 0],
+    ["Rentals", 30, 31, 32, 33, 34, 160],
+    ["Vacates", 20, 21, 22, 23, 24, 110],
+    ["Net", 10, 10, 10, 10, 10, 50],
+    ["Occupied Units- End", 410, 420, 430, 440, 450, 0],
+    ["Occupancy (%)", 0.82, 0.84, 0.86, 0.88, 0.9, 0],
+    ["Net Rentable Square Feet", 50000, 50000, 50000, 50000, 50000, 0],
+    ["Occupied Square Feet- End", 41000, 42000, 43000, 44000, 45000, 0],
+    ["Occupancy (%)", 0.82, 0.84, 0.86, 0.88, 0.9, 0],
+    ["Income"],
+    ["Rental Income:"],
+    ["108-9132-7600-4000-05 Rental Income", 100, 110, 120, 130, 140, 600],
+    ["108-9132-7600-4090-05 Customer Rent Refunds", 0, 0, 0, 0, 0, 0],
+    ["Total Rental Income", 100, 110, 120, 130, 140, 600],
+    ["108-9132-7600-5000-05 Wages", 10, 10, 10, 10, 10, 50],
+    ["Net Operating Income", 90, 100, 110, 120, 130, 550],
+    ["Non-Operating Items"],
+    ["108-9132-7600-8700-05 Capital Expenditures", 5, 5, 5, 5, 5, 25],
+    ["Net Income", 85, 95, 105, 115, 125, 525],
+  ];
+}
+
+test("findSqDateHeader joins the month row to the year row below it", () => {
+  const header = findSqDateHeader(sqGrid());
+  assert.equal(header?.rowIndex, 5);
+  assert.equal(header?.startCol, 1);
+  // TOTAL and Variance carry no year, which is what ends the walk
+  assert.deepEqual(header?.dates, [
+    "Sep 2024",
+    "Oct 2024",
+    "Nov 2024",
+    "Dec 2024",
+    "Jan 2025",
+  ]);
+});
+
+test("findSqDateHeader needs a year under the month and five paired columns", () => {
+  // months with no year row beneath
+  assert.equal(
+    findSqDateHeader([[null, "Sep", "Oct", "Nov", "Dec", "Jan"], [null, "a", "b", "c", "d", "e"]]),
+    null,
+  );
+  // only four paired columns
+  assert.equal(
+    findSqDateHeader([
+      [null, "Sep", "Oct", "Nov", "Dec"],
+      [null, "2024", "2024", "2024", "2024"],
+    ]),
+    null,
+  );
+  // a word that merely starts with a month abbreviation is not a month
+  assert.equal(
+    findSqDateHeader([
+      [null, "Marketing", "Octane", "November", "December", "January"],
+      [null, "2024", "2024", "2024", "2024", "2025"],
+    ]),
+    null,
+  );
+  assert.equal(findSqDateHeader([]), null);
+});
+
+test("extractSqPropertyNumber reads the entity line and ignores GL prefixes", () => {
+  assert.equal(extractSqPropertyNumber(sqGrid()), "9132");
+  // an account row further down must not be mistaken for the entity line
+  assert.equal(
+    extractSqPropertyNumber([
+      ["WWG ENTITIES"],
+      ["No number here"],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      ["108-9132-7600-4000-05 Rental Income"],
+    ]),
+    "",
+  );
+});
+
+test("extractSqRollingIs starts at Rental Income and stops at NOI", () => {
+  const { dates, rows } = extractSqRollingIs(sqGrid());
+  assert.equal(dates?.length, 5);
+  // the statistics block above and the capital expenditure rows below are out,
+  // the all-zero refunds row is dropped, and the section heading carries no
+  // values so it goes too
+  assert.deepEqual(rows?.map((row) => row.label), [
+    "108-9132-7600-4000-05 Rental Income",
+    "Total Rental Income",
+    "108-9132-7600-5000-05 Wages",
+    "Net Operating Income",
+  ]);
+  assert.deepEqual(rows?.[0].values, [100, 110, 120, 130, 140]);
+});
+
+test("extractSqRollingIs reports the header without rows when the start label is absent", () => {
+  const grid = sqGrid().slice(0, 18);
+  const { dates, rows } = extractSqRollingIs(grid);
+  assert.equal(dates?.length, 5);
+  assert.equal(rows, null);
+});
+
+test("extractSqStatBlock reads the block above the income statement only", () => {
+  const stats = extractSqStatBlock(sqGrid());
+  assert.equal(stats?.isEmpty, false);
+  // Unit Rate is a point in time, so it takes the most recent month
+  assert.deepEqual(stats?.unitRate, {
+    "Units Available": 500,
+    "Units Rented": 450,
+    "Sq Ft Available": 50000,
+    "Sq Ft Rented": 45000,
+  });
+  // the two "Occupancy (%)" rows are excluded - the label is ambiguous and the
+  // Ops Sum tab formats its values as integers
+  assert.deepEqual(stats?.opsSum.map((row) => row.label), [
+    "Total Units",
+    "Rentals During Month",
+    "Vacates During Month",
+    "Net Rentals",
+    "Occupied Units at EOM",
+  ]);
+  assert.deepEqual(stats?.opsSum[1].values, [30, 31, 32, 33, 34]);
+});
+
+test("extractSqStatBlock reports an all-zero block rather than passing zeros off as data", () => {
+  const grid = sqGrid().map((row, index) =>
+    index >= 7 && index <= 16 ? [row[0], 0, 0, 0, 0, 0, 0] : row,
+  );
+  const stats = extractSqStatBlock(grid as SheetGrid);
+  assert.equal(stats?.isEmpty, true);
+  assert.equal(stats?.unitRate["Units Available"], 0);
+  assert.equal(extractSqStatBlock([]), null);
+});
+
+test("COA mapper resolves StorQuest accounts through their per-property GL prefix", () => {
+  const mapper = new CoaMapper("sq");
+  assert.equal(mapper.loaded, true);
+
+  // the prefix carries the property number, so the same account is spelled
+  // differently at every store and both spellings have to land on one row
+  const fairfield = mapper.map("108-9132-7600-4000-05 Rental Income");
+  const other = mapper.map("108-4471-7600-4000-05 Rental Income");
+  assert.equal(fairfield.matchMethod, "normalized");
+  assert.equal(fairfield.coa, "Rental Income");
+  assert.equal(fairfield.reviewRequired, false);
+  assert.equal(other.coa, "Rental Income");
+
+  // StorQuest shares the Extra Space account numbering, so a matching code
+  // lands on the same COA in both tables
+  assert.equal(
+    mapper.map("108-9132-7600-5100-05 Management Fees").coa,
+    new CoaMapper("exr").map("Management Fee - ESMI (5100)").coa,
+  );
+});
+
+test("COA mapper flags StorQuest subtotals and blanks the mixed ones", () => {
+  const mapper = new CoaMapper("sq");
+  const pure = mapper.map("Total Payroll");
+  assert.equal(pure.accountType, "SQ_Rollup");
+  assert.equal(pure.coa, "Payroll");
+  assert.equal(pure.reviewRequired, true);
+
+  // this group also carries trash removal and security, which map elsewhere
+  const mixed = mapper.map("Total Repairs and Maintenance");
+  assert.equal(mixed.coa, "");
+  assert.equal(mixed.reviewRequired, true);
+  assert.ok(mixed.notes.includes("do not aggregate"));
 });

@@ -169,10 +169,61 @@ export const CS_RENT_ROLL_STATUS = 'Current';
 /** CubeSmart rent roll columns with no EXR equivalent, kept after Sq Ft. */
 export const CS_RENT_ROLL_EXTRA_HEADERS = ['Net Effective Rate', 'Internet Rate'] as const;
 
+/**
+ * StorQuest (WWG) sheet names. "Rolling 13 - Detailed" carries the account-level
+ * income statement and is the only accepted source.
+ *
+ * "Rolling 13" is the same statement rolled up to section subtotals and is
+ * deliberately not accepted as a substitute: several of its section names are
+ * identical to an account inside that section, so its rows would map to a
+ * detail COA at full confidence and understate the other lines the section
+ * covers. It is named here so the not-found message can say why.
+ */
+export const SQ_ROLLING_IS_SHEET = 'Rolling 13 - Detailed';
+export const SQ_ROLLING_IS_FALLBACK_SHEET = 'Rolling 13';
+
+/**
+ * The StorQuest statistics block sits between the date header and the income
+ * statement, so the start-label search has to reach further down than the 30
+ * rows the other formats need.
+ */
+export const SQ_ROLLING_IS_ANCHOR_ROWS = 60;
+
+/**
+ * Statistics block row label -> Unit Rate metric.
+ *
+ * StorQuest has no Unit Rate sheet. The same four figures head the Rolling 13
+ * statement as a monthly series, so the Unit Rate tab takes the most recent
+ * month of each.
+ */
+export const SQ_STAT_UNIT_RATE_LABELS: readonly (readonly [string, string])[] = [
+  ['Total Units', 'Units Available'],
+  ['Occupied Units- End', 'Units Rented'],
+  ['Net Rentable Square Feet', 'Sq Ft Available'],
+  ['Occupied Square Feet- End', 'Sq Ft Rented'],
+];
+
+/**
+ * Statistics block row label -> Ops Sum metric.
+ *
+ * The two occupancy percentage rows are deliberately excluded: the label
+ * "Occupancy (%)" appears twice, once for units and once for square feet, and
+ * the Ops Sum tab formats its values as integers, which would render a ratio
+ * as 0 or 1.
+ */
+export const SQ_STAT_OPS_SUM_LABELS: readonly (readonly [string, string])[] = [
+  ['Total Units', 'Total Units'],
+  ['Rentals', 'Rentals During Month'],
+  ['Vacates', 'Vacates During Month'],
+  ['Net', 'Net Rentals'],
+  ['Occupied Units- End', 'Occupied Units at EOM'],
+];
+
 export const MANAGED_BY_OPTIONS: readonly ManagedBy[] = [
   'Extra', // Extra Space Storage - EXR format
   'Public Storage', // Public Storage format
   'CubeSmart', // CubeSmart format
+  'StorQuest', // StorQuest / WWG format
   'Other', // Smaller / unknown managers - COA mapping is manual
 ];
 

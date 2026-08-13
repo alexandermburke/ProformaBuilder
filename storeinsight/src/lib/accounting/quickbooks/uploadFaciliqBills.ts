@@ -241,7 +241,11 @@ export async function uploadFaciliqExportBills(
     }
 
     for (const draft of propertyDrafts) {
-      const claim = await claimBillForUpload({ billKey: draft.billKey, nowIso });
+      const claim = await claimBillForUpload({
+        billKey: draft.billKey,
+        nowIso,
+        realmId: client.realmId,
+      });
       if (!claim.claimed) {
         if (claim.reason === 'already_uploaded' || claim.reason === 'already_duplicate') {
           skippedAlreadyUploaded += 1;
@@ -251,8 +255,8 @@ export async function uploadFaciliqExportBills(
               claim.record?.status ?? 'uploaded',
               claim.record?.quickBooksBillId ?? null,
               claim.reason === 'already_uploaded'
-                ? 'Already in QuickBooks; not created again.'
-                : 'Already recorded as a QuickBooks duplicate.',
+                ? `Already in ${client.companyName || propertyCode}; not created again.`
+                : `Already recorded as a duplicate in ${client.companyName || propertyCode}.`,
             ),
           );
         }

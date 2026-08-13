@@ -163,10 +163,18 @@ export type BillClaim =
 /**
  * Transactionally takes ownership of a bill for one upload attempt. Refuses a bill that is
  * already in QuickBooks, which is what makes a re-run or a retry safe.
+ *
+ * "Already in QuickBooks" is scoped to the DESTINATION COMPANY, not to the bill. A bill
+ * created while testing against a sandbox realm has not been created in the production
+ * company, and refusing it there would silently drop a real payable. The realmId is the
+ * check because it identifies one company globally; the environment is carried alongside
+ * it only to make the refusal message readable.
  */
 export async function claimBillForUpload(params: {
   billKey: string;
   nowIso: string;
+  /** The company this attempt is aimed at. */
+  realmId: string;
 }): Promise<BillClaim> {
   const ref = collection().doc(params.billKey);
 
@@ -175,10 +183,14 @@ export async function claimBillForUpload(params: {
     const record = snapshot.exists ? readRecord(snapshot) : null;
     if (!record) return { claimed: false, reason: 'missing', record: null };
 
-    if (record.status === 'uploaded') {
+    // A settled record for a DIFFERENT company does not settle this one. Falling through
+    // re-claims it, and the outcome fields are overwritten for the new destination.
+    const settledInThisCompany = record.realmId === params.realmId;
+
+    if (record.status === 'uploaded' && settledInThisCompany) {
       return { claimed: false, reason: 'already_uploaded', record };
     }
-    if (record.status === 'duplicate') {
+    if (record.status === 'duplicate' && settledInThisCompany) {
       return { claimed: false, reason: 'already_duplicate', record };
     }
 

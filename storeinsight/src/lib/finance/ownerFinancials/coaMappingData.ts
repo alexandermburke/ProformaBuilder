@@ -27,7 +27,7 @@
 
 import type { AliasMappingRow, ApprovedMappingEntry, ManagedBy } from './types';
 
-export type CoaTableKey = 'exr' | 'ps' | 'cs';
+export type CoaTableKey = 'exr' | 'ps' | 'cs' | 'sq';
 
 const APPROVED_EXR: ApprovedMappingEntry[] = [
   {
@@ -1471,16 +1471,565 @@ const ALIAS_CS: AliasMappingRow[] = [
   { alias: 'Internet/Website Cost', canonicalLabel: '6365 Internet/Website Costs', notes: '' },
 ];
 
+/**
+ * StorQuest accounts, in Rolling 13 order.
+ *
+ * Source labels are stored without the GL prefix StorQuest writes in front of
+ * every account ('108-9132-7600-4000-05 Rental Income'), because the second
+ * segment of that prefix is the property number and would pin each row to one
+ * store. normalizeLabel strips it, so these resolve on the normalized pass.
+ *
+ * StorQuest runs on the same account numbering as Extra Space - 4000 rental,
+ * 5100 management fee, 5670 fire prevention - so where a code matches, the COA
+ * here matches APPROVED_EXR for that code.
+ */
+const APPROVED_SQ: ApprovedMappingEntry[] = [
+  {
+    sourceLabel: 'Rental Income',
+    coa: 'Rental Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Core storage unit rental revenue',
+  },
+  {
+    sourceLabel: 'Parking Rental Income',
+    coa: 'Rental Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Parking rental — combine with storage rental income per COA Translation',
+  },
+  {
+    sourceLabel: 'Customer Rent Refunds',
+    coa: 'Rental Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — tenant refunds reduce gross rental income',
+  },
+  {
+    sourceLabel: 'Discounts Write-Off',
+    coa: 'Discounts',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Move-in specials and promotional concessions',
+  },
+  {
+    sourceLabel: 'Bad Debt Expense',
+    coa: 'Bad Debt',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Uncollectible rent written off',
+  },
+  {
+    sourceLabel: 'Total Rental Income',
+    coa: 'Net Rental Income',
+    coa2: 'Net Rental Income',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest net rental income subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Late Fees',
+    coa: 'Late Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Late fees charged to tenants',
+  },
+  {
+    sourceLabel: 'NSF & Other Fees',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Returned payment and miscellaneous tenant fees',
+  },
+  {
+    sourceLabel: 'Administration Fees',
+    coa: 'Admin Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Move-in administrative fee',
+  },
+  {
+    sourceLabel: 'Fees Waived-Admin',
+    coa: 'Admin Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-account — offsets gross admin fees',
+  },
+  {
+    sourceLabel: 'Total Fee Income',
+    coa: '',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes:
+      'StorQuest fee subtotal — spans admin, late, and other fee income, so it has no single COA; do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Merchandise Sales',
+    coa: 'Retail Sales Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Merchandise and retail supply sales',
+  },
+  {
+    sourceLabel: 'Total Merchandise Sales',
+    coa: 'Retail Sales Income',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest merchandise subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Insurance Referral Income',
+    coa: 'Current Tenant Protection Split',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Tenant protection plan revenue split',
+  },
+  {
+    sourceLabel: 'Total Insurance Referral Income',
+    coa: 'Current Tenant Protection Split',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest tenant insurance subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Miscellaneous Income',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Miscellaneous other operating income',
+  },
+  {
+    sourceLabel: 'Total Income - Other',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest other income subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Total Income',
+    coa: 'Total Operating Income',
+    coa2: 'Total Operating Income',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest total revenue subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Wages',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Site staff wages',
+  },
+  {
+    sourceLabel: 'Overtime',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Manager and staff overtime pay',
+  },
+  {
+    sourceLabel: 'Vacation & Personal Leave',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'PTO and vacation pay accruals',
+  },
+  {
+    sourceLabel: 'Performance Bonus',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Annual and periodic performance bonuses',
+  },
+  {
+    sourceLabel: '401K Match',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employer 401K contribution',
+  },
+  {
+    sourceLabel: 'Mileage',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Staff mileage reimbursement',
+  },
+  {
+    sourceLabel: 'Personnel Expenses',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Miscellaneous personnel costs',
+  },
+  {
+    sourceLabel: 'Group Health & Life Insurance',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employee health and life insurance benefits',
+  },
+  {
+    sourceLabel: 'Payroll Service',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Payroll processing service',
+  },
+  {
+    sourceLabel: 'Payroll Taxes',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employer FICA/FUTA/SUTA payroll taxes',
+  },
+  {
+    sourceLabel: "Workman's Comp",
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Workers compensation insurance premiums',
+  },
+  {
+    sourceLabel: 'Total Payroll',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest payroll subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Management Fees',
+    coa: 'Current Mgmt. Fee',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Third-party management fee paid to StorQuest',
+  },
+  {
+    sourceLabel: 'Total Management Fee',
+    coa: 'Current Mgmt. Fee',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest management fee subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Online Advertising',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Digital and internet advertising spend',
+  },
+  {
+    sourceLabel: 'Cause / Charity',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Community sponsorship and charitable giving',
+  },
+  {
+    sourceLabel: 'Content Advertising',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Content and creative marketing spend',
+  },
+  {
+    sourceLabel: 'Other Advertising',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Traditional and non-digital advertising spend',
+  },
+  {
+    sourceLabel: 'Total Advertising',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest advertising subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Gas & Electric',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Gas and electric utility',
+  },
+  {
+    sourceLabel: 'Water & Sewer',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Water and sewer utility',
+  },
+  {
+    sourceLabel: 'Total Utilities',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest utilities subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Office Supplies',
+    coa: 'Office Supplies',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Office supplies and general administrative supplies',
+  },
+  {
+    sourceLabel: 'Postage & Delivery',
+    coa: 'Office Supplies',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Postage and express shipping costs',
+  },
+  {
+    sourceLabel: 'Dues & Subscriptions',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Association dues and subscriptions',
+  },
+  {
+    sourceLabel: 'Bank Charges',
+    coa: 'Bank Charges',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Bank service charges and fees',
+  },
+  {
+    sourceLabel: 'Credit Card Fees',
+    coa: 'Current Payment Processing Fees',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Credit and debit card processing costs',
+  },
+  {
+    sourceLabel: 'Accounting Fees',
+    coa: 'Prof Fees - Legal/Acctg',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Accounting and bookkeeping fees',
+  },
+  {
+    sourceLabel: 'License',
+    coa: 'Licenses & Permits',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Business licenses and operational taxes',
+  },
+  {
+    sourceLabel: 'Education & Training',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Staff training and education',
+  },
+  {
+    sourceLabel: 'Outside Services',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Contracted outside services',
+  },
+  {
+    sourceLabel: 'Travel',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Business travel',
+  },
+  {
+    sourceLabel: 'Meals',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Meals and entertainment',
+  },
+  {
+    sourceLabel: 'Uniforms',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Staff uniforms',
+  },
+  {
+    sourceLabel: 'Lien Sale',
+    coa: 'Auction',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Lien sale and auction costs',
+  },
+  {
+    sourceLabel: 'Lock & Box Expense',
+    coa: 'Retail Products',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Cost of retail merchandise sold',
+  },
+  {
+    sourceLabel: 'Total Office Supplies',
+    coa: '',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes:
+      'StorQuest office subtotal — its group also carries bank, card, licence, lien sale, and lock and box costs, which map elsewhere; do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Telephone/Internet',
+    coa: 'Telephone & Internet',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Phone and internet service for the property',
+  },
+  {
+    sourceLabel: 'Call Center',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'National call center costs',
+  },
+  {
+    sourceLabel: 'Software',
+    coa: 'Software',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Property management and office software',
+  },
+  {
+    sourceLabel: 'Total Phone and Computer',
+    coa: '',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes:
+      'StorQuest phone and computer subtotal — spans telephone, call center, and software, which map to three COA lines; do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Building Repairs & Maintenance',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'General facility repairs and maintenance',
+  },
+  {
+    sourceLabel: 'Maintenance Supplies',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Maintenance parts and supplies',
+  },
+  {
+    sourceLabel: 'Trash Removal',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Trash collection service',
+  },
+  {
+    sourceLabel: 'Landscaping',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Grounds and landscaping maintenance',
+  },
+  {
+    sourceLabel: 'Pest Control',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Pest control service',
+  },
+  {
+    sourceLabel: 'Security',
+    coa: 'Security',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Security system and monitoring',
+  },
+  {
+    sourceLabel: 'Gate Repairs',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Gate and fence repairs',
+  },
+  {
+    sourceLabel: 'Fire Prevention',
+    coa: 'Fire Prevention',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Sprinkler and fire protection service',
+  },
+  {
+    sourceLabel: 'Total Repairs and Maintenance',
+    coa: '',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes:
+      'StorQuest R&M subtotal — its group also carries trash removal and security, which map elsewhere; do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Property & Liability Insurance',
+    coa: 'Insurance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Property and casualty insurance premiums',
+  },
+  {
+    sourceLabel: 'Total Insurance Expense',
+    coa: 'Insurance',
+    coa2: '',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest insurance subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Total Operating Expenses',
+    coa: 'Total Operating Expense',
+    coa2: 'Total Operating Expense',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest total operating expense subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Net Operating Income',
+    coa: 'Net Operating Income',
+    coa2: 'Net Operating Income',
+    accountType: 'SQ_Rollup',
+    notes: 'StorQuest calculated NOI — do not aggregate in model',
+  },
+];
+
+/**
+ * The Rolling 13 summary sheet names its section subtotals without the "Total"
+ * prefix the detailed sheet uses, so those spellings map to the same rows.
+ */
+const ALIAS_SQ: AliasMappingRow[] = [
+  { alias: 'Fee Income', canonicalLabel: 'Total Fee Income', notes: '' },
+  { alias: 'Payroll', canonicalLabel: 'Total Payroll', notes: '' },
+  { alias: 'Management Fee', canonicalLabel: 'Total Management Fee', notes: '' },
+  { alias: 'Advertising', canonicalLabel: 'Total Advertising', notes: '' },
+  { alias: 'Utilities', canonicalLabel: 'Total Utilities', notes: '' },
+  { alias: 'Phone and Computer', canonicalLabel: 'Total Phone and Computer', notes: '' },
+  {
+    alias: 'Repairs and Maintenance',
+    canonicalLabel: 'Total Repairs and Maintenance',
+    notes: '',
+  },
+  { alias: 'Insurance Expense', canonicalLabel: 'Total Insurance Expense', notes: '' },
+  { alias: 'Income - Other', canonicalLabel: 'Total Income - Other', notes: '' },
+  { alias: 'Gas and Electric', canonicalLabel: 'Gas & Electric', notes: '' },
+  { alias: 'Water and Sewer', canonicalLabel: 'Water & Sewer', notes: '' },
+  { alias: 'Workmans Comp', canonicalLabel: "Workman's Comp", notes: '' },
+  { alias: 'Telephone / Internet', canonicalLabel: 'Telephone/Internet', notes: '' },
+];
+
 export const APPROVED_MAPPINGS: Record<CoaTableKey, ApprovedMappingEntry[]> = {
   exr: APPROVED_EXR,
   ps: APPROVED_PS,
   cs: APPROVED_CS,
+  sq: APPROVED_SQ,
 };
 
 export const ALIAS_MAPPINGS: Record<CoaTableKey, AliasMappingRow[]> = {
   exr: ALIAS_EXR,
   ps: ALIAS_PS,
   cs: ALIAS_CS,
+  sq: ALIAS_SQ,
 };
 
 /**
@@ -1491,5 +2040,6 @@ export const COA_TABLE_BY_MANAGER: Record<ManagedBy, CoaTableKey | null> = {
   Extra: 'exr',
   'Public Storage': 'ps',
   CubeSmart: 'cs',
+  StorQuest: 'sq',
   Other: null,
 };
