@@ -65,17 +65,19 @@ const METHOD_NONE: CoaMatchMethod = 'no_match';
  * that prefix is the property number, so the same account is spelled
  * differently at every store.
  *
- * The bare leading form needs four or more digits followed by a space, so an
- * account whose name simply starts with digits - '401K Match (5035)' - keeps
- * them, and the segmented form needs a hyphen with no space around it, so
- * CubeSmart's '4700 Discounts Charged - Rent' is left alone.
+ * Both leading forms are deliberately narrow. The bare form needs four or more
+ * digits followed by a space, so an account whose name simply starts with
+ * digits - '401K Match (5035)' - keeps them. The segmented form needs three or
+ * more hyphen-joined groups, because StorQuest always writes five and a
+ * two-group leading number is far more likely to be a unit size or a range
+ * than an account code.
  */
 export function normalizeLabel(text: string | null | undefined): string {
   if (text === null || text === undefined) return '';
   let s = String(text).trim().toLowerCase();
   // Parenthetical GL codes only: digits and slashes, e.g. (4000) or (5100/5090)
   s = s.replace(/\s*\([0-9][0-9/\s]*\)/g, '');
-  s = s.replace(/^[0-9]+(?:-[0-9]+)+\s+/, '');
+  s = s.replace(/^[0-9]+(?:-[0-9]+){2,}\s+/, '');
   s = s.replace(/^[0-9]{4,}\s+/, '');
   s = s.replace(/\s+/g, ' ').trim();
   return s;
