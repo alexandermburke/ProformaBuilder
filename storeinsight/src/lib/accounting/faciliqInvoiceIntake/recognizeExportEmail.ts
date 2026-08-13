@@ -90,11 +90,20 @@ export const messageSender = (message: GraphMailMessage): string =>
  * The allow-list is required, never empty-means-everyone: billing@ receives vendor mail
  * from every direction, and an open filter would let unrelated CSVs into the importer.
  */
-export function resolveAllowedSenders(explicit?: readonly string[]): Set<string> {
-  const fromEnv = (process.env.FACILIQ_ALLOWED_SENDERS || '')
-    .split(',')
+/**
+ * Splits on commas, semicolons, or whitespace. A hand-edited env list is the most common
+ * way this filter silently stops matching: one semicolon and the whole value reads as a
+ * single nonsense address, every message is skipped as an unknown sender, and the run
+ * reports a clean zero rather than an error.
+ */
+const splitSenderList = (value: string): string[] =>
+  value
+    .split(/[,;\s]+/)
     .map(normalizeAddress)
     .filter(Boolean);
+
+export function resolveAllowedSenders(explicit?: readonly string[]): Set<string> {
+  const fromEnv = splitSenderList(process.env.FACILIQ_ALLOWED_SENDERS || '');
 
   const chosen =
     explicit && explicit.length > 0

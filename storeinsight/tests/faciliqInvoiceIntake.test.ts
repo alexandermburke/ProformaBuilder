@@ -225,3 +225,31 @@ test("an interrupted run is retryable, a finished one is not", () => {
   assert.equal(isRetryableStatus("duplicate"), false);
   assert.equal(isRetryableStatus("rejected"), false);
 });
+
+test("the sender allow-list survives a hand-edited env value", () => {
+  const previous = process.env.FACILIQ_ALLOWED_SENDERS;
+  try {
+    // A semicolon or a stray newline used to collapse the whole list into one nonsense
+    // address, which silently skipped every message instead of failing.
+    process.env.FACILIQ_ALLOWED_SENDERS = "support@faciliqpro.com;alex@storestorage.com";
+    assert.deepEqual(
+      [...resolveAllowedSenders()].sort(),
+      ["alex@storestorage.com", "support@faciliqpro.com"],
+    );
+
+    process.env.FACILIQ_ALLOWED_SENDERS = "support@faciliqpro.com alex@storestorage.com";
+    assert.deepEqual(
+      [...resolveAllowedSenders()].sort(),
+      ["alex@storestorage.com", "support@faciliqpro.com"],
+    );
+
+    process.env.FACILIQ_ALLOWED_SENDERS = "support@faciliqpro.com,\n  Alex@STOREstorage.com ,";
+    assert.deepEqual(
+      [...resolveAllowedSenders()].sort(),
+      ["alex@storestorage.com", "support@faciliqpro.com"],
+    );
+  } finally {
+    if (previous === undefined) delete process.env.FACILIQ_ALLOWED_SENDERS;
+    else process.env.FACILIQ_ALLOWED_SENDERS = previous;
+  }
+});

@@ -231,6 +231,9 @@ export async function runFaciliqInvoiceIntake(
   const asOfIso = options.asOfIso ?? utcDateString(now);
   const nowIso = now.toISOString();
   const allowedSenders = resolveAllowedSenders(options.allowedSenders);
+  // Logged every run because a mistyped allow-list is indistinguishable from a quiet
+  // mailbox in the summary: both report zero. Seeing the parsed list makes it obvious.
+  console.info(`${LOG} allowed senders`, { mailbox, allowedSenders: [...allowedSenders] });
   const accessToken = await getGraphAccessToken();
 
   const summary: FaciliqIntakeSummary = {

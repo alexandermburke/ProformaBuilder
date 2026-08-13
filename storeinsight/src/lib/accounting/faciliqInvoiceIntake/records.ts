@@ -74,6 +74,8 @@ export type FaciliqExportUploadStatus =
   | 'not_started'
   | 'uploading'
   | 'uploaded'
+  /** No clean rows, so there is nothing to send. Terminal, and not retried every run. */
+  | 'nothing_to_upload'
   | 'partial'
   | 'needs_mapping'
   | 'upload_failed';

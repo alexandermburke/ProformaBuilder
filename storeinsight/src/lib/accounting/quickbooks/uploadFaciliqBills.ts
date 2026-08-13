@@ -190,6 +190,9 @@ export async function uploadFaciliqExportBills(
   }
 
   let drafts = buildBillDrafts(report);
+  // A filtered run sees a subset on purpose, so it must never conclude the whole export
+  // has nothing to send.
+  const isFilteredRun = Boolean(options.propertyCode || options.billKey || options.limit);
   if (options.propertyCode) {
     drafts = drafts.filter((draft) => draft.propertyCode === options.propertyCode);
   }
@@ -206,6 +209,10 @@ export async function uploadFaciliqExportBills(
 
   const results: BillUploadResult[] = [];
   let skippedAlreadyUploaded = 0;
+  // Counted at the create sites rather than derived from the results list. A bill skipped
+  // because it was already in QuickBooks still carries status 'uploaded', so filtering the
+  // results would report it as work this run did, which is exactly the opposite of true.
+  let createdThisRun = 0;
 
   const byProperty = new Map<QuickBooksPropertyCode, BillDraft[]>();
   for (const draft of drafts) {
@@ -377,6 +384,7 @@ export async function uploadFaciliqExportBills(
                 vendorRefId: vendor.ref.id,
                 nowIso,
               });
+              createdThisRun += 1;
               results.push(
                 toResult(draft, 'uploaded', landed.Id, 'An earlier attempt had already created this bill.'),
               );
@@ -407,6 +415,7 @@ export async function uploadFaciliqExportBills(
           amount: draft.amount,
           quickBooksBillId: created.Id,
         });
+        createdThisRun += 1;
         results.push(toResult(draft, 'uploaded', created.Id, null));
       } catch (err) {
         const detail = errorText(err);
@@ -429,7 +438,12 @@ export async function uploadFaciliqExportBills(
 
   const allBills = await listBillsForExport(options.messageId).catch(() => []);
   const counts = allBills.length > 0 ? countBillStatuses(allBills) : emptyBillCounts();
-  const uploadStatus = deriveExportUploadStatus(counts);
+  // An export whose every row was held for review yields no bills at all. Marking that
+  // terminal stops the scheduled pass from reconsidering it every day forever.
+  const uploadStatus: FaciliqExportUploadStatus =
+    drafts.length === 0 && allBills.length === 0 && !isFilteredRun
+      ? 'nothing_to_upload'
+      : deriveExportUploadStatus(counts);
   const firstError = results.find((result) => result.status === 'failed')?.detail ?? null;
 
   await updateExportUploadState({
@@ -448,7 +462,7 @@ export async function uploadFaciliqExportBills(
     dryRun,
     liveCreateSuppressed,
     billsConsidered: drafts.length,
-    uploaded: results.filter((result) => result.status === 'uploaded').length,
+    uploaded: createdThisRun,
     duplicates: results.filter((result) => result.status === 'duplicate').length,
     needsMapping: results.filter((result) => result.status === 'needs_mapping').length,
     failed: results.filter((result) => result.status === 'failed').length,
