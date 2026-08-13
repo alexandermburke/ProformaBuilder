@@ -9,7 +9,8 @@
 // These are the etlpipelines mapping CSVs transcribed verbatim:
 //   approved_mappings_exr.csv / alias_mappings_exr.csv  -> exr
 //   approved_mappings_ps.csv  / alias_mappings_ps.csv   -> ps
-//   approved_mappings_cs.csv  / alias_mappings_cs.csv   -> cs  (header only, empty)
+//
+// The CubeSmart tables (cs) were empty in etlpipelines and are maintained here.
 //
 // HOW TO MAINTAIN THIS SYSTEM
 //   * To add or correct a known mapping: add/edit a row in APPROVED_MAPPINGS.
@@ -20,9 +21,9 @@
 // source labels normalize identically, and the fuzzy pass breaks score ties in
 // favour of the earlier row, so keep additions at the end of a section.
 //
-// accountType values: Income | Expense | EXR_Rollup | PS_Rollup. Rollup rows are
-// subtotals the source system already calculated - they are tagged but must not
-// be aggregated in the model (double-counting risk).
+// accountType values: Income | Expense | EXR_Rollup | PS_Rollup | CS_Rollup.
+// Rollup rows are subtotals the source system already calculated - they are
+// tagged but must not be aggregated in the model (double-counting risk).
 
 import type { AliasMappingRow, ApprovedMappingEntry, ManagedBy } from './types';
 
@@ -819,12 +820,656 @@ const APPROVED_PS: ApprovedMappingEntry[] = [
   },
 ];
 
-/** approved_mappings_cs.csv currently holds only its header row. */
-const APPROVED_CS: ApprovedMappingEntry[] = [];
+/**
+ * CubeSmart accounts, in Rolling Details order.
+ *
+ * CubeSmart prefixes each account with its 4-digit GL code ('6184 Electric').
+ * normalizeLabel strips that prefix, so an account still resolves at 0.95 when
+ * CubeSmart renumbers it, and a store whose chart omits the code entirely still
+ * matches the same row.
+ *
+ * The subtotal rows CubeSmart calculates are tagged CS_Rollup and carry the COA
+ * their detail rows roll into, so a model can be built from either level - but
+ * never both, which is what the "do not aggregate" note is there to say.
+ */
+const APPROVED_CS: ApprovedMappingEntry[] = [
+  {
+    sourceLabel: 'Rental Income',
+    coa: 'Rental Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Core storage unit rental revenue',
+  },
+  {
+    sourceLabel: '4190 Rent Return',
+    coa: 'Rental Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — rent returned to tenants reduces gross rental income',
+  },
+  {
+    sourceLabel: '4700 Discounts Charged - Rent',
+    coa: 'Discounts',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Move-in specials and promotional concessions',
+  },
+  {
+    sourceLabel: '7101 Rent Written Off',
+    coa: 'Bad Debt',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Uncollectible rent written off',
+  },
+  {
+    sourceLabel: '7103 Post Move-Out Nsf',
+    coa: 'Bad Debt',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Payments returned after move-out — written off',
+  },
+  {
+    sourceLabel: 'Net Rental Income',
+    coa: 'Net Rental Income',
+    coa2: 'Net Rental Income',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart net rental income subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: '4281 Admin Fee',
+    coa: 'Admin Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Move-in administrative fee',
+  },
+  {
+    sourceLabel: '4282 Late Fee Revenue',
+    coa: 'Late Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Late fees billed to tenants',
+  },
+  {
+    sourceLabel: '4283 Other Fee Revenue',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Miscellaneous tenant fees',
+  },
+  {
+    sourceLabel: '4284 Nsf Fee',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Returned payment fee charged to tenants',
+  },
+  {
+    sourceLabel: '4286 Convenience Fee Payments',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Payment convenience fee collected from tenants',
+  },
+  {
+    sourceLabel: '4285 Fees Waived',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — fees waived at the counter',
+  },
+  {
+    sourceLabel: '4287 Fees Waived - Admin Fee',
+    coa: 'Admin Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — waived admin fees',
+  },
+  {
+    sourceLabel: '4288 Fees Waived - Late Fee',
+    coa: 'Late Fee Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — waived late fees',
+  },
+  {
+    sourceLabel: '4293 Fees Waived - Convenience Fee',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — waived convenience fees',
+  },
+  {
+    sourceLabel: '4255 Credit Card Chargebacks',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Contra-revenue — disputed card payments reversed',
+  },
+  {
+    sourceLabel: '7102 Fees Written Off',
+    coa: 'Bad Debt',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Uncollectible fees written off',
+  },
+  {
+    sourceLabel: 'Total Fees',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes:
+      'CubeSmart fee subtotal — spans admin, late, and other fee income, so it has no single COA; do not aggregate in model',
+  },
+  {
+    sourceLabel: '4920 Tenant Pd Insurance',
+    coa: 'Current Tenant Protection Split',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Tenant protection plan revenue split',
+  },
+  {
+    sourceLabel: '4961 Merchandise Sales',
+    coa: 'Retail Sales Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Merchandise and retail supply sales',
+  },
+  {
+    sourceLabel: 'Ancillary Sales',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes:
+      'CubeSmart tenant insurance plus merchandise subtotal — the two sides map to different COA lines; do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Total Revenue',
+    coa: 'Total Operating Income',
+    coa2: 'Total Operating Income',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart total revenue subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: '6100 Payroll',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Site staff wages',
+  },
+  {
+    sourceLabel: '6112 Medical Expense',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employee health benefits',
+  },
+  {
+    sourceLabel: '6118 401k Expense',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employer retirement contribution',
+  },
+  {
+    sourceLabel: '6128 Employee Rewards',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employee incentives and recognition',
+  },
+  {
+    sourceLabel: '6130 Payroll Tax',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Employer payroll taxes',
+  },
+  {
+    sourceLabel: '6135 Bonus',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Performance bonus',
+  },
+  {
+    sourceLabel: '6283 Workers Comp Premium',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'Expense',
+    notes: "Workers' compensation insurance premium",
+  },
+  {
+    sourceLabel: 'Payroll Expense',
+    coa: 'Payroll',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart payroll subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: '6150 Rubbish Removal',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Trash collection service',
+  },
+  {
+    sourceLabel: '6158 Exterminating',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Pest control service',
+  },
+  {
+    sourceLabel: '6184 Electric',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Electricity',
+  },
+  {
+    sourceLabel: '6185 Telephone',
+    coa: 'Telephone & Internet',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Phone service for the property',
+  },
+  {
+    sourceLabel: '6186 Water/Sewer',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Water and sewer',
+  },
+  {
+    sourceLabel: '6187 Gas & Utilities',
+    coa: 'Utilities',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Natural gas and other utility costs',
+  },
+  {
+    sourceLabel: '6205 Fire Alarm Monitoring',
+    coa: 'Fire Prevention',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Fire alarm monitoring contract',
+  },
+  {
+    sourceLabel: 'Utilities',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes:
+      'CubeSmart utilities subtotal — its group also carries telephone and fire alarm monitoring, which map elsewhere; do not aggregate in model',
+  },
+  {
+    sourceLabel: '6192 Repairs & Maintenance',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'General facility repairs and maintenance',
+  },
+  {
+    sourceLabel: '6194 R & M Doors',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Unit door repairs',
+  },
+  {
+    sourceLabel: '6198 R & M Cameras',
+    coa: 'Security',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Camera and surveillance system repairs',
+  },
+  {
+    sourceLabel: '6199 R & M Hvac',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'HVAC repairs',
+  },
+  {
+    sourceLabel: '6201 R&M Fire Protection',
+    coa: 'Fire Prevention',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Sprinkler and fire protection system repairs',
+  },
+  {
+    sourceLabel: '6203 R&M Lighting/Electrical',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Lighting and electrical repairs',
+  },
+  {
+    sourceLabel: '6204 R & M Plumbing',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Plumbing repairs',
+  },
+  {
+    sourceLabel: '6206 R & M Exterior Building Repair',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Exterior building repairs',
+  },
+  {
+    sourceLabel: 'Repairs & Maintenance',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes:
+      'CubeSmart R&M subtotal — its group also carries cameras and fire protection, which map elsewhere; do not aggregate in model',
+  },
+  {
+    sourceLabel: '6122 Training',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Staff training',
+  },
+  {
+    sourceLabel: '6152 Uniforms',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Staff uniforms',
+  },
+  {
+    sourceLabel: '6159 Sales Center',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'National call center allocation',
+  },
+  {
+    sourceLabel: '6163 Help Desk',
+    coa: 'Software',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'IT help desk allocation',
+  },
+  {
+    sourceLabel: '6162 Supplies',
+    coa: 'Office Supplies',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Store operating supplies',
+  },
+  {
+    sourceLabel: '6164 Sale Items',
+    coa: 'Retail Products',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Cost of retail merchandise sold',
+  },
+  {
+    sourceLabel: '6168 Dues & Subscriptions',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Association dues and subscriptions',
+  },
+  {
+    sourceLabel: '6170 Landscaping',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Grounds and landscaping maintenance',
+  },
+  {
+    sourceLabel: '6174 Signs',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Property signage',
+  },
+  {
+    sourceLabel: '6176 Auto Expense',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Vehicle and mileage costs',
+  },
+  {
+    sourceLabel: '6182 Fees / Licenses',
+    coa: 'Licenses & Permits',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Business licenses, permits, and operational fees',
+  },
+  {
+    sourceLabel: '6190 Postage',
+    coa: 'Office Supplies',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Postage and delivery',
+  },
+  {
+    sourceLabel: '6212 Office Supplies',
+    coa: 'Office Supplies',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Office supplies and general administrative costs',
+  },
+  {
+    sourceLabel: '6218 Printing Expense',
+    coa: 'Office Supplies',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Printing and reproduction',
+  },
+  {
+    sourceLabel: '6220 Equipment',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Small equipment purchases',
+  },
+  {
+    sourceLabel: '6223 Money Order Fees',
+    coa: 'Bank Charges',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Money order processing fees',
+  },
+  {
+    sourceLabel: '6224 Computer Expense',
+    coa: 'Software',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Computer hardware and support',
+  },
+  {
+    sourceLabel: '6225 Cms License Fee',
+    coa: 'Software',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'CubeSmart property management system licence',
+  },
+  {
+    sourceLabel: '6226 Bank Charges',
+    coa: 'Bank Charges',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Bank service charges',
+  },
+  {
+    sourceLabel: '6228 Bank Adjustments',
+    coa: 'Bank Charges',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Bank reconciliation adjustments',
+  },
+  {
+    sourceLabel: '6232 Visa/Mastercard Fees',
+    coa: 'Current Payment Processing Fees',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Card processing costs',
+  },
+  {
+    sourceLabel: '6233 American Express Fees',
+    coa: 'Current Payment Processing Fees',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Card processing costs',
+  },
+  {
+    sourceLabel: '6235 Ach Fees',
+    coa: 'Current Payment Processing Fees',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'ACH payment processing costs',
+  },
+  {
+    sourceLabel: '6249 Meals & Entertainment',
+    coa: 'Other Expense',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Meals and entertainment',
+  },
+  {
+    sourceLabel: '6256 Legal/Auction',
+    coa: 'Prof Fees - Legal/Acctg',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'CubeSmart reports legal fees and lien auction costs on one line',
+  },
+  {
+    sourceLabel: 'Other Controllable Expenses',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes:
+      'CubeSmart other controllable subtotal — spans office, software, retail, licence, and bank costs, so it has no single COA; do not aggregate in model',
+  },
+  {
+    sourceLabel: '6365 Internet/Website Costs',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Digital and internet advertising spend',
+  },
+  {
+    sourceLabel: '6375 Store Marketing',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Local store marketing',
+  },
+  {
+    sourceLabel: 'Marketing Expense',
+    coa: 'Advertising & Marketing',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart marketing subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Total Controllable Expense',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart controllable expense subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: '7030 Sales Tax Collection Allowance',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'Income',
+    notes: 'Sales tax collection allowance retained by the store',
+  },
+  {
+    sourceLabel: 'Other Income',
+    coa: 'Other Tenant Income',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart other income subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: '6172 Snow Removal & Salting',
+    coa: 'Repairs & Maintenance',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Snow removal and salting',
+  },
+  {
+    sourceLabel: '6801 Third Party Management Fees',
+    coa: 'Current Mgmt. Fee',
+    coa2: '',
+    accountType: 'Expense',
+    notes: 'Third-party management fee paid to CubeSmart',
+  },
+  {
+    sourceLabel: 'Other Non Controllable Expenses',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart other non-controllable subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Non Controllable Expenses',
+    coa: '',
+    coa2: '',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart non-controllable expense subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Total Operating Expenses',
+    coa: 'Total Operating Expense',
+    coa2: 'Total Operating Expense',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart total operating expense subtotal — do not aggregate in model',
+  },
+  {
+    sourceLabel: 'Net Operating Income (Loss)',
+    coa: 'Net Operating Income',
+    coa2: 'Net Operating Income',
+    accountType: 'CS_Rollup',
+    notes: 'CubeSmart calculated NOI — do not aggregate in model',
+  },
+];
 
-/** alias_mappings_ps.csv and alias_mappings_cs.csv currently hold only their header rows. */
+/** alias_mappings_ps.csv currently holds only its header row. */
 const ALIAS_PS: AliasMappingRow[] = [];
-const ALIAS_CS: AliasMappingRow[] = [];
+
+/**
+ * CubeSmart writes the same account with and without spaces around the
+ * ampersand, and abbreviates a few names between store charts. A leading GL code
+ * needs no alias - normalizeLabel already strips it.
+ */
+const ALIAS_CS: AliasMappingRow[] = [
+  { alias: 'R&M Doors', canonicalLabel: '6194 R & M Doors', notes: '' },
+  { alias: 'R&M Cameras', canonicalLabel: '6198 R & M Cameras', notes: '' },
+  { alias: 'R&M Hvac', canonicalLabel: '6199 R & M Hvac', notes: '' },
+  { alias: 'R&M Plumbing', canonicalLabel: '6204 R & M Plumbing', notes: '' },
+  {
+    alias: 'R&M Exterior Building Repair',
+    canonicalLabel: '6206 R & M Exterior Building Repair',
+    notes: '',
+  },
+  { alias: 'R & M Fire Protection', canonicalLabel: '6201 R&M Fire Protection', notes: '' },
+  { alias: 'R & M Lighting/Electrical', canonicalLabel: '6203 R&M Lighting/Electrical', notes: '' },
+  { alias: 'Fees/Licenses', canonicalLabel: '6182 Fees / Licenses', notes: '' },
+  { alias: 'Water & Sewer', canonicalLabel: '6186 Water/Sewer', notes: '' },
+  { alias: 'Trash Removal', canonicalLabel: '6150 Rubbish Removal', notes: '' },
+  { alias: 'Snow Removal', canonicalLabel: '6172 Snow Removal & Salting', notes: '' },
+  {
+    alias: 'Management Fees',
+    canonicalLabel: '6801 Third Party Management Fees',
+    notes: '',
+  },
+  { alias: 'Discounts Charged', canonicalLabel: '4700 Discounts Charged - Rent', notes: '' },
+  { alias: 'Convenience Fee', canonicalLabel: '4286 Convenience Fee Payments', notes: '' },
+  { alias: 'Tenant Insurance', canonicalLabel: '4920 Tenant Pd Insurance', notes: '' },
+  { alias: 'Workers Compensation', canonicalLabel: '6283 Workers Comp Premium', notes: '' },
+  { alias: 'Internet/Website Cost', canonicalLabel: '6365 Internet/Website Costs', notes: '' },
+];
 
 export const APPROVED_MAPPINGS: Record<CoaTableKey, ApprovedMappingEntry[]> = {
   exr: APPROVED_EXR,

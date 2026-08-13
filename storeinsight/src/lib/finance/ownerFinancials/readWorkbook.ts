@@ -84,13 +84,18 @@ export type SourceWorkbook = {
   getGrid: (name: string) => SheetGrid;
 };
 
+/**
+ * A row stops at its last populated cell rather than being padded out to the
+ * sheet's column count. Every extractor already treats a short row as trailing
+ * nulls, and a CubeSmart workbook reports 16,384 columns on sheets that use a
+ * dozen - padding a 667-row rent roll to that width costs ~60 MB of nothing.
+ */
 function buildGrid(worksheet: Worksheet): SheetGrid {
   const rowCount = worksheet.rowCount;
-  const columnCount = worksheet.columnCount;
   const grid: SheetGrid = [];
 
   for (let rowNumber = 1; rowNumber <= rowCount; rowNumber += 1) {
-    const cells: CellValue[] = new Array<CellValue>(columnCount).fill(null);
+    const cells: CellValue[] = [];
     const row = worksheet.findRow(rowNumber);
     if (row) {
       row.eachCell({ includeEmpty: false }, (cell, colNumber) => {

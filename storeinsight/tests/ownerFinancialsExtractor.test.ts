@@ -36,8 +36,12 @@ import {
   extractPsRollingIs,
 } from "../src/lib/finance/ownerFinancials/extractPublicStorage";
 import {
+  calculateCubeSqFt,
+  extractCsOpsSum,
   extractCsPropertyNumber,
+  extractCsRentRoll,
   extractCsRollingIs,
+  extractCsUnitRate,
 } from "../src/lib/finance/ownerFinancials/extractCubeSmart";
 import type { CellValue, SheetGrid } from "../src/lib/finance/ownerFinancials/types";
 
@@ -224,10 +228,17 @@ test("sequenceMatcherRatio matches difflib.SequenceMatcher(None, a, b).ratio()",
 
 /* --------------------------------- coaMapper ------------------------------ */
 
-test("normalizeLabel strips parenthetical GL codes only", () => {
+test("normalizeLabel strips GL account codes from either end", () => {
   assert.equal(normalizeLabel("Rental Income (4000)"), "rental income");
   assert.equal(normalizeLabel("Payroll Tax (5090/5091)"), "payroll tax");
   assert.equal(normalizeLabel("  Late   Fees  "), "late fees");
+  // CubeSmart puts the code in front of the name instead
+  assert.equal(normalizeLabel("6184 Electric"), "electric");
+  assert.equal(normalizeLabel("4700 Discounts Charged - Rent"), "discounts charged - rent");
+  // a name that merely starts with digits keeps them - no space after the digits
+  assert.equal(normalizeLabel("401K Match (5035)"), "401k match");
+  // fewer than four digits is a quantity, not an account code
+  assert.equal(normalizeLabel("13 Month Free"), "13 month free");
   // a parenthetical that is not a GL code is left alone
   assert.equal(normalizeLabel("Net Operating Income (Loss)"), "net operating income (loss)");
   assert.equal(normalizeLabel(null), "");
@@ -301,9 +312,41 @@ test("COA mapper only sees the table for its own manager", () => {
     new CoaMapper("exr").map("Tenant Insurance RMASA Fee").matchMethod,
     "exact_approved",
   );
-  // the CubeSmart table is still empty, so everything is a no-match
-  assert.equal(new CoaMapper("cs").loaded, false);
-  assert.equal(new CoaMapper("cs").map("Rental Income").matchMethod, "no_match");
+  // "6184 Electric" is a CS label; EXR has no entry that matches it exactly
+  assert.equal(new CoaMapper("cs").loaded, true);
+  assert.equal(new CoaMapper("cs").map("6184 Electric").matchMethod, "exact_approved");
+  assert.notEqual(new CoaMapper("exr").map("6184 Electric").matchMethod, "exact_approved");
+});
+
+test("COA mapper resolves a CubeSmart account after its GL code is renumbered", () => {
+  const renumbered = new CoaMapper("cs").map("6185 Water/Sewer");
+  assert.equal(renumbered.matchMethod, "normalized");
+  assert.equal(renumbered.confidence, 0.95);
+  assert.equal(renumbered.coa, "Utilities");
+  assert.equal(renumbered.reviewRequired, false);
+
+  // a chart that drops the code altogether lands on the same row
+  assert.equal(new CoaMapper("cs").map("Water/Sewer").coa, "Utilities");
+  // and an ampersand respaced between store charts resolves through the aliases
+  const alias = new CoaMapper("cs").map("R&M Doors");
+  assert.equal(alias.matchMethod, "alias");
+  assert.equal(alias.coa, "Repairs & Maintenance");
+});
+
+test("COA mapper flags CubeSmart subtotals for review", () => {
+  const rollup = new CoaMapper("cs").map("Net Operating Income (Loss)");
+  assert.equal(rollup.accountType, "CS_Rollup");
+  assert.equal(rollup.coa, "Net Operating Income");
+  assert.equal(rollup.confidence, 1);
+  assert.equal(rollup.reviewRequired, true);
+  // its own note already says it, so the EXR-worded suffix is not appended
+  assert.ok(rollup.notes.includes("do not aggregate"));
+  assert.ok(!rollup.notes.includes("EXR-calculated"));
+
+  // a subtotal whose group spans several COA lines carries no COA at all
+  const mixed = new CoaMapper("cs").map("Total Fees");
+  assert.equal(mixed.coa, "");
+  assert.equal(mixed.reviewRequired, true);
 });
 
 test("COA mapper maps unique labels in first-appearance order", () => {
@@ -608,4 +651,197 @@ test("extractCsRollingIs keeps every month when the NOI row is fully populated",
   const { dates, rows } = extractCsRollingIs(grid);
   assert.equal(dates?.length, 6);
   assert.equal(rows?.[0].values.length, 6);
+});
+
+test("extractCsPropertyNumber falls back to the banner column the sheet actually uses", () => {
+  // K1 on the Rent Roll, not O1
+  const row: CellValue[] = new Array<CellValue>(11).fill(null);
+  row[10] = "6935 CUBESMART MI DEARBORN S COMMERCE DRIVE";
+  assert.equal(extractCsPropertyNumber([row]), "6935");
+  // a bare number is not a store banner - it needs a name after it
+  assert.equal(extractCsPropertyNumber([[null, 6935]]), "");
+  assert.equal(extractCsPropertyNumber([]), "");
+});
+
+test("calculateCubeSqFt handles zero-padded and half-foot cube dimensions", () => {
+  assert.equal(calculateCubeSqFt("05X05"), 25);
+  assert.equal(calculateCubeSqFt("10X15"), 150);
+  assert.equal(calculateCubeSqFt("7.5X10"), 75); // calculateSqFt rejects this one
+  assert.equal(calculateSqFt("7.5X10"), null);
+  assert.equal(calculateCubeSqFt("Parking"), null);
+  assert.equal(calculateCubeSqFt(null), null);
+});
+
+test("extractCsUnitRate reads the Cube Mix totals row", () => {
+  const grid: SheetGrid = [
+    ["Store", "Cube Dimensions", "Cube SqFt", "Total Cubes", "Total SqFt", "Occupied Cubes", "Occupied SqFt "],
+    ["6935", "05X05", "25", 26, 650, 14, 350],
+    ["6935", "10X10", "100", 33, 3300, 24, 2400],
+    ["Total", null, null, 59, 3950, 38, 2750],
+  ];
+  assert.deepEqual(extractCsUnitRate(grid), {
+    "Units Available": 59,
+    "Sq Ft Available": 3950,
+    "Units Rented": 38,
+    "Sq Ft Rented": 2750,
+  });
+});
+
+test("extractCsUnitRate sums the cube types when the totals row is missing", () => {
+  const grid: SheetGrid = [
+    ["Store", "Total Cubes", "Total SqFt", "Occupied Cubes", "Occupied SqFt"],
+    ["6935", 26, 650, 14, 350],
+    ["6935", 33, 3300, 24, 2400],
+  ];
+  assert.deepEqual(extractCsUnitRate(grid), {
+    "Units Available": 59,
+    "Sq Ft Available": 3950,
+    "Units Rented": 38,
+    "Sq Ft Rented": 2750,
+  });
+  assert.deepEqual(extractCsUnitRate([]), {});
+});
+
+test("extractCsUnitRate never folds a totals row into the summed fallback", () => {
+  // "Grand Total" is not the exact word the totals-row lookup reads, and summing
+  // it alongside the rows it totals would double every count
+  const grid: SheetGrid = [
+    ["Store", "Total Cubes", "Total SqFt", "Occupied Cubes", "Occupied SqFt"],
+    ["6935", 26, 650, 14, 350],
+    ["6935", 33, 3300, 24, 2400],
+    ["Grand Total", 59, 3950, 38, 2750],
+  ];
+  assert.deepEqual(extractCsUnitRate(grid), {
+    "Units Available": 59,
+    "Sq Ft Available": 3950,
+    "Units Rented": 38,
+    "Sq Ft Rented": 2750,
+  });
+});
+
+test("extractCsUnitRate falls back to the cube types when the totals row is blank", () => {
+  const grid: SheetGrid = [
+    ["Store", "Total Cubes", "Total SqFt", "Occupied Cubes", "Occupied SqFt"],
+    ["6935", 26, 650, 14, 350],
+    ["Total", null, null, null, null],
+  ];
+  assert.deepEqual(extractCsUnitRate(grid), {
+    "Units Available": 26,
+    "Sq Ft Available": 650,
+    "Units Rented": 14,
+    "Sq Ft Rented": 350,
+  });
+});
+
+test("extractCsOpsSum renames the rental activity rows and ignores later blocks", () => {
+  const grid: SheetGrid = [
+    ["RENTAL ACTIVITY"],
+    [null, "Jan-2026", "Feb-2026", "Mar-2026", "Apr-2026", "May-2026", "Jun-2026"],
+    ["Total Cubes Available", 913, 913, 897, 897, 889, 831],
+    ["Rented During Month", 50, 53, 75, 66, 59, 35],
+    ["Vacated During Month", 44, 40, 108, 37, 48, 47],
+    ["Net Rentals", 6, 13, -33, 29, 11, -12],
+    ["Cubes Occupied at EOM", 684, 697, 664, 693, 704, 692],
+    ["Churn %", 0.065, 0.058, 0.155, 0.056, 0.069, 0.067],
+    // a second block further down must not overwrite the values above
+    ["Net Rentals", 1, 1, 1, 1, 1, 1],
+  ];
+  const { dates, rows } = extractCsOpsSum(grid);
+  assert.deepEqual(dates, [
+    "Jan 2026",
+    "Feb 2026",
+    "Mar 2026",
+    "Apr 2026",
+    "May 2026",
+    "Jun 2026",
+  ]);
+  assert.deepEqual(rows?.map((row) => row.label), [
+    "Total Cubes Available",
+    "Rentals During Month",
+    "Vacates During Month",
+    "Net Rentals",
+    "Cubes Occupied at EOM",
+  ]);
+  assert.deepEqual(rows?.[3].values, [6, 13, -33, 29, 11, -12]);
+});
+
+test("extractCsRentRoll renames the CubeSmart columns and derives Sq Ft", () => {
+  const grid: SheetGrid = [
+    [
+      "Store",
+      "Cube",
+      "Cube Dimensions",
+      "Cube Attribute",
+      "Customer",
+      "Move In Date",
+      "Paid Thru Date",
+      "Rent Rate",
+      "Net Effective Rate",
+      "Internet Rate",
+      "Full Price",
+    ],
+    [6935, "11000", "7.5X10", "CDP", "YOLANDA DAVIS", "2025-02-23", "2026-06-30", 90, 57.05, 70.5, 141],
+    [6935, "11001", "10X09", "CDN", "HANNA ALKHOLANY", "2025-02-22", "2026-06-30", 130, 74.82, 80, 160],
+    [null, null, null, null, null, null, null, null, null, null, null],
+    [6935, "11002", "05X05", "CDP", "NEVER REACHED", "2025-05-26", "2026-07-31", 106, 22.91, 28.5, 57],
+  ];
+  const { headers, dataRows } = extractCsRentRoll(grid);
+  assert.deepEqual(headers, [
+    "Tenant Account",
+    "Unit #",
+    "Move-In Date",
+    "Rent Rate",
+    "Street Rate",
+    "Paid-Thru Date",
+    "Status",
+    "Size",
+    "Type",
+    "Sq Ft",
+    "Net Effective Rate",
+    "Internet Rate",
+  ]);
+  // the blank row ends the table, so the row after it is not read
+  assert.equal(dataRows?.length, 2);
+  assert.deepEqual(dataRows?.[0], [
+    "YOLANDA DAVIS",
+    "11000",
+    "2025-02-23",
+    90,
+    141, // Street Rate comes from Full Price, not Internet Rate
+    "2026-06-30",
+    "Current",
+    "7.5X10",
+    "CDP",
+    75,
+    57.05,
+    70.5,
+  ]);
+
+  // and the renamed columns feed the shared mark-to-market pass
+  const analytics = calculateRentRollAnalytics(headers ?? [], dataRows ?? []);
+  assert.equal(analytics.summary.occupiedCount, 2);
+  assert.equal(analytics.summary.belowStreetCount, 2);
+  assert.equal(analytics.summary.totalPositiveDelta, 81);
+});
+
+test("extractCsRentRoll skips a trailing totals row however it is spelled", () => {
+  // Status is stamped on every surviving row, so a subtotal that slipped
+  // through would be counted as an occupied tenant
+  const grid: SheetGrid = [
+    ["Store", "Cube", "Cube Dimensions", "Customer", "Rent Rate", "Full Price"],
+    [6935, "11000", "05X05", "A TENANT", 30, 57],
+    [null, "Totals", null, null, 30, 57],
+    [null, "Grand Total", null, null, 30, 57],
+  ];
+  const { dataRows } = extractCsRentRoll(grid);
+  assert.equal(dataRows?.length, 1);
+  assert.equal(dataRows?.[0][0], "A TENANT");
+});
+
+test("extractCsRentRoll reports no header when the sheet is not a rent roll", () => {
+  assert.deepEqual(extractCsRentRoll([["Store", "Cube Dimensions"]]), {
+    headers: null,
+    dataRows: null,
+  });
+  assert.deepEqual(extractCsRentRoll([]), { headers: null, dataRows: null });
 });

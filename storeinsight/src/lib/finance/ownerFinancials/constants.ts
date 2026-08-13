@@ -92,9 +92,82 @@ export const PS_SECTION_HEADERS = new Set([
   'other items',
 ]);
 
-/** Sheet name is exact ("Rolling Details"), unlike EXR which uses prefix+number. */
+/**
+ * CubeSmart names every tab exactly, unlike EXR which uses prefix+number, so
+ * each CS sheet is looked up by its full name.
+ */
 export const CS_ROLLING_IS_SHEET = 'Rolling Details';
 export const CS_ROLLING_IS_START_LABEL = 'Rental Income';
+export const CS_CUBE_MIX_SHEET = 'Cube Mix';
+export const CS_RENTAL_EXPERIENCE_SHEET = 'Summary of Rental Experience';
+export const CS_RENT_ROLL_SHEET = 'Rent Roll';
+
+/**
+ * Cube Mix column header -> Unit Rate metric. CubeSmart has no Unit Rate sheet;
+ * the same four counts live in the Cube Mix totals row, one column each.
+ */
+export const CS_CUBE_MIX_METRIC_COLUMNS: readonly (readonly [string, string])[] = [
+  ['Total Cubes', 'Units Available'],
+  ['Occupied Cubes', 'Units Rented'],
+  ['Total SqFt', 'Sq Ft Available'],
+  ['Occupied SqFt', 'Sq Ft Rented'],
+];
+
+/**
+ * Summary of Rental Experience row label -> Ops Sum metric.
+ *
+ * The first three carry the EXR spelling so a CS datapack reads the same as an
+ * EXR one. The last two have no EXR equivalent and keep their CubeSmart names -
+ * they are the monthly unit counts behind the occupancy series, which is the
+ * most useful thing on the sheet and is nowhere else in the workbook by month.
+ */
+export const CS_OPS_SUM_LABELS: readonly (readonly [string, string])[] = [
+  ['Rented During Month', 'Rentals During Month'],
+  ['Vacated During Month', 'Vacates During Month'],
+  ['Net Rentals', 'Net Rentals'],
+  ['Total Cubes Available', 'Total Cubes Available'],
+  ['Cubes Occupied at EOM', 'Cubes Occupied at EOM'],
+];
+
+/** EXR Ops Sum metrics CubeSmart does not report - logged, not warned about. */
+export const CS_OPS_SUM_UNAVAILABLE: readonly string[] = [
+  'Walk In Rentals',
+  'NSC rentals',
+  'Web Rentals',
+];
+
+/**
+ * Rent Roll header -> CubeSmart column name.
+ *
+ * "Street Rate" maps to Full Price rather than Internet Rate: Full Price is the
+ * figure the SRE Detail sheet reports as the street rate for that cube type,
+ * while Internet Rate is the discounted online move-in price (half of Full
+ * Price on every row of the sample file), so comparing in-place rent against it
+ * would overstate the mark-to-market gap.
+ *
+ * Status has no CubeSmart column - see CS_RENT_ROLL_STATUS.
+ */
+export const CS_RENT_ROLL_COLUMN_MAP: readonly (readonly [string, string])[] = [
+  ['Tenant Account', 'Customer'],
+  ['Unit #', 'Cube'],
+  ['Move-In Date', 'Move In Date'],
+  ['Rent Rate', 'Rent Rate'],
+  ['Street Rate', 'Full Price'],
+  ['Paid-Thru Date', 'Paid Thru Date'],
+  ['Size', 'Cube Dimensions'],
+  ['Type', 'Cube Attribute'],
+];
+
+/**
+ * The CubeSmart rent roll lists occupied cubes only - its row count equals the
+ * Cube Mix occupied count - so every row is a current tenant. The Status column
+ * is filled in with that value so the below-street analytics, which count rows
+ * whose Status is "Current", see the whole tenant base.
+ */
+export const CS_RENT_ROLL_STATUS = 'Current';
+
+/** CubeSmart rent roll columns with no EXR equivalent, kept after Sq Ft. */
+export const CS_RENT_ROLL_EXTRA_HEADERS = ['Net Effective Rate', 'Internet Rate'] as const;
 
 export const MANAGED_BY_OPTIONS: readonly ManagedBy[] = [
   'Extra', // Extra Space Storage - EXR format

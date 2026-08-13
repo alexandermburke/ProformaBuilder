@@ -337,6 +337,9 @@ const RENT_ROLL_MONEY_COLUMNS = new Set([
   'Street Rate PSF',
   'Delta to Street Rate',
   'Delta PSF',
+  // CubeSmart-only rate columns
+  'Net Effective Rate',
+  'Internet Rate',
 ]);
 const RENT_ROLL_INTEGER_COLUMNS = new Set(['Sq Ft', 'Below Street Rate']);
 
@@ -351,6 +354,8 @@ const RENT_ROLL_COLUMN_WIDTHS: Record<string, number> = {
   Size: 8,
   Type: 8,
   'Sq Ft': 8,
+  'Net Effective Rate': 18,
+  'Internet Rate': 13,
   'Rent Rate PSF': 14,
   'Street Rate PSF': 14,
   'Delta to Street Rate': 18,

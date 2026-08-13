@@ -19,6 +19,11 @@
 import { CoaMapper } from './coaMapper';
 import { COA_TABLE_BY_MANAGER } from './coaMappingData';
 import {
+  CS_CUBE_MIX_SHEET,
+  CS_OPS_SUM_LABELS,
+  CS_OPS_SUM_UNAVAILABLE,
+  CS_RENTAL_EXPERIENCE_SHEET,
+  CS_RENT_ROLL_SHEET,
   CS_ROLLING_IS_SHEET,
   CS_ROLLING_IS_START_LABEL,
   DEFAULT_MANAGED_BY,
@@ -36,7 +41,13 @@ import {
   extractRollingIs,
   extractUnitRate,
 } from './extractExtraSpace';
-import { extractCsPropertyNumber, extractCsRollingIs } from './extractCubeSmart';
+import {
+  extractCsOpsSum,
+  extractCsPropertyNumber,
+  extractCsRentRoll,
+  extractCsRollingIs,
+  extractCsUnitRate,
+} from './extractCubeSmart';
 import {
   extractPsPropertyNumber,
   extractPsRentRollOccupancy,
@@ -62,6 +73,7 @@ import type {
   ProcessWorkbookResult,
   RentRollData,
   RollingIsData,
+  SheetGrid,
   SummaryEntry,
   UnitRateData,
 } from './types';
@@ -198,19 +210,36 @@ export async function processWorkbook({
     });
   } else if (managedBy === 'CubeSmart') {
     // ---------------------------------------------------------------
-    // CUBESMART (CS) branch - Rolling Details sheet only (first pass).
-    // Unit Rate / Ops Sum / Rent Roll not yet mapped for CS.
+    // CUBESMART (CS) branch - Rolling Details for the income statement,
+    // Cube Mix for the unit and sq ft counts, Summary of Rental Experience
+    // for rental activity, and Rent Roll for the tenant detail. Every CS tab
+    // is named exactly, so each one is looked up by name.
     // ---------------------------------------------------------------
-    if (!workbook.hasSheet(CS_ROLLING_IS_SHEET)) {
+    const csGrid = (name: string): SheetGrid | null =>
+      workbook.hasSheet(name) ? workbook.getGrid(name) : null;
+
+    const rollingGrid = csGrid(CS_ROLLING_IS_SHEET);
+    const cubeMixGrid = csGrid(CS_CUBE_MIX_SHEET);
+    const rentalExperienceGrid = csGrid(CS_RENTAL_EXPERIENCE_SHEET);
+    const rentRollGrid = csGrid(CS_RENT_ROLL_SHEET);
+
+    // Every CS tab carries the store banner in row 1, so the property number is
+    // still recoverable when the income statement sheet is the one missing.
+    let propNum = '';
+    for (const grid of [rollingGrid, rentRollGrid, cubeMixGrid, rentalExperienceGrid]) {
+      if (propNum || !grid) continue;
+      propNum = extractCsPropertyNumber(grid);
+    }
+
+    // Rolling Details
+    if (!rollingGrid) {
       log.push({
         sheet: CS_ROLLING_IS_SHEET,
         status: 'WARNING',
         message: `${CS_ROLLING_IS_SHEET} sheet not found`,
       });
     } else {
-      const grid = workbook.getGrid(CS_ROLLING_IS_SHEET);
-      const propNum = extractCsPropertyNumber(grid);
-      const { dates, rows } = extractCsRollingIs(grid);
+      const { dates, rows } = extractCsRollingIs(rollingGrid);
       if (dates === null) {
         log.push({
           sheet: CS_ROLLING_IS_SHEET,
@@ -231,9 +260,136 @@ export async function processWorkbook({
       }
     }
 
-    log.push({ sheet: 'Unit Rate', status: 'SKIP', message: 'Not yet implemented for CubeSmart' });
-    log.push({ sheet: 'Ops Sum', status: 'SKIP', message: 'Not yet implemented for CubeSmart' });
-    log.push({ sheet: 'Rent Roll', status: 'SKIP', message: 'Not yet implemented for CubeSmart' });
+    // Unit Rate - from the Cube Mix totals row
+    if (!cubeMixGrid) {
+      log.push({
+        sheet: CS_CUBE_MIX_SHEET,
+        status: 'WARNING',
+        message: `${CS_CUBE_MIX_SHEET} sheet not found — cannot derive unit and sq ft counts`,
+      });
+    } else {
+      const metrics = extractCsUnitRate(cubeMixGrid);
+      const metricKeys = Object.keys(metrics);
+      if (metricKeys.length === 0) {
+        log.push({
+          sheet: CS_CUBE_MIX_SHEET,
+          status: 'WARNING',
+          message: 'No matching metrics found',
+        });
+      } else {
+        const missing = missingLabels(UNIT_RATE_LABELS, new Set(metricKeys));
+        if (missing.length > 0) {
+          log.push({
+            sheet: CS_CUBE_MIX_SHEET,
+            status: 'WARNING',
+            message: `Missing: ${missing.join(', ')}`,
+          });
+        }
+        unitRateData = { propNum, metrics };
+        const message = `Extracted ${metricKeys.length} metrics`;
+        log.push({ sheet: CS_CUBE_MIX_SHEET, status: 'OK', message });
+        addSummary('unit_rate', message);
+      }
+    }
+
+    // Ops Sum - from the Summary of Rental Experience rental activity block
+    if (!rentalExperienceGrid) {
+      log.push({
+        sheet: CS_RENTAL_EXPERIENCE_SHEET,
+        status: 'WARNING',
+        message: `${CS_RENTAL_EXPERIENCE_SHEET} sheet not found`,
+      });
+    } else {
+      const { dates, rows } = extractCsOpsSum(rentalExperienceGrid);
+      if (dates === null) {
+        log.push({
+          sheet: CS_RENTAL_EXPERIENCE_SHEET,
+          status: 'WARNING',
+          message: 'Could not find date header row',
+        });
+      } else if (rows === null || rows.length === 0) {
+        log.push({
+          sheet: CS_RENTAL_EXPERIENCE_SHEET,
+          status: 'WARNING',
+          message: 'Could not find the rental activity rows',
+        });
+      } else {
+        const expected = CS_OPS_SUM_LABELS.map(([, canonical]) => canonical);
+        const missing = missingLabels(expected, new Set(rows.map((row) => row.label)));
+        if (missing.length > 0) {
+          log.push({
+            sheet: CS_RENTAL_EXPERIENCE_SHEET,
+            status: 'WARNING',
+            message: `Missing: ${missing.join(', ')}`,
+          });
+        }
+        opsSumData = { propNum, dates, rows };
+        const message = `Extracted ${rows.length} metrics x ${dates.length} months`;
+        log.push({ sheet: CS_RENTAL_EXPERIENCE_SHEET, status: 'OK', message });
+        addSummary('ops_sum', message);
+        // The rental channel split is an EXR concept; saying so keeps it from
+        // reading as data the extractor failed to find.
+        log.push({
+          sheet: CS_RENTAL_EXPERIENCE_SHEET,
+          status: 'SKIP',
+          message: `Not in CubeSmart format: ${CS_OPS_SUM_UNAVAILABLE.join(', ')}`,
+        });
+      }
+    }
+
+    // Rent Roll
+    if (!rentRollGrid) {
+      log.push({
+        sheet: CS_RENT_ROLL_SHEET,
+        status: 'WARNING',
+        message: `${CS_RENT_ROLL_SHEET} sheet not found`,
+      });
+    } else {
+      const { headers, dataRows } = extractCsRentRoll(rentRollGrid);
+      if (headers === null) {
+        log.push({
+          sheet: CS_RENT_ROLL_SHEET,
+          status: 'WARNING',
+          message: 'Could not find header row',
+        });
+      } else if (dataRows === null || dataRows.length === 0) {
+        log.push({
+          sheet: CS_RENT_ROLL_SHEET,
+          status: 'WARNING',
+          message: 'No tenant/unit rows found',
+        });
+      } else {
+        // ECRI / mark-to-market analytics - appends PSF and delta columns
+        const analytics = calculateRentRollAnalytics(headers, dataRows);
+        rentRollData = {
+          propNum,
+          headers: analytics.headers,
+          dataRows: analytics.dataRows,
+          summary: analytics.summary,
+        };
+        const message =
+          `Extracted ${analytics.dataRows.length} tenants x ${analytics.headers.length} columns ` +
+          `(${analytics.summary.belowStreetCount} below street rate)`;
+        log.push({ sheet: CS_RENT_ROLL_SHEET, status: 'OK', message });
+        addSummary('rent_roll', message);
+
+        // The CubeSmart rent roll lists occupied cubes only, so its row count
+        // has to equal the Cube Mix occupied count. They disagree when the rent
+        // roll is truncated or its header was misread, and every mark-to-market
+        // figure above is computed off those rows - which is exactly the kind of
+        // wrong answer that still looks reasonable.
+        const occupiedCubes = unitRateData?.metrics['Units Rented'];
+        if (occupiedCubes !== undefined && occupiedCubes !== analytics.dataRows.length) {
+          log.push({
+            sheet: CS_RENT_ROLL_SHEET,
+            status: 'WARNING',
+            message:
+              `${analytics.dataRows.length} tenant rows but ${CS_CUBE_MIX_SHEET} reports ` +
+              `${occupiedCubes} occupied cubes — the rent roll summary is computed off the rows`,
+          });
+        }
+      }
+    }
   } else {
     // ---------------------------------------------------------------
     // EXTRA SPACE (EXR) branch (also used by "Other" until that format
