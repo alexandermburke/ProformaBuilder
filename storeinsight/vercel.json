@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/msr-ingest",
-      "schedule": "15 14 * * *"
+      "schedule": "15 12 * * *"
     },
     {
       "path": "/api/cron/daily-flash",
@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/faciliq-invoice-intake",
-      "schedule": "45 15 * * *"
+      "schedule": "0 17 * * *"
     }
   ]
 }

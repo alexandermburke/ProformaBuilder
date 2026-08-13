@@ -83,8 +83,12 @@ const main = async (): Promise<number> => {
   // The export supplies the real vendor names and GL codes to test resolution against.
   let exportRecord = requestedExport ? await getIntakeRecord(requestedExport) : null;
   if (!exportRecord && !requestedExport) {
-    const parsed = await listParsedExports(1);
-    exportRecord = parsed[0] ?? null;
+    // Prefer the newest export that actually has clean rows. The newest export overall can
+    // legitimately have none, and checking against it would report "nothing to do" when
+    // there is plenty to check.
+    const parsed = await listParsedExports(25);
+    exportRecord =
+      parsed.find((record) => (record.totals?.readyRows ?? 0) > 0) ?? parsed[0] ?? null;
   }
   if (requestedExport && !exportRecord) {
     console.log(`No intake record for message ${requestedExport}.`);
@@ -109,6 +113,7 @@ const main = async (): Promise<number> => {
   }
 
   let unresolved = 0;
+  let checked = 0;
 
   for (const propertyCode of targets as QuickBooksPropertyCode[]) {
     console.log(`${propertyCode}`);
@@ -146,6 +151,7 @@ const main = async (): Promise<number> => {
     console.log("  Vendors this export needs");
     for (const name of vendorNames) {
       const result = await resolver.resolveVendor(name);
+      checked += 1;
       if (result.resolved) {
         console.log(`    OK       ${name}  ->  ${result.ref.label} (id ${result.ref.id})`);
       } else {
@@ -161,6 +167,7 @@ const main = async (): Promise<number> => {
     console.log("  Accounts this export needs");
     for (const code of glCodes) {
       const result = await resolver.resolveAccount(code);
+      checked += 1;
       if (result.resolved) {
         console.log(`    OK       ${code}  ->  ${result.ref.label} (id ${result.ref.id})`);
       } else {
@@ -172,6 +179,11 @@ const main = async (): Promise<number> => {
       }
     }
     console.log("");
+  }
+
+  if (checked === 0) {
+    console.log("Nothing was checked: no export in the ledger has clean rows for these properties.");
+    return 1;
   }
 
   if (unresolved > 0) {

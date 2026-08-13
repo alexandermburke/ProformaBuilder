@@ -128,8 +128,12 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
   }
 };
 
-// Vercel Cron example:
-// - Path: /api/cron/daily-flash · Method: GET/POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 15 16 * * * (09:15 MST)
+// Vercel Cron:
+// - Path: /api/cron/daily-flash · Method: GET/POST · Header x-cron-secret: <CRON_SECRET>
+// - Schedule: 15 15 * * *, i.e. somewhere in 15:00-15:59 UTC on Hobby.
+// - Depends on /api/cron/msr-ingest having run. That job is scheduled a full hour band
+//   earlier for exactly this reason; see the scheduling note in its route file before
+//   moving either one.
 export async function GET(request: NextRequest) {
   return handle(request);
 }

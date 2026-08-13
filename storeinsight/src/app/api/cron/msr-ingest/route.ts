@@ -71,8 +71,18 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
   }
 };
 
-// Vercel Cron example:
-// - Path: /api/cron/msr-ingest · Method: GET/POST · Header x-cron-secret: <CRON_SECRET> · Schedule: 15 15 * * * (08:15 MST)
+// Vercel Cron:
+// - Path: /api/cron/msr-ingest · Method: GET/POST · Header x-cron-secret: <CRON_SECRET>
+// - Schedule: 15 12 * * *
+//
+// SCHEDULING NOTE, do not tighten this without reading it. On Vercel's Hobby plan a cron
+// fires anywhere inside its scheduled HOUR, not at the stated minute. So this job runs
+// somewhere in 12:00-12:59 UTC and /api/cron/daily-flash runs somewhere in 15:00-15:59,
+// which guarantees the flash starts at least an hour after the ingest even in the worst
+// pairing. Tenant delivers the MSR emails between 08:15 and 09:10 UTC (measured over 30
+// deliveries), so 12:00 still leaves the ingest nearly three hours of slack on the other
+// side. An earlier version of this pair sat at 14:15 and 15:15, which could collapse to a
+// one-minute gap and left the flash reading data the ingest had not finished writing.
 export async function GET(request: NextRequest) {
   return handle(request);
 }

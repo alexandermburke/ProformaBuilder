@@ -444,16 +444,21 @@ export async function updateExportUploadState(input: {
   );
 }
 
-/** Every export whose CSV was read cleanly, newest first. The uploader's work queue. */
+/**
+ * Every export whose CSV was read cleanly, newest first. The uploader's work queue.
+ *
+ * The status filter and the newest-first sort cannot be combined in one Firestore query
+ * without a composite index, so a bounded page is read and ordered here. Applying `limit`
+ * to the query instead would hand back an arbitrary subset and only then sort it, which
+ * makes "newest" a lie.
+ */
 export async function listParsedExports(limit = 25): Promise<FaciliqIntakeRecord[]> {
-  const snapshot = await collection()
-    .where('status', '==', 'parsed')
-    .limit(Math.min(Math.max(limit, 1), 100))
-    .get();
+  const snapshot = await collection().where('status', '==', 'parsed').limit(200).get();
   return snapshot.docs
     .map(readRecord)
     .filter((record): record is FaciliqIntakeRecord => record !== null)
-    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+    .slice(0, Math.min(Math.max(limit, 1), 100));
 }
 
 /**
