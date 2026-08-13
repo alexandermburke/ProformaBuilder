@@ -1,6 +1,6 @@
 {
   "name": "storeinsight",
-  "version": "0.10.1",
+  "version": "0.12.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test": "tsx --test tests/**/*.test.ts",
     "auth:users": "tsx scripts/manageAuthUsers.ts",
-    "invoices:check": "tsx scripts/checkFaciliqInvoices.ts"
+    "invoices:check": "tsx scripts/checkFaciliqInvoices.ts",
+    "qbo:preflight": "tsx scripts/quickbooksPreflight.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.3",

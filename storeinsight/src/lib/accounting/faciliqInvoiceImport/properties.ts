@@ -29,7 +29,14 @@ export type QuickBooksProperty = {
 };
 
 export const QUICKBOOKS_PROPERTIES: readonly QuickBooksProperty[] = [
-  { code: 'L001', name: 'STORE at the Grove', aliases: ['the grove', 'hibernia camelback'] },
+  {
+    code: 'L001',
+    // "Hibernia Camelback LLC" is the legal entity name on L001's QuickBooks company, so
+    // it is listed with the suffix as well: the QuickBooks connection check reads the
+    // company's own name, and "hibernia camelback" alone does not match it.
+    name: 'STORE at the Grove',
+    aliases: ['the grove', 'hibernia camelback', 'hibernia camelback llc'],
+  },
   {
     code: 'P006',
     name: 'STORE on Vicksburg',

@@ -2,6 +2,7 @@ import admin from "firebase-admin";
 import { firestore, storage } from "@/server/firebaseAdmin";
 import { listProperties } from "@/app/api/daily-summary/store";
 import type { PropertyConfig } from "@/types/dailySummary";
+import { mstDateString } from "./mstDate";
 import { extractViewerUrlFromHtml, fetchMsrMessageHtmlById, ingestMsrEmails, isTenantViewerUrl } from "./ingestMsrEmails";
 import { ingestManagementSummariesFromViewer, type IngestedMsr } from "./ingestManagementSummary";
 
@@ -20,22 +21,6 @@ type IngestionOptions = {
   maxEmailsToProcess?: number;
   processingDate?: Date;
   allowedSenders?: string[];
-};
-
-const mstDateString = (date: Date): string => {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Phoenix",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = formatter.formatToParts(date).reduce<Record<string, string>>((acc, part) => {
-    if (part.type === "year" || part.type === "month" || part.type === "day") {
-      acc[part.type] = part.value;
-    }
-    return acc;
-  }, {});
-  return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
 const addDays = (date: Date, days: number): Date => {

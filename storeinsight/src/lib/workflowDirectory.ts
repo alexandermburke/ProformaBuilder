@@ -68,16 +68,31 @@ export const workflowCategories: WorkflowCategory[] = [
       {
         id: 'faciliq-invoice-import',
         title: 'FacilIQ Invoice Import Prep',
-        description: 'Check the weekly FacilIQ invoice CSV and split it per QuickBooks company.',
+        description: 'Pick up the weekly FacilIQ invoice CSV from billing@ and split it per QuickBooks company.',
         status: 'Active',
         tone: 'green',
         icon: 'receipt',
         highlights: [
+          'FacilIQ’s weekly export email is collected and converted on a schedule.',
           'Every row checked for invoice number, vendor, amount, date, property, and GL code.',
           'Separate import files for L001, P006, W002, and W003.',
           'Missing or questionable rows held back for review, never imported.',
         ],
         href: '/accounting/faciliq-invoice-import',
+      },
+      {
+        id: 'quickbooks-connections',
+        title: 'QuickBooks Connections',
+        description: 'Connect each STORE property to its own QuickBooks company for bill creation.',
+        status: 'Active',
+        tone: 'blue',
+        icon: 'bank',
+        highlights: [
+          'One QuickBooks company per property, never shared between them.',
+          'A company whose name reads as a different property is refused.',
+          'Bill creation stays off until it is explicitly enabled.',
+        ],
+        href: '/accounting/quickbooks',
       },
       {
         id: 'payables-automation',

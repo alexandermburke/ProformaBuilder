@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import { firestore } from "@/server/firebaseAdmin";
+import { mstDateString } from "./mstDate";
 import { getGraphAccessToken } from "./graph";
 
 export type MsrEmailRecord = {
@@ -123,20 +124,6 @@ export const extractViewerUrlFromHtml = (html: string): string | null => {
   }
 
   return null;
-};
-
-const mstDateString = (date: Date): string => {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Phoenix",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = formatter.formatToParts(date).reduce<Record<string, string>>((acc, part) => {
-    if (part.type === "year" || part.type === "month" || part.type === "day") acc[part.type] = part.value;
-    return acc;
-  }, {});
-  return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
 function getMailboxUserId(userId?: string): string {
