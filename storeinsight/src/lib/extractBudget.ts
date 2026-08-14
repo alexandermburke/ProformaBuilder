@@ -576,58 +576,63 @@ const applyTokensAndLogs = (
 
 // --- QuickBooks "Budget vs. Actuals" support ---------------------------------
 // QuickBooks exports a different layout than the legacy Yardi budget comparison:
-// one Actual/Budget/<variance>/<percent> column GROUP per period plus a final
-// "Total" (YTD) group, with the period labels ("May 2026", ..., "Total") in the
-// row directly above, aligned over each group's "Actual" column. QuickBooks has
-// shipped several header wordings for the 3rd/4th columns and they are NOT
-// interchangeable:
-//   - "over Budget" / "% of Budget" (or "Over budget by" / "Percent of budget"):
-//     the variance column is Actual - Budget and is ingested directly.
-//   - "Variance" / "% Variance" or "Variance %" (July 2026+ exports): the
-//     variance column's sign convention varies BY FILE (L001's export stored
-//     Budget - Actual; W002's mixed conventions per row), so it is never
-//     ingested — VAR/YTDVAR are recomputed from Actual - Budget downstream.
-// The percent column is ignored in every flavor (it is actual/budget or an
-// inconsistent variance %); VARPER/YTDVARPER are computed from variance/budget,
-// matching the template's "% Var" columns and the legacy Yardi behavior.
+// one column GROUP per period plus a final "Total" (YTD) group, with the period
+// labels ("May 2026", ..., "Total") in the row directly above, aligned over each
+// group's "Actual" column. Every group starts with an adjacent "Actual","Budget"
+// column pair — that pair is the ONLY thing detection relies on, because the
+// comparison columns that follow have shipped under many wordings ("Over budget
+// by" / "Percent of budget", "over Budget" / "% of Budget", "Variance" /
+// "% Variance", "Variance" / "Variance %", "Money remaining" / "Percent
+// remaining") and can even be MIXED within one header row (P006's July 2026
+// export). Their sign conventions are just as inconsistent (Actual - Budget,
+// Budget - Actual, or different per row), so:
+//   - the variance column is ingested ONLY under the trustworthy "over budget"
+//     wording (always Actual - Budget); under any other wording VAR/YTDVAR are
+//     left unmapped and recomputed from Actual - Budget downstream.
+//   - the percent column is ignored in every flavor; VARPER/YTDVARPER are
+//     computed from variance/budget, matching the template's "% Var" columns
+//     and the legacy Yardi behavior.
 // Internal token bases stay identical to the Yardi parser so buildOwnerPptx's
 // existing alias map (LATFEE<-LATEFEE, MGMTSTF<-MGMSTF, SUP<-SUPP, RETA<-RETPROD,
 // TOTOTHEXP<-TOTOTHEREXP, ...) keeps mapping them onto the template tokens.
 const isQbActual = (cell: CellValue): boolean => normalizeHeaderText(cell) === "actual";
 const isQbBudget = (cell: CellValue): boolean => normalizeHeaderText(cell) === "budget";
 const isQbOverBudget = (cell: CellValue): boolean => normalizeHeaderText(cell).includes("over budget");
-const isQbVarianceColumn = (cell: CellValue): boolean => {
-  const normalized = normalizeHeaderText(cell);
-  return normalized.includes("over budget") || normalized === "variance";
-};
-const isQbPercentColumn = (cell: CellValue): boolean => {
-  const normalized = normalizeHeaderText(cell);
-  if (!normalized) return false;
-  if (normalized.includes("of budget")) return true; // "% of Budget", "Percent of budget"
-  const mentionsPercent = normalized.includes("%") || normalized.includes("percent");
-  const mentionsVariance = normalized.includes("var");
-  return mentionsPercent && mentionsVariance; // "% Variance", "Variance %", "% Var", ...
+
+// The row-label column is NOT always adjacent to the first group (leading
+// spacer columns vary), so pick the column left of the first group that holds
+// the most text below the header row — that is where the account labels live.
+const findLabelColumn = (grid: Grid, headerRowIndex: number, firstGroupStart: number): number => {
+  let best = Math.max(0, firstGroupStart - 1);
+  let bestCount = 0;
+  for (let c = 0; c < firstGroupStart; c += 1) {
+    let count = 0;
+    for (let r = headerRowIndex + 1; r < grid.length; r += 1) {
+      const cell = grid[r]?.[c];
+      if (typeof cell !== "string") continue;
+      const trimmed = cell.trim();
+      if (trimmed.length === 0) continue;
+      if (/^[\d\s.,$%()-]+$/.test(trimmed)) continue; // numeric-as-string value cells
+      count += 1;
+    }
+    if (count > bestCount) {
+      best = c;
+      bestCount = count;
+    }
+  }
+  return best;
 };
 
 // Exports can be a single month ([Month][Total]) or many months
 // ([Jan][Feb]...[Jul][Total]); in both cases the CURRENT month (the last month
 // group, immediately before Total) maps to MTD and the "Total" group to YTD.
-// When the 3rd column is a "Variance"-style header, VAR/YTDVAR are left unmapped
-// so computeDerivedValues fills them from Actual - Budget (see comment above).
 const findQbFamilyHeader = (grid: Grid): HeaderMatch | null => {
   for (let r = 0; r < grid.length; r += 1) {
     const row = grid[r] ?? [];
     const groupStarts: number[] = [];
-    for (let c = 0; c + 3 < row.length; ) {
-      if (
-        isQbActual(row[c]) &&
-        isQbBudget(row[c + 1]) &&
-        isQbVarianceColumn(row[c + 2]) &&
-        isQbPercentColumn(row[c + 3])
-      ) {
+    for (let c = 0; c + 1 < row.length; c += 1) {
+      if (isQbActual(row[c]) && isQbBudget(row[c + 1])) {
         groupStarts.push(c);
-        c += 4;
-      } else {
         c += 1;
       }
     }
@@ -651,22 +656,31 @@ const findQbFamilyHeader = (grid: Grid): HeaderMatch | null => {
       ytdStart = mtdStart;
     }
 
-    const trustVarianceColumn = isQbOverBudget(row[mtdStart + 2]);
+    // A group ends where the next one starts (or at the end of the row).
+    const groupEnd = (start: number): number => {
+      const next = groupStarts.find((s) => s > start);
+      return next !== undefined ? next : row.length;
+    };
+
     const columnBySuffix = new Map<BudgetSuffix, number>([
       ["CM", mtdStart],
       ["PTD", mtdStart + 1],
       ["YTD", ytdStart],
       ["YTDBUD", ytdStart + 1],
     ]);
-    if (trustVarianceColumn) {
+    // Ingest the variance column only under the trustworthy "over budget"
+    // wording (see the sign-convention comment above).
+    if (mtdStart + 2 < groupEnd(mtdStart) && isQbOverBudget(row[mtdStart + 2])) {
       columnBySuffix.set("VAR", mtdStart + 2);
+    }
+    if (ytdStart + 2 < groupEnd(ytdStart) && isQbOverBudget(row[ytdStart + 2])) {
       columnBySuffix.set("YTDVAR", ytdStart + 2);
     }
     const columnMap = new Map<number, BudgetSuffix>();
     for (const [suffix, columnIndex] of columnBySuffix) columnMap.set(columnIndex, suffix);
     return {
       rowIndex: r,
-      labelColumn: Math.max(0, groupStarts[0] - 1),
+      labelColumn: findLabelColumn(grid, r, groupStarts[0]),
       columnMap,
       columnBySuffix,
     };

@@ -147,6 +147,73 @@ test("fast - L001 desktop labels with old over Budget headers still ingest varia
   assert.equal(result.tokens.RENTINCYTDVAR, 100);
 });
 
+test("fast - mixed wordings in one header row (P006 style) parse with labels in column 0", async () => {
+  // P006's July 2026 export: Jan-Jun groups say "Money remaining"/"Percent
+  // remaining" while the Jul and Total groups say "Variance"/"Variance %".
+  // Detection must anchor on the Actual/Budget pairs (not the comparison-column
+  // wording) and must find the labels in column 0, not next to the first
+  // recognized group. Values are numeric strings, as QBO exports them.
+  const money = (actual: number, budget: number): Cell[] => [
+    String(actual),
+    String(budget),
+    String(budget - actual), // "Money remaining" = Budget - Actual in this file
+    "0.5",
+  ];
+  const variance = (actual: number, budget: number): Cell[] => [
+    String(actual),
+    String(budget),
+    String(actual - budget), // "Variance" = Actual - Budget in this file
+    "0.5",
+  ];
+  const dataRow = (name: string, jun: Cell[], jul: Cell[], total: Cell[]): Cell[] => [
+    name,
+    ...jun,
+    ...jul,
+    ...total,
+  ];
+  const buffer = buildWorkbook([
+    ["P999 - Synthetic Property"],
+    ["Budget vs. Actuals"],
+    ["January-July, 2026"],
+    [],
+    [null, "Jun 2026", null, null, null, "Jul 2026", null, null, null, "Total"],
+    [
+      null,
+      "Actual",
+      "Budget",
+      "Money remaining",
+      "Percent remaining",
+      "Actual",
+      "Budget",
+      "Variance",
+      "Variance %",
+      "Actual",
+      "Budget",
+      "Variance",
+      "Variance %",
+    ],
+    ["Income"],
+    dataRow("4100 Tenant Rental Income", money(95, 90), variance(100, 90), variance(1000, 900)),
+    dataRow("4150 Discounts", money(-25, -35), variance(-20, -30), variance(-200, -300)),
+    dataRow("Total for Income", money(70, 55), variance(80, 60), variance(800, 600)),
+    ["Expenses"],
+    dataRow("6800 Repairs & Maintenance", money(45, 55), variance(40, 50), variance(400, 500)),
+    dataRow("Total for Expenses", money(45, 55), variance(40, 50), variance(400, 500)),
+    dataRow("Total for Other Expenses", money(5, 5), variance(5, 5), variance(50, 50)),
+    dataRow("Net Income", money(20, -5), variance(35, 5), variance(350, 50)),
+  ]);
+  const result = await extractBudgetTableFields(buffer);
+  assert.ok(result.count > 0, "mixed-wording exports must never yield zero tokens");
+  // CM comes from the LAST month group (Jul), not the Total group or June.
+  assert.equal(result.tokens.RENTINCCM, 100);
+  assert.equal(result.tokens.RENTINCPTD, 90);
+  assert.equal(result.tokens.RENTINCVAR, 10); // computed Actual - Budget
+  assert.equal(result.tokens.RENTINCYTD, 1000);
+  assert.equal(result.tokens.RENTINCYTDVAR, 100);
+  assert.equal(result.tokens.DISCVAR, 10); // -20 - (-30), computed
+  assert.equal(result.tokens.TOTALINCCM, 80);
+});
+
 test("fast - legacy Yardi header layout still parses", async () => {
   const buffer = buildWorkbook([
     ["Owner = Synthetic Partners LLC"],
