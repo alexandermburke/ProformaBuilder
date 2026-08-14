@@ -66,9 +66,6 @@ type MoveActivityTokens = {
   MOVEINSTRL12: number;
   MOVEOUTSTRL12: number;
   NETTRL12: number;
-  MOVIPER: string;
-  MOVOPER: string;
-  MOVN: string;
 };
 
 type OwnerSummaryTokens = Record<
@@ -89,6 +86,12 @@ type OwnerSummaryTokens = Record<
   string
 >;
 
+// Slide 5 now carries two side-by-side ECRI tables: the base tokens cover the
+// first table (rent changes effective current month + 1) and the "2"-suffixed
+// tokens cover the second (effective current month + 2), each fed by its own
+// Tenant "Review Rent Changes" export. ECRIMONTH/ECRIMONTH2 name the escalation
+// base month shown in the table header ("<month> In-place Rent Escalations,
+// 4-6 months since last increase"): the effective month minus 5.
 type RateManagementTokens = Record<
   | "NUMREN"
   | "TOTSFT"
@@ -97,7 +100,17 @@ type RateManagementTokens = Record<
   | "TOTINCESC"
   | "REVWINC"
   | "NEWRENRT"
-  | "AVGPERINC",
+  | "AVGPERINC"
+  | "ECRIMONTH"
+  | "NUMREN2"
+  | "TOTSFT2"
+  | "BASREVPR2"
+  | "BASERENPR2"
+  | "TOTINCESC2"
+  | "REVWINC2"
+  | "NEWRENRT2"
+  | "AVGPERINC2"
+  | "ECRIMONTH2",
   string
 >;
 
@@ -106,7 +119,7 @@ export type OwnerPerformanceTokenValues = MoveActivityTokens &
   RateManagementTokens;
 
 export type OwnerPerformancePreviewRow = {
-  section: "Move Activity" | "Owner Summary" | "Rate Management";
+  section: "Move Activity" | "Owner Summary" | "Rate Management" | "Rate Management (Month 2)";
   token: keyof OwnerPerformanceTokenValues;
   label: string;
   value: string;
@@ -134,6 +147,9 @@ export type OwnerPerformanceResult =
         iprcRows: number;
         rateTargetMonthKey: string;
         iprcRowsMatched: number;
+        iprcRows2: number;
+        rateTargetMonthKey2: string;
+        iprcRowsMatched2: number;
       };
     }
   | {
@@ -167,6 +183,9 @@ const monthFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
+// Table headers show the bare month name ("February In-place Rent Escalations").
+const escalationMonthFormatter = new Intl.DateTimeFormat("en-US", { month: "long" });
+
 const integerFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
@@ -186,10 +205,12 @@ const percentFormatter = new Intl.NumberFormat("en-US", {
 export function computeOwnerPerformance({
   hummingbirdWorkbook,
   rentChangeWorkbook,
+  rentChangeWorkbook2,
   options,
 }: {
   hummingbirdWorkbook: WorkbookInput;
   rentChangeWorkbook?: WorkbookInput;
+  rentChangeWorkbook2?: WorkbookInput;
   options?: OwnerPerformanceOptions;
 }): OwnerPerformanceResult {
   let workbook: XLSX.WorkBook;
@@ -310,9 +331,12 @@ export function computeOwnerPerformance({
 
   const currentKey = monthKey(currentMonthStart);
   const previousKey = monthKey(previousMonthStart);
-  // Rate Management aligns to NEXTMONTH (current month + 1).
+  // Rate Management table 1 aligns to NEXTMONTH (current month + 1); table 2 to
+  // NEXTMONTH2 (current month + 2).
   const nextMonthStart = addMonths(currentMonthStart, 1);
   const rateTargetMonthKey = monthKey(startOfMonth(nextMonthStart));
+  const nextMonth2Start = addMonths(currentMonthStart, 2);
+  const rateTargetMonthKey2 = monthKey(startOfMonth(nextMonth2Start));
   const currentStats = monthStats.get(currentKey) ?? createEmptyMonthStats();
   const previousStats = monthStats.get(previousKey) ?? createEmptyMonthStats();
 
@@ -336,14 +360,6 @@ export function computeOwnerPerformance({
     MOVEINSTRL12: sumWindow(monthRecords, trailing12Start, trailingInclusiveEnd, "moveIns"),
     MOVEOUTSTRL12: sumWindow(monthRecords, trailing12Start, trailingInclusiveEnd, "moveOuts"),
     NETTRL12: sumWindow(monthRecords, trailing12Start, trailingInclusiveEnd, "net"),
-    MOVIPER: formatPercent(pctChange(currentStats.moveIns, previousStats.moveIns)),
-    MOVOPER: formatPercent(pctChange(currentStats.moveOuts, previousStats.moveOuts)),
-    MOVN: formatPercent(
-      pctChange(
-        currentStats.moveIns - currentStats.moveOuts,
-        previousStats.moveIns - previousStats.moveOuts,
-      ),
-    ),
   };
 
   const ownerSummaryTokens: OwnerSummaryTokens = {
@@ -367,31 +383,33 @@ export function computeOwnerPerformance({
     PROMOLM: formatPercent(ratio(previousStats.moveInsPromoCount, previousStats.moveIns)),
   };
 
-  // Do not make slide-4 move activity depend on the rent-change workbook.
+  // Do not make slide-4 move activity depend on the rent-change workbooks.
   // The Hummingbird workbook must always populate move-ins / move-outs / trailing
   // windows even if rate-management data is missing or malformed.
-  let iprcRows = 0;
-  let iprcRowsMatched = 0;
-  let rateTokens: RateManagementTokens = createEmptyRateManagementTokens();
-
-  if (rentChangeWorkbook) {
-    const rentParse = parseRentChangeWorkbook(rentChangeWorkbook);
-    if (rentParse.ok) {
-      iprcRows = rentParse.rows.length;
-      const rateStats = aggregateRentChanges(rentParse.rows, rateTargetMonthKey);
-      iprcRowsMatched = rateStats.count;
-      rateTokens = {
-        NUMREN: formatInteger(rateStats.count),
-        TOTSFT: formatInteger(rateStats.totalSqft),
-        BASREVPR: formatCurrencyValue(rateStats.baseRevenue),
-        BASERENPR: formatCurrencyPerSqft(rateStats.baseRevenue, rateStats.totalSqft),
-        TOTINCESC: formatCurrencyValue(rateStats.totalIncrease),
-        REVWINC: formatCurrencyValue(rateStats.newRevenue),
-        NEWRENRT: formatCurrencyPerSqft(rateStats.newRevenue, rateStats.totalSqft),
-        AVGPERINC: formatPercent(average(rateStats.percentIncreases)),
-      };
-    }
-  }
+  const table1 = computeRateTable(rentChangeWorkbook, rateTargetMonthKey);
+  const table2 = computeRateTable(rentChangeWorkbook2, rateTargetMonthKey2);
+  const rateTokens: RateManagementTokens = {
+    NUMREN: table1.values.count,
+    TOTSFT: table1.values.totalSqft,
+    BASREVPR: table1.values.baseRevenue,
+    BASERENPR: table1.values.baseRate,
+    TOTINCESC: table1.values.totalIncrease,
+    REVWINC: table1.values.newRevenue,
+    NEWRENRT: table1.values.newRate,
+    AVGPERINC: table1.values.avgPercent,
+    // Header month: the escalation base ("4-6 months since last increase"),
+    // rendered as the effective month minus 5 (e.g. July ECRI -> February).
+    ECRIMONTH: escalationBaseLabel(nextMonthStart),
+    NUMREN2: table2.values.count,
+    TOTSFT2: table2.values.totalSqft,
+    BASREVPR2: table2.values.baseRevenue,
+    BASERENPR2: table2.values.baseRate,
+    TOTINCESC2: table2.values.totalIncrease,
+    REVWINC2: table2.values.newRevenue,
+    NEWRENRT2: table2.values.newRate,
+    AVGPERINC2: table2.values.avgPercent,
+    ECRIMONTH2: escalationBaseLabel(nextMonth2Start),
+  };
 
   const tokens: OwnerPerformanceTokenValues = {
     ...moveActivityTokens,
@@ -410,11 +428,73 @@ export function computeOwnerPerformance({
         previousMonthKey: previousKey,
         latestMoveDateISO: dateKey(latestMoveDate),
         hummingbirdRows: hummingbirdRowCount,
-        iprcRows,
+        iprcRows: table1.rowCount,
         rateTargetMonthKey,
-        iprcRowsMatched,
+        iprcRowsMatched: table1.matchedCount,
+        iprcRows2: table2.rowCount,
+        rateTargetMonthKey2,
+        iprcRowsMatched2: table2.matchedCount,
       },
     };
+}
+
+type RateTableResult = {
+  rowCount: number;
+  matchedCount: number;
+  values: {
+    count: string;
+    totalSqft: string;
+    baseRevenue: string;
+    baseRate: string;
+    totalIncrease: string;
+    newRevenue: string;
+    newRate: string;
+    avgPercent: string;
+  };
+};
+
+function computeRateTable(
+  workbook: WorkbookInput | undefined,
+  targetMonthKey: string,
+): RateTableResult {
+  const empty: RateTableResult = {
+    rowCount: 0,
+    matchedCount: 0,
+    values: {
+      count: DASH,
+      totalSqft: DASH,
+      baseRevenue: DASH,
+      baseRate: DASH,
+      totalIncrease: DASH,
+      newRevenue: DASH,
+      newRate: DASH,
+      avgPercent: DASH,
+    },
+  };
+  if (!workbook) return empty;
+  const rentParse = parseRentChangeWorkbook(workbook);
+  if (!rentParse.ok) return empty;
+  const rateStats = aggregateRentChanges(rentParse.rows, targetMonthKey);
+  return {
+    rowCount: rentParse.rows.length,
+    matchedCount: rateStats.count,
+    values: {
+      count: formatInteger(rateStats.count),
+      totalSqft: formatInteger(rateStats.totalSqft),
+      baseRevenue: formatCurrencyValue(rateStats.baseRevenue),
+      baseRate: formatCurrencyPerSqft(rateStats.baseRevenue, rateStats.totalSqft),
+      totalIncrease: formatCurrencyValue(rateStats.totalIncrease),
+      newRevenue: formatCurrencyValue(rateStats.newRevenue),
+      newRate: formatCurrencyPerSqft(rateStats.newRevenue, rateStats.totalSqft),
+      avgPercent: formatPercent(average(rateStats.percentIncreases)),
+    },
+  };
+}
+
+// "August 2026 ECRI" tables are headed by the escalation base month, i.e. the
+// effective month minus 5 (middle of the "4-6 months since last increase" window).
+function escalationBaseLabel(effectiveMonthStart: Date): string {
+  return escalationMonthFormatter.format(addMonths(effectiveMonthStart, -5));
 }
 
 function toArrayBuffer(input: WorkbookInput): ArrayBuffer {
@@ -550,12 +630,6 @@ function sumWindow(records: MonthRecord[], start: Date, inclusiveEnd: Date, fiel
   }, 0);
 }
 
-function pctChange(curr: number, prev: number): number | null {
-  if (!Number.isFinite(prev) || prev === 0) return null;
-  if (!Number.isFinite(curr)) return null;
-  return (curr - prev) / prev;
-}
-
 function formatPercent(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return DASH;
   return `${percentFormatter.format(value * 100)}%`;
@@ -585,19 +659,6 @@ function formatAverageDays(sum: number, count: number): string {
   return integerFormatter.format(Math.round(avg));
 }
 
-function createEmptyRateManagementTokens(): RateManagementTokens {
-  return {
-    NUMREN: DASH,
-    TOTSFT: DASH,
-    BASREVPR: DASH,
-    BASERENPR: DASH,
-    TOTINCESC: DASH,
-    REVWINC: DASH,
-    NEWRENRT: DASH,
-    AVGPERINC: DASH,
-  };
-}
-
 function ratio(numerator: number, denominator: number): number | null {
   if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
     return null;
@@ -619,9 +680,11 @@ function normalizeHeaderCell(cell: string): string {
 
 // Parses the Tenant "Review Rent Changes" export (.xlsx). Replaces the legacy
 // Veritec IPRC CSV: same Rate Management stats, but sourced from Tenant because
-// Veritec's exports proved unreliable. Only rows with Rent Change Status
-// "Approved" are kept (Cancelled / Skipped are typically the Veritec-typed
-// duplicates and must never inflate the totals). The row count is variable.
+// Veritec's exports proved unreliable. Rows with Rent Change Status "Approved"
+// (scheduled) or "Deployed" (letter sent / change live) are kept — the nearer
+// month's export has usually progressed from Approved to Deployed by the time
+// the report is built. Cancelled / Skipped are typically the Veritec-typed
+// duplicates and must never inflate the totals. The row count is variable.
 function parseRentChangeWorkbook(input: WorkbookInput):
   | { ok: true; rows: RentChangeRow[] }
   | { ok: false; code: OwnerPerformanceErrorCode; message: string } {
@@ -679,10 +742,11 @@ function parseRentChangeWorkbook(input: WorkbookInput):
   for (let i = 1; i < grid.length; i += 1) {
     const row = grid[i] as unknown[];
     if (!row || row.length === 0) continue;
-    // Only "Approved" changes actually take effect. Cancelled / Skipped / blank
-    // are excluded so the unreliable duplicates never reach the totals.
+    // Only "Approved" (scheduled) and "Deployed" (live) changes take effect.
+    // Cancelled / Skipped / blank are excluded so the unreliable duplicates
+    // never reach the totals.
     const status = String(row[statusIdx] ?? "").trim().toLowerCase();
-    if (status !== "approved") continue;
+    if (status !== "approved" && status !== "deployed") continue;
 
     const oldRent = toNumber(row[oldRentIdx]);
     const newRent = toNumber(row[newRentIdx]);
@@ -758,9 +822,6 @@ const PREVIEW_FIELDS: Array<{
   { section: "Move Activity", token: "MOVEINSTRL12", label: "Move-Ins (Trailing 12)", kind: "integer" },
   { section: "Move Activity", token: "MOVEOUTSTRL12", label: "Move-Outs (Trailing 12)", kind: "integer" },
   { section: "Move Activity", token: "NETTRL12", label: "Net Move (Trailing 12)", kind: "integer" },
-  { section: "Move Activity", token: "MOVIPER", label: "Move-Ins vs Prior Month", kind: "string" },
-  { section: "Move Activity", token: "MOVOPER", label: "Move-Outs vs Prior Month", kind: "string" },
-  { section: "Move Activity", token: "MOVN", label: "Net vs Prior Month", kind: "string" },
   { section: "Owner Summary", token: "MTDMI", label: "MTD Move-Ins", kind: "string" },
   { section: "Owner Summary", token: "MTDMILM", label: "MTD Move-Ins (Last Month)", kind: "string" },
   { section: "Owner Summary", token: "DSFTMI", label: "$/SqFt Move-Ins", kind: "string" },
@@ -775,6 +836,7 @@ const PREVIEW_FIELDS: Array<{
   { section: "Owner Summary", token: "PERLORLM", label: "% LOR > 6 Months (LM)", kind: "string" },
   { section: "Owner Summary", token: "PROMO", label: "% Move-Ins with Promo", kind: "string" },
   { section: "Owner Summary", token: "PROMOLM", label: "% Move-Ins with Promo (LM)", kind: "string" },
+  { section: "Rate Management", token: "ECRIMONTH", label: "Escalation Base Month", kind: "string" },
   { section: "Rate Management", token: "NUMREN", label: "Rent Increase Letters", kind: "string" },
   { section: "Rate Management", token: "TOTSFT", label: "Total Square Feet", kind: "string" },
   { section: "Rate Management", token: "BASREVPR", label: "Base Revenue (Prior)", kind: "string" },
@@ -783,6 +845,15 @@ const PREVIEW_FIELDS: Array<{
   { section: "Rate Management", token: "REVWINC", label: "Revenue After Escalation", kind: "string" },
   { section: "Rate Management", token: "NEWRENRT", label: "New Rent ($/SqFt)", kind: "string" },
   { section: "Rate Management", token: "AVGPERINC", label: "Avg % Increase", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "ECRIMONTH2", label: "Escalation Base Month", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "NUMREN2", label: "Rent Increase Letters", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "TOTSFT2", label: "Total Square Feet", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "BASREVPR2", label: "Base Revenue (Prior)", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "BASERENPR2", label: "Base Rent ($/SqFt)", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "TOTINCESC2", label: "Total $ Increase", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "REVWINC2", label: "Revenue After Escalation", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "NEWRENRT2", label: "New Rent ($/SqFt)", kind: "string" },
+  { section: "Rate Management (Month 2)", token: "AVGPERINC2", label: "Avg % Increase", kind: "string" },
 ];
 
 function buildOwnerPerformancePreview(tokens: OwnerPerformanceTokenValues): OwnerPerformancePreviewRow[] {

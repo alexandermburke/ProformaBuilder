@@ -315,18 +315,18 @@ const UPLOAD_FIELD_HINTS = {
     "Promo counts/percent and length-of-stay averages",
   ],
   iprcChangeHistory: [
-    "Approved rent changes effective in the report month",
+    "Approved rent changes effective in the target month",
     "Total square feet repriced",
     "Base revenue vs new revenue and total increase",
     "Average percent increase for repriced units",
   ],
   availableSpaces: [
-    "Web rates for 5x5, 10x5, 10x10, 10x15, 10x20, 15x5, 20x15 (ground/elevator when available)",
+    "Web rates for 5x5, 10x5, 10x10, 10x15, 10x20, 20x15 (all units)",
   ],
   ppcPerformance: [
     "Impressions and clicks",
-    "Conversions",
-    "Cost per conversion (averaged from uploaded sheets)",
+    "CTR (clicks / impressions)",
+    "Cost per click (averaged from uploaded sheets)",
   ],
   managementSummary: [
     "MTD/Daily rentals, vacates, net rentals",
@@ -525,7 +525,12 @@ export default function OwnerReportsPage() {
   // toggle routes parsing to the separate L001 parser, leaving the standard one untouched.
   const [l001Format, setL001Format] = useState(false);
   const [hummingbirdFile, setHummingbirdFile] = useState<File | null>(null);
+  // Slide 5 has two ECRI tables: iprcFile feeds the first (effective next month),
+  // iprcFile2 the second (effective the month after).
   const [iprcFile, setIprcFile] = useState<File | null>(null);
+  const [iprcFile2, setIprcFile2] = useState<File | null>(null);
+  // Manual token values with no data source yet (MOVEOUT90/MOVEOUT902).
+  const [performanceOverrides, setPerformanceOverrides] = useState<Record<string, string>>({});
   const [availableSpacesFile, setAvailableSpacesFile] = useState<File | null>(null);
   const [ppcFile, setPpcFile] = useState<File | null>(null);
   const [repairsFile, setRepairsFile] = useState<File | null>(null);
@@ -599,7 +604,7 @@ export default function OwnerReportsPage() {
   }, [startTransition]);
 
   const runPerformanceExtract = useCallback(
-    async (hb: File | null, iprc: File | null) => {
+    async (hb: File | null, iprc: File | null, iprc2: File | null) => {
       performanceRequestRef.current += 1;
       const requestId = performanceRequestRef.current;
       if (!hb) {
@@ -607,7 +612,7 @@ export default function OwnerReportsPage() {
           resetPerformanceUpload();
           setPerformanceLoading(false);
           startTransition(() => {
-            if (!hb && !iprc) {
+            if (!hb && !iprc && !iprc2) {
               setPerformanceStatus(null);
             } else {
               setPerformanceStatus({
@@ -623,14 +628,16 @@ export default function OwnerReportsPage() {
       setPerformanceLoading(true);
       setPerformanceStatus(null);
       try {
-        const [hbBuffer, rentChangeBuffer] = await Promise.all([
+        const [hbBuffer, rentChangeBuffer, rentChangeBuffer2] = await Promise.all([
           hb.arrayBuffer(),
           iprc ? iprc.arrayBuffer() : Promise.resolve(undefined),
+          iprc2 ? iprc2.arrayBuffer() : Promise.resolve(undefined),
         ]);
         if (performanceRequestRef.current !== requestId) return;
         const result = computeOwnerPerformance({
           hummingbirdWorkbook: hbBuffer,
           rentChangeWorkbook: rentChangeBuffer,
+          rentChangeWorkbook2: rentChangeBuffer2,
           options: {
             currentMonthOverride: currentMonthOverride.trim() || undefined,
             includeCurrentMonthInTrailing: includeCurrentMonth,
@@ -641,11 +648,16 @@ export default function OwnerReportsPage() {
             setPerformanceTokens(result.tokens);
             setPerformancePreview(result.preview);
             setPerformanceStatus(
-              iprc
+              iprc && iprc2
                 ? null
                 : {
                     variant: "warning",
-                    text: "Tenant rent changes workbook not uploaded. Move activity is populated from the workbook, but rate management fields will remain blank.",
+                    text:
+                      !iprc && !iprc2
+                        ? "Tenant rent changes workbooks not uploaded. Move activity is populated from the workbook, but both rate management tables will remain blank."
+                        : !iprc2
+                          ? "Second rent changes workbook not uploaded; the second ECRI table will remain blank."
+                          : "First rent changes workbook not uploaded; the first ECRI table will remain blank.",
                   },
             );
           });
@@ -987,14 +999,14 @@ export default function OwnerReportsPage() {
   );
 
   useEffect(() => {
-    if (!hummingbirdFile && !iprcFile) {
+    if (!hummingbirdFile && !iprcFile && !iprcFile2) {
       resetPerformanceUpload();
       setPerformanceStatus(null);
       setPerformanceLoading(false);
       return;
     }
-    void runPerformanceExtract(hummingbirdFile, iprcFile);
-  }, [hummingbirdFile, iprcFile, resetPerformanceUpload, runPerformanceExtract]);
+    void runPerformanceExtract(hummingbirdFile, iprcFile, iprcFile2);
+  }, [hummingbirdFile, iprcFile, iprcFile2, resetPerformanceUpload, runPerformanceExtract]);
 
 
   const handleHummingbirdFileChange = useCallback(
@@ -1046,6 +1058,32 @@ export default function OwnerReportsPage() {
         return;
       }
       setIprcFile(next);
+    },
+    [resetPerformanceUpload],
+  );
+
+  const handleIprcFile2Change = useCallback(
+    (next: File | null) => {
+      if (!next) {
+        setIprcFile2(null);
+        return;
+      }
+      const name = next.name?.toLowerCase() ?? "";
+      const mime = next.type?.toLowerCase() ?? "";
+      const isXlsx =
+        name.endsWith(".xlsx") ||
+        mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      if (!isXlsx) {
+        setIprcFile2(null);
+        resetPerformanceUpload();
+        setPerformanceStatus({
+          variant: "error",
+          text: "Upload the Tenant rent changes export (.xlsx).",
+        });
+        setPerformanceLoading(false);
+        return;
+      }
+      setIprcFile2(next);
     },
     [resetPerformanceUpload],
   );
@@ -1315,6 +1353,9 @@ export default function OwnerReportsPage() {
       if (iprcFile) {
         form.append("iprc", iprcFile);
       }
+      if (iprcFile2) {
+        form.append("iprc2", iprcFile2);
+      }
       if (availableSpacesFile) {
         form.append("availableSpacesFile", availableSpacesFile);
       }
@@ -1353,6 +1394,13 @@ export default function OwnerReportsPage() {
       if (performanceTokens) {
         form.append("inventoryTokens", JSON.stringify(performanceTokens));
       }
+      const trimmedPerformanceOverrides: Record<string, string> = {};
+      for (const [token, value] of Object.entries(performanceOverrides)) {
+        if (value.trim().length > 0) trimmedPerformanceOverrides[token] = value.trim();
+      }
+      if (Object.keys(trimmedPerformanceOverrides).length > 0) {
+        form.append("performanceOverrides", JSON.stringify(trimmedPerformanceOverrides));
+      }
       form.append("auditDelinquency", delinquencyAudit ? "true" : "false");
       form.append("sendEmail", sendOwnerEmail ? "true" : "false");
       if (selectedPropertyId) {
@@ -1387,6 +1435,11 @@ export default function OwnerReportsPage() {
           } else {
             performanceLogValues[token] = normalizeLogValue(String(rawValue ?? ""));
           }
+        }
+      }
+      for (const [token, value] of Object.entries(performanceOverrides)) {
+        if (value.trim().length > 0) {
+          performanceLogValues[token] = normalizeLogValue(value.trim());
         }
       }
       const budgetLogValues: Record<string, string> = {};
@@ -1595,6 +1648,15 @@ export default function OwnerReportsPage() {
     setBudgetLoading(false);
     setBudgetPage(0);
     setBudgetDebugLog([]);
+    setHummingbirdFile(null);
+    setIprcFile(null);
+    setIprcFile2(null);
+    setPerformanceOverrides({});
+    setAvailableSpacesFile(null);
+    setRepairsFile(null);
+    setPpcFile(null);
+    resetPerformanceUpload();
+    setPerformanceLoading(false);
     setSendOwnerEmail(false);
     resetReportLog();
     setLogFilter("");
@@ -1902,11 +1964,11 @@ export default function OwnerReportsPage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Tenant Rent Changes (.xlsx)</p>
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Tenant Rent Changes - Month 1 (.xlsx)</p>
                             <UploadFieldHint title="Rate management fields" fields={UPLOAD_FIELD_HINTS.iprcChangeHistory} />
                           </div>
                           <p className="text-xs text-[color:var(--text-secondary)]">
-                            Upload the Tenant &ldquo;Review Rent Changes&rdquo; export (.xlsx) to populate Rate Management (letters, sqft, revenue, avg % increase). Only Approved changes effective in the report month are counted.
+                            Upload the Tenant &ldquo;Review Rent Changes&rdquo; export (.xlsx) for changes effective next month. Feeds the first ECRI table (letters, sqft, revenue, avg % increase). Only Approved changes effective that month are counted.
                           </p>
                         </div>
                         {iprcFile && (
@@ -1934,6 +1996,46 @@ export default function OwnerReportsPage() {
                       {iprcFile && (
                         <p className="text-xs text-[color:var(--text-secondary)]">
                           Selected: <span className="font-medium text-[color:var(--text-primary)]">{iprcFile.name}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="owner-input-tile space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Tenant Rent Changes - Month 2 (.xlsx)</p>
+                            <UploadFieldHint title="Rate management fields" fields={UPLOAD_FIELD_HINTS.iprcChangeHistory} />
+                          </div>
+                          <p className="text-xs text-[color:var(--text-secondary)]">
+                            Upload the Tenant &ldquo;Review Rent Changes&rdquo; export (.xlsx) for changes effective two months out. Feeds the second ECRI table on the Rate Management slide.
+                          </p>
+                        </div>
+                        {iprcFile2 && (
+                          <button
+                            type="button"
+                            className="ml-auto whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-[#1D4ED8] hover:underline"
+                            onClick={() => {
+                              handleIprcFile2Change(null);
+                            }}
+                          >
+                            Remove file
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        className="text-sm text-[color:var(--text-primary)]"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          handleIprcFile2Change(nextFile);
+                          event.target.value = "";
+                        }}
+                      />
+                      {iprcFile2 && (
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Selected: <span className="font-medium text-[color:var(--text-primary)]">{iprcFile2.name}</span>
                         </p>
                       )}
                     </div>
@@ -2434,7 +2536,7 @@ export default function OwnerReportsPage() {
                             Auto-filled from the Hummingbird Move-In/Move-Out Activity + Tenant Rent Changes uploads
                           </p>
                         </div>
-                        {(hummingbirdFile || iprcFile) && (
+                        {(hummingbirdFile || iprcFile || iprcFile2) && (
                           <div className="text-[11px] text-[color:var(--text-muted)]">
                             {hummingbirdFile && (
                               <p className="truncate">
@@ -2443,7 +2545,12 @@ export default function OwnerReportsPage() {
                             )}
                             {iprcFile && (
                               <p className="truncate">
-                                Rent Changes: {iprcFile.name}
+                                Rent Changes 1: {iprcFile.name}
+                              </p>
+                            )}
+                            {iprcFile2 && (
+                              <p className="truncate">
+                                Rent Changes 2: {iprcFile2.name}
                               </p>
                             )}
                           </div>
@@ -2451,6 +2558,43 @@ export default function OwnerReportsPage() {
                       </div>
                       <div className="px-4 pb-4">
                         <InventoryPreviewTable rows={performancePreview} />
+                      </div>
+                      <div className="border-t border-[color:var(--border-soft)]/70 px-4 py-3">
+                        <p className="text-sm font-semibold text-[color:var(--accent-strong)]">Manual ECRI fields</p>
+                        <p className="text-xs text-[color:var(--text-secondary)]">
+                          Move outs in 90 days has no data source yet; enter the counts for each ECRI table. Left blank, the report shows a dash.
+                        </p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {([
+                            ["MOVEOUT90", "Move outs in 90 days (Month 1)"],
+                            ["MOVEOUT902", "Move outs in 90 days (Month 2)"],
+                          ] as const).map(([token, label]) => (
+                            <label key={token} className="flex flex-col gap-1">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--text-secondary)]">
+                                {label}
+                              </span>
+                              <input
+                                className="owner-field-input w-full rounded-lg border border-[color:var(--border-soft)] bg-white px-3 py-2 text-sm text-[color:var(--text-primary)] focus:border-[#2563EB] focus:outline-none"
+                                type="text"
+                                inputMode="numeric"
+                                value={performanceOverrides[token] ?? ""}
+                                placeholder="Enter a count"
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  setPerformanceOverrides((prev) => {
+                                    const next = { ...prev };
+                                    if (nextValue.trim().length === 0) {
+                                      delete next[token];
+                                    } else {
+                                      next[token] = nextValue;
+                                    }
+                                    return next;
+                                  });
+                                }}
+                              />
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}

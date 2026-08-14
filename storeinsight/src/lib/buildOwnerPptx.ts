@@ -197,29 +197,11 @@ const parseMonthLabel = (value?: TemplateValue): Date | null => {
   return new Date(parsed.getFullYear(), parsed.getMonth(), 1);
 };
 
-const previousMonthLabel = (value?: TemplateValue): string | null => {
+const monthLabelWithOffset = (value: TemplateValue | undefined, offset: number): string | null => {
   const parsed = parseMonthLabel(value);
   if (!parsed) return null;
-  parsed.setMonth(parsed.getMonth() - 1);
+  parsed.setMonth(parsed.getMonth() + offset);
   return monthNameFormatter.format(parsed);
-};
-
-const nextMonthLabel = (value?: TemplateValue): string | null => {
-  const parsed = parseMonthLabel(value);
-  if (!parsed) return null;
-  parsed.setMonth(parsed.getMonth() + 1);
-  return monthNameFormatter.format(parsed);
-};
-
-const directionLabel = (value?: TemplateValue): "increase" | "decrease" => {
-  if (value == null) return "increase";
-  if (typeof value === "number") {
-    return value < 0 ? "decrease" : "increase";
-  }
-  const cleaned = value.replace(/[^\d.-]+/g, "");
-  const numeric = Number(cleaned);
-  if (Number.isFinite(numeric) && numeric < 0) return "decrease";
-  return "increase";
 };
 
 function massageForTemplate(fields: OwnerFields): Record<string, string> {
@@ -365,6 +347,7 @@ type BuildOwnerPptxOptions = {
   availableSpacesTokens?: Record<string, string> | null;
   availableSpacesBuffer?: Buffer | null;
   performanceTokens?: (OwnerPerformanceTokenValues | Record<string, string | number>) | null;
+  propertyName?: string | null;
 };
 
 export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Buffer> {
@@ -379,6 +362,7 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     availableSpacesTokens,
     availableSpacesBuffer,
     performanceTokens,
+    propertyName,
   } = options;
 
   const templateBuffer =
@@ -581,9 +565,30 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
     templateData.SFTOCLM = fmtOwnerPercent(lastMonthOcc);
   }
 
-  const nextMonth = nextMonthLabel(ownerCurrentMonth ?? ownerValues.CURRENTMONTH);
+  // Slide 5 ECRI table headers. NEXTMONTH/NEXTMONTH2 are the months the two
+  // rent-change batches take effect; ECRIMONTH/ECRIMONTH2 are the escalation
+  // base months (effective month minus 5, the middle of the "4-6 months since
+  // last increase" window). The performance tokens normally provide ECRIMONTH*;
+  // these fallbacks cover runs without the Hummingbird/rent-change uploads.
+  const monthSource = ownerCurrentMonth ?? ownerValues.CURRENTMONTH;
+  const nextMonth = monthLabelWithOffset(monthSource, 1);
   if (nextMonth) {
     templateData.NEXTMONTH = nextMonth;
+  }
+  const nextMonth2 = monthLabelWithOffset(monthSource, 2);
+  if (nextMonth2) {
+    templateData.NEXTMONTH2 = nextMonth2;
+  }
+  if (isBlankValue(templateData.ECRIMONTH)) {
+    const ecriMonth = monthLabelWithOffset(monthSource, 1 - 5);
+    if (ecriMonth) templateData.ECRIMONTH = ecriMonth;
+  }
+  if (isBlankValue(templateData.ECRIMONTH2)) {
+    const ecriMonth2 = monthLabelWithOffset(monthSource, 2 - 5);
+    if (ecriMonth2) templateData.ECRIMONTH2 = ecriMonth2;
+  }
+  if (isBlankValue(templateData.PROPERTYNAME) && propertyName && propertyName.trim().length > 0) {
+    templateData.PROPERTYNAME = propertyName.trim();
   }
 
   for (const [displayKey, sourceKey] of Object.entries(MAPPING_ALIASES)) {
@@ -595,30 +600,6 @@ export async function buildOwnerPptx(options: BuildOwnerPptxOptions): Promise<Bu
   templateData.TOTALRENTALINCOME = isBlankValue(templateData.TOTRENINCCM)
     ? ""
     : templateData.TOTRENINCCM;
-
-  const prevMonth = previousMonthLabel(
-    templateData.CURRENTMONTH ?? ownerValues.CURRENTMONTH,
-  );
-  if (prevMonth) {
-    templateData.PREVMON = prevMonth;
-  }
-
-  templateData.INCORDEC1 = directionLabel(templateData.MOVIPER);
-  templateData.INCORDEC2 = directionLabel(templateData.MOVOPER);
-  templateData.INCORDEC3 = directionLabel(templateData.MOVN);
-
-  const unsignedTokens = ["MOVIPER", "MOVOPER", "MOVN"];
-  for (const token of unsignedTokens) {
-    const value = templateData[token];
-    if (typeof value === "number") {
-      templateData[token] = Math.abs(value);
-      continue;
-    }
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      templateData[token] = trimmed.replace(/^-\s*/, "");
-    }
-  }
 
   const aliasMap: Record<string, string> = {
     // Admin Fees: ADMFE* already populated

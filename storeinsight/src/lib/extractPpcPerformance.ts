@@ -10,10 +10,10 @@ import * as XLSX from "xlsx";
 // (regular + Performance Max). Top-line tokens only:
 //   GOOIMPRES = total impressions
 //   GOOCLICKS = total clicks
-//   GOOCONV   = CTR (total clicks / total impressions)
-//   GOOCOSCON = Cost/Click (total cost / total clicks)
-// The Google-rank / keyword-grid tokens (GOOPOS/POSCHG/KEYMAP/KEYPOS) are not in
-// this export and are intentionally left unset.
+//   GOOCTR    = CTR (total clicks / total impressions)
+//   GOOCPC    = Cost/Click (total cost / total clicks)
+// The Google-rank / keyword-grid tokens (GOOPOS/POSCHG/KEYMAP/KEYPOS/GOOKEYWORD)
+// are not in this export and are intentionally left unset.
 
 export type PpcMatchContext = {
   name?: string | null;
@@ -183,7 +183,7 @@ export function extractPpcPerformanceTokens(
   const tokens: Record<string, string | number> = {};
   if (impressions > 0) tokens.GOOIMPRES = fmtInt(impressions);
   if (clicks > 0) tokens.GOOCLICKS = fmtInt(clicks);
-  if (impressions > 0 && clicks > 0) tokens.GOOCONV = fmtPct((clicks / impressions) * 100); // CTR
-  if (clicks > 0 && cost > 0) tokens.GOOCOSCON = fmtCurrency(cost / clicks); // Cost / Click
+  if (impressions > 0 && clicks > 0) tokens.GOOCTR = fmtPct((clicks / impressions) * 100); // CTR
+  if (clicks > 0 && cost > 0) tokens.GOOCPC = fmtCurrency(cost / clicks); // Cost / Click
   return tokens;
 }

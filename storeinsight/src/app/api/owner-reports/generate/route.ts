@@ -189,6 +189,8 @@ export async function POST(req: NextRequest) {
     }
   }
   const iprc = form.get("iprc");
+  const iprc2 = form.get("iprc2");
+  const performanceOverridesRaw = form.get("performanceOverrides");
   const availableSpaces = form.get("availableSpacesFile");
   const repairsFile = form.get("repairsFile");
   const inventoryTokensRaw = form.get("inventoryTokens");
@@ -228,10 +230,15 @@ export async function POST(req: NextRequest) {
   if (inventory instanceof Blob) {
     inventoryBuffer = Buffer.from(await inventory.arrayBuffer());
   }
-  // Tenant "Review Rent Changes" workbook (replaces the legacy Veritec IPRC CSV).
+  // Tenant "Review Rent Changes" workbooks (replaces the legacy Veritec IPRC CSV).
+  // One per ECRI table on slide 5: iprc = effective next month, iprc2 = the month after.
   let rentChangeBuffer: Buffer | undefined;
   if (iprc instanceof Blob) {
     rentChangeBuffer = Buffer.from(await iprc.arrayBuffer());
+  }
+  let rentChangeBuffer2: Buffer | undefined;
+  if (iprc2 instanceof Blob) {
+    rentChangeBuffer2 = Buffer.from(await iprc2.arrayBuffer());
   }
   let availableSpacesBuffer: Buffer | undefined;
   if (availableSpaces instanceof Blob) {
@@ -376,6 +383,7 @@ export async function POST(req: NextRequest) {
       const result = computeOwnerPerformance({
         hummingbirdWorkbook: inventoryBuffer,
         rentChangeWorkbook: rentChangeBuffer,
+        rentChangeWorkbook2: rentChangeBuffer2,
         options: performanceOptions,
       });
       if (result.ok) {
@@ -422,7 +430,7 @@ export async function POST(req: NextRequest) {
   const budgetTokensNumeric = budgetTokens ?? {};
   console.log("[budget] detected", Object.keys(budgetTokensNumeric).length, "numeric tokens");
 
-  // PPC top-line tokens (GOOIMPRES, GOOCLICKS, GOOCONV=CTR, GOOCOSCON=Cost/Click).
+  // PPC top-line tokens (GOOIMPRES, GOOCLICKS, GOOCTR, GOOCPC).
   // The PPC export holds every property's campaigns in one sheet, so we match the
   // target property by name + address (catches the Performance Max campaigns too)
   // and aggregate. The parser returns display-formatted strings.
@@ -450,12 +458,35 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Manually entered token values (e.g. MOVEOUT90/MOVEOUT902, which have no data
+  // source yet). Applied last so they win over recomputed values.
+  let manualPerformanceOverrides: Record<string, string> | undefined;
+  if (typeof performanceOverridesRaw === "string" && performanceOverridesRaw.trim()) {
+    try {
+      const parsed = JSON.parse(performanceOverridesRaw) as Record<string, unknown>;
+      const normalized: Record<string, string> = {};
+      for (const [token, value] of Object.entries(parsed ?? {})) {
+        if (typeof value === "string" && value.trim().length > 0) {
+          normalized[token] = value.trim();
+        } else if (typeof value === "number" && Number.isFinite(value)) {
+          normalized[token] = String(value);
+        }
+      }
+      if (Object.keys(normalized).length > 0) {
+        manualPerformanceOverrides = normalized;
+      }
+    } catch (err) {
+      console.error("[owner-reports] Unable to parse performance overrides", err);
+    }
+  }
+
   const msrTokens = msrTokensFromFile ?? msrTokensFromClient;
   const combinedPerformanceTokens = {
     ...(performanceTokens ?? {}),
     ...(ppcTokens ?? {}),
     ...(msrTokens ?? {}),
     ...(repairTokens ?? {}),
+    ...(manualPerformanceOverrides ?? {}),
   };
 
   const pptx = await buildOwnerPptx({
@@ -469,6 +500,7 @@ export async function POST(req: NextRequest) {
     availableSpacesBuffer: availableSpacesBuffer ?? null,
     availableSpacesTokens,
     performanceTokens: combinedPerformanceTokens,
+    propertyName: propertyForEmail?.name ?? null,
   });
   const outName = `Owner-Report-${data.CURRENTDATE || "report"}.pptx`;
 

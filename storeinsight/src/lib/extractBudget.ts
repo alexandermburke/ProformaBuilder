@@ -576,30 +576,45 @@ const applyTokensAndLogs = (
 
 // --- QuickBooks "Budget vs. Actuals" support ---------------------------------
 // QuickBooks exports a different layout than the legacy Yardi budget comparison:
-//   - Column headers are Actual / Budget / Over budget by / Percent of budget,
-//     repeated for the period (e.g. "May 2026") and the running "Total" (YTD).
-//   - Row labels carry GL account numbers ("4100 Rental Income") and QB-style
-//     "Total for <account>" subtotals.
-//   - The "Percent of budget" column is actual / budget, NOT a variance %, so we
-//     deliberately ignore it and compute the variance % from (variance / budget),
-//     matching the template's "% Var" columns and the legacy Yardi behavior.
+// one Actual/Budget/<variance>/<percent> column GROUP per period plus a final
+// "Total" (YTD) group, with the period labels ("May 2026", ..., "Total") in the
+// row directly above, aligned over each group's "Actual" column. QuickBooks has
+// shipped several header wordings for the 3rd/4th columns and they are NOT
+// interchangeable:
+//   - "over Budget" / "% of Budget" (or "Over budget by" / "Percent of budget"):
+//     the variance column is Actual - Budget and is ingested directly.
+//   - "Variance" / "% Variance" or "Variance %" (July 2026+ exports): the
+//     variance column's sign convention varies BY FILE (L001's export stored
+//     Budget - Actual; W002's mixed conventions per row), so it is never
+//     ingested — VAR/YTDVAR are recomputed from Actual - Budget downstream.
+// The percent column is ignored in every flavor (it is actual/budget or an
+// inconsistent variance %); VARPER/YTDVARPER are computed from variance/budget,
+// matching the template's "% Var" columns and the legacy Yardi behavior.
 // Internal token bases stay identical to the Yardi parser so buildOwnerPptx's
 // existing alias map (LATFEE<-LATEFEE, MGMTSTF<-MGMSTF, SUP<-SUPP, RETA<-RETPROD,
 // TOTOTHEXP<-TOTOTHEREXP, ...) keeps mapping them onto the template tokens.
 const isQbActual = (cell: CellValue): boolean => normalizeHeaderText(cell) === "actual";
 const isQbBudget = (cell: CellValue): boolean => normalizeHeaderText(cell) === "budget";
 const isQbOverBudget = (cell: CellValue): boolean => normalizeHeaderText(cell).includes("over budget");
-const isQbPercentOfBudget = (cell: CellValue): boolean =>
-  normalizeHeaderText(cell).includes("percent of budget");
+const isQbVarianceColumn = (cell: CellValue): boolean => {
+  const normalized = normalizeHeaderText(cell);
+  return normalized.includes("over budget") || normalized === "variance";
+};
+const isQbPercentColumn = (cell: CellValue): boolean => {
+  const normalized = normalizeHeaderText(cell);
+  if (!normalized) return false;
+  if (normalized.includes("of budget")) return true; // "% of Budget", "Percent of budget"
+  const mentionsPercent = normalized.includes("%") || normalized.includes("percent");
+  const mentionsVariance = normalized.includes("var");
+  return mentionsPercent && mentionsVariance; // "% Variance", "Variance %", "% Var", ...
+};
 
-// A QuickBooks budget header row carries one Actual/Budget/Over budget by/Percent of
-// budget column GROUP per period, plus a final "Total" group. The row directly above
-// holds the period labels ("May 2026", ..., "Total"). Exports can be a single month
-// ([Month][Total]) or many months ([Jan][Feb]...[May][Total]); in both cases we map
-// the CURRENT month (the last month group, immediately before Total) to MTD and the
-// "Total" group to YTD. Intentionally omit VARPER / YTDVARPER: QB's "percent of
-// budget" is actual/budget, not a variance %, so those are computed downstream.
-const findQbHeader = (grid: Grid): HeaderMatch | null => {
+// Exports can be a single month ([Month][Total]) or many months
+// ([Jan][Feb]...[Jul][Total]); in both cases the CURRENT month (the last month
+// group, immediately before Total) maps to MTD and the "Total" group to YTD.
+// When the 3rd column is a "Variance"-style header, VAR/YTDVAR are left unmapped
+// so computeDerivedValues fills them from Actual - Budget (see comment above).
+const findQbFamilyHeader = (grid: Grid): HeaderMatch | null => {
   for (let r = 0; r < grid.length; r += 1) {
     const row = grid[r] ?? [];
     const groupStarts: number[] = [];
@@ -607,8 +622,8 @@ const findQbHeader = (grid: Grid): HeaderMatch | null => {
       if (
         isQbActual(row[c]) &&
         isQbBudget(row[c + 1]) &&
-        isQbOverBudget(row[c + 2]) &&
-        isQbPercentOfBudget(row[c + 3])
+        isQbVarianceColumn(row[c + 2]) &&
+        isQbPercentColumn(row[c + 3])
       ) {
         groupStarts.push(c);
         c += 4;
@@ -636,14 +651,17 @@ const findQbHeader = (grid: Grid): HeaderMatch | null => {
       ytdStart = mtdStart;
     }
 
+    const trustVarianceColumn = isQbOverBudget(row[mtdStart + 2]);
     const columnBySuffix = new Map<BudgetSuffix, number>([
       ["CM", mtdStart],
       ["PTD", mtdStart + 1],
-      ["VAR", mtdStart + 2],
       ["YTD", ytdStart],
       ["YTDBUD", ytdStart + 1],
-      ["YTDVAR", ytdStart + 2],
     ]);
+    if (trustVarianceColumn) {
+      columnBySuffix.set("VAR", mtdStart + 2);
+      columnBySuffix.set("YTDVAR", ytdStart + 2);
+    }
     const columnMap = new Map<number, BudgetSuffix>();
     for (const [suffix, columnIndex] of columnBySuffix) columnMap.set(columnIndex, suffix);
     return {
@@ -656,17 +674,31 @@ const findQbHeader = (grid: Grid): HeaderMatch | null => {
   return null;
 };
 
-const locateQbBudgetSheet = (
+const locateQbFamilySheet = (
   workbook: XLSX.WorkBook,
 ): { grid: Grid; header: HeaderMatch; sheetName: string } | null => {
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
     if (!sheet) continue;
     const grid = sheetToGrid(sheet);
-    const header = findQbHeader(grid);
+    const header = findQbFamilyHeader(grid);
     if (header) return { grid, header, sheetName: name };
   }
   return null;
+};
+
+// QuickBooks Online exports label subtotals "Total for <account>"; the L001
+// (QuickBooks desktop-style) export labels them "Total 4099 <name>" / "Total
+// Income". The subtotal wording is the reliable discriminator between the two
+// label dialects, and each needs its own resolver: running the wrong one lets
+// subtotal rows clobber line items (e.g. "Total 4099 Rental Income" would
+// overwrite RENTINC).
+const usesTotalForLabels = (grid: Grid, labelColumn: number): boolean => {
+  for (const row of grid) {
+    const normalized = normalizeLabelText(row?.[labelColumn]);
+    if (normalized.startsWith("total for")) return true;
+  }
+  return false;
 };
 
 const stripLeadingAccountCode = (label: string): string => label.replace(/^\d{3,6}\s+/, "").trim();
@@ -734,13 +766,15 @@ const computeQbTotalExpenses = (
   }
 };
 
-const extractQuickBooksBudget = (
+const extractQbFamilyBudget = (
   workbook: XLSX.WorkBook,
   located: { grid: Grid; header: HeaderMatch; sheetName: string },
+  resolveBase: (value: CellValue) => string | null,
+  dialect: "qb" | "l001",
 ): BudgetExtraction => {
   const { grid, header, sheetName } = located;
   const ownerGroup = extractOwnerGroupFromGrid(grid);
-  const rows = buildRowStates(grid, header, sheetName, workbook.Sheets[sheetName]!, qbResolveLabelBase);
+  const rows = buildRowStates(grid, header, sheetName, workbook.Sheets[sheetName]!, resolveBase);
 
   const tokens: Record<string, number> = {};
   const details: Record<string, BudgetTokenDetail> = {};
@@ -753,79 +787,16 @@ const extractQuickBooksBudget = (
   computeQbTotalExpenses(tokens, details);
 
   const count = Object.keys(tokens).length;
-  console.log(`[budget][qb] detected ${count} numeric tokens from QuickBooks export`);
+  console.log(`[budget][${dialect}] detected ${count} numeric tokens from QuickBooks export`);
   return { tokens, details, count, debug, ownerGroup };
 };
 
-// --- L001 (Hibernia Camelback) "Budget vs. Actuals" variant ------------------
-// Same column layout as the standard QB export (month groups + a Total group) but
-// with different header text ("over Budget" / "% of Budget") and QuickBooks-desktop
-// subtotal labels ("Total 4099 Net Rental Income", "Total Income", "Total Expenses",
-// "Total Other Expenses") that carry leading-whitespace indentation. This path runs
-// ONLY when the caller selects format "l001", so the standard parser is never touched.
-const isL001PercentOfBudget = (cell: CellValue): boolean =>
-  normalizeHeaderText(cell).includes("of budget");
-
-const findL001Header = (grid: Grid): HeaderMatch | null => {
-  for (let r = 0; r < grid.length; r += 1) {
-    const row = grid[r] ?? [];
-    const groupStarts: number[] = [];
-    for (let c = 0; c + 3 < row.length; ) {
-      if (
-        isQbActual(row[c]) &&
-        isQbBudget(row[c + 1]) &&
-        isQbOverBudget(row[c + 2]) &&
-        isL001PercentOfBudget(row[c + 3])
-      ) {
-        groupStarts.push(c);
-        c += 4;
-      } else {
-        c += 1;
-      }
-    }
-    if (groupStarts.length === 0) continue;
-    const superRow = grid[r - 1] ?? [];
-    const totalGroupIndex = groupStarts.findIndex((start) =>
-      normalizeHeaderText(superRow[start]).includes("total"),
-    );
-    let mtdStart: number;
-    let ytdStart: number;
-    if (totalGroupIndex >= 0) {
-      ytdStart = groupStarts[totalGroupIndex];
-      const monthStarts = groupStarts.filter((_, i) => i !== totalGroupIndex);
-      mtdStart = monthStarts.length > 0 ? monthStarts[monthStarts.length - 1] : ytdStart;
-    } else {
-      mtdStart = groupStarts[groupStarts.length - 1];
-      ytdStart = mtdStart;
-    }
-    const columnBySuffix = new Map<BudgetSuffix, number>([
-      ["CM", mtdStart],
-      ["PTD", mtdStart + 1],
-      ["VAR", mtdStart + 2],
-      ["YTD", ytdStart],
-      ["YTDBUD", ytdStart + 1],
-      ["YTDVAR", ytdStart + 2],
-    ]);
-    const columnMap = new Map<number, BudgetSuffix>();
-    for (const [suffix, columnIndex] of columnBySuffix) columnMap.set(columnIndex, suffix);
-    return { rowIndex: r, labelColumn: Math.max(0, groupStarts[0] - 1), columnMap, columnBySuffix };
-  }
-  return null;
-};
-
-const locateL001BudgetSheet = (
-  workbook: XLSX.WorkBook,
-): { grid: Grid; header: HeaderMatch; sheetName: string } | null => {
-  for (const name of workbook.SheetNames) {
-    const sheet = workbook.Sheets[name];
-    if (!sheet) continue;
-    const grid = sheetToGrid(sheet);
-    const header = findL001Header(grid);
-    if (header) return { grid, header, sheetName: name };
-  }
-  return null;
-};
-
+// --- L001 (Hibernia Camelback) label dialect ---------------------------------
+// Same column layout as the QBO export (handled by findQbFamilyHeader) but with
+// QuickBooks-desktop subtotal labels ("Total 4099 Net Rental Income", "Total
+// Income", "Total Expenses", "Total Other Expenses") that carry leading-
+// whitespace indentation. Selected automatically when the sheet has no
+// "Total for" subtotals (see usesTotalForLabels), or forced via format "l001".
 const stripL001Code = (label: string): string => label.replace(/^\d{3,5}\s+/, "").trim();
 
 const l001ResolveLabelBase = (value: CellValue): string | null => {
@@ -886,25 +857,6 @@ const l001ResolveLabelBase = (value: CellValue): string | null => {
   return null; // below-the-line items roll into Total Other Expenses
 };
 
-const extractL001Budget = (
-  workbook: XLSX.WorkBook,
-  located: { grid: Grid; header: HeaderMatch; sheetName: string },
-): BudgetExtraction => {
-  const { grid, header, sheetName } = located;
-  const ownerGroup = extractOwnerGroupFromGrid(grid);
-  const rows = buildRowStates(grid, header, sheetName, workbook.Sheets[sheetName]!, l001ResolveLabelBase);
-  const tokens: Record<string, number> = {};
-  const details: Record<string, BudgetTokenDetail> = {};
-  const debug: string[] = [];
-  for (const row of rows) {
-    computeDerivedValues(row, header);
-    applyTokensAndLogs(row, tokens, details, debug);
-  }
-  computeQbTotalExpenses(tokens, details);
-  const count = Object.keys(tokens).length;
-  console.log(`[budget][l001] detected ${count} numeric tokens from L001 export`);
-  return { tokens, details, count, debug, ownerGroup };
-};
 
 export async function extractBudgetTableFields(
   budgetBuffer: WorkbookInput,
@@ -919,26 +871,23 @@ export async function extractBudgetTableFields(
     return { tokens: {}, details: {}, count: 0, debug: [], ownerGroup: null };
   }
 
-  // Explicit override: force the L001 parser when the caller asks for it.
-  if (format === "l001") {
-    const forced = locateL001BudgetSheet(workbook);
-    if (forced) {
-      return extractL001Budget(workbook, forced);
-    }
-    console.warn("[budget][l001] L001 header not found despite l001 format; auto-detecting");
-  }
-
-  // Auto-detect by layout. Standard QB ("Percent of budget") is tried FIRST so a
-  // standard file is always matched before L001 is considered and never reaches the
-  // L001 parser. L001 ("% of Budget") is only used when standard detection fails.
-  const qbLocated = locateQbBudgetSheet(workbook);
+  // One header detector covers the whole QuickBooks family (every known wording
+  // of the variance/percent columns). The label dialect decides the row mapper:
+  // "Total for <account>" subtotals -> QBO resolver; otherwise (or when the
+  // caller forces format "l001") -> L001/desktop resolver.
+  const qbLocated = locateQbFamilySheet(workbook);
   if (qbLocated) {
-    return extractQuickBooksBudget(workbook, qbLocated);
+    const useL001Labels =
+      format === "l001" || !usesTotalForLabels(qbLocated.grid, qbLocated.header.labelColumn);
+    return extractQbFamilyBudget(
+      workbook,
+      qbLocated,
+      useL001Labels ? l001ResolveLabelBase : qbResolveLabelBase,
+      useL001Labels ? "l001" : "qb",
+    );
   }
-
-  const l001AutoLocated = locateL001BudgetSheet(workbook);
-  if (l001AutoLocated) {
-    return extractL001Budget(workbook, l001AutoLocated);
+  if (format === "l001") {
+    console.warn("[budget][l001] QuickBooks header not found despite l001 format; trying legacy layout");
   }
 
   const located = locateBudgetSheet(workbook);
