@@ -42,6 +42,11 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
     });
   }
 
+  // Kick off the property directory read before token validation; the two are independent
+  // round trips and this lets them overlap. The catch is attached at creation so an early
+  // return from a validation guard can never leave an unhandled rejection.
+  const propertiesPromise = listProperties().catch(() => []);
+
   let validation;
   try {
     validation = await validateShareToken(token, { markUsed: true });
@@ -80,7 +85,7 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
     });
   }
 
-  const propertyConfigs = await listProperties().catch(() => []);
+  const propertyConfigs = await propertiesPromise;
   const propertyOptions = buildHistoricalPropertyOptions(propertyConfigs, PROPERTY_OPTIONS);
   const propertyOption = findHistoricalPropertyOption(propertyOptions, validation.record.propertyId);
 

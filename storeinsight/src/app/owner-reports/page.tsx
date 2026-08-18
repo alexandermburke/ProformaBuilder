@@ -490,9 +490,12 @@ type BudgetCellProps = {
   onCommit: (token: string, value: string) => void;
 };
 
-// Step 3 renders 216 of these at once. The in-progress text lives in local state and
-// only commits upward on blur/Enter, so a keystroke re-renders one cell instead of the
-// whole page; memo() keeps the other 215 idle when a commit does land.
+// Step 3 renders 216 of these at once. Every keystroke commits straight up to the parent
+// so the status icon, the percent tone, and the row's "Reset row" button never disagree
+// with what is on screen. That stays cheap because the parent only swaps one token's
+// string in budgetOverrides, so the other 215 cells keep identical props and memo() skips
+// them. `draft` is a typing buffer, not a deferral: rendering displayValue straight back
+// would let budgetPercentFormatter rewrite a half-typed percent ("-" becomes "0.00%").
 const BudgetCell = memo(function BudgetCell({
   token,
   columnLabel,
@@ -587,7 +590,8 @@ const BudgetCell = memo(function BudgetCell({
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState(displayValue);
   // Mirrors the value we last handed to (or took from) the parent. Re-syncing only
-  // while unfocused means an external reset still lands without clobbering typing.
+  // while unfocused means an external reset still lands, and the formatted version of
+  // what was typed only replaces the raw text once the caret has left the field.
   const [syncedValue, setSyncedValue] = useState(displayValue);
 
   if (!focused && displayValue !== syncedValue) {
@@ -622,14 +626,15 @@ const BudgetCell = memo(function BudgetCell({
       <input
         className={`owner-budget-input text-base ${percentToneClass}`}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          commitDraft(next);
+        }}
         onFocus={() => setFocused(true)}
         onBlur={(event) => {
           setFocused(false);
           commitDraft(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") commitDraft(event.currentTarget.value);
         }}
         placeholder={placeholderValue}
       />

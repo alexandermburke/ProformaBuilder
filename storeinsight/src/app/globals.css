@@ -102,13 +102,19 @@ html.dark {
   --ios26-sunset: rgba(255, 150, 210, 0.24);
 }
 
-/* Set while the theme is being swapped so several hundred surface transitions
-   do not all run at once. Transitions only -- killing animations here would
-   restart the aurora layers on every toggle. */
+/* Set while the theme is being swapped so several hundred expensive surface
+   transitions do not all run at once. This narrows the transition list rather
+   than emptying it: the cheap colour properties keep cross-fading the toggle,
+   while box-shadow, filter, backdrop-filter and transform drop out for those
+   frames. `background-color` is named explicitly because nearly every rule
+   below animates the `background` shorthand (which drags background-image with
+   it); replacing the property list swaps that for the colour half only.
+   Transitions only -- killing animations here would restart the aurora layers
+   on every toggle. */
 html.theme-transitions-off *,
 html.theme-transitions-off *::before,
 html.theme-transitions-off *::after {
-  transition: none !important;
+  transition-property: color, background-color, border-color, fill, stroke !important;
 }
 
 html,
@@ -156,10 +162,30 @@ html::before {
     var(--background);
 }
 
-/* inset: -20% oversizes the layer so the drift transform reveals a different
+/* DISABLED -- both of these layers paint, but nothing ever sees them.
+   (a) `html::before` sits at z-index -1 and its last background layer is the
+       fully opaque `var(--background)`. body is `position: relative` with
+       `z-index: auto`, so it does not open a stacking context and these two
+       pseudo-elements join the ROOT stacking context's negative band. That band
+       paints most-negative first: -3 (body::after), then -2 (body::before),
+       then -1 (html::before) opaquely over both. Confirmed in Chromium with a
+       standalone harness -- loud red/green stand-ins for these layers render as
+       solid yellow when html::before is removed, and are completely absent when
+       it is present.
+   (b) Reviving them needs either a translucent final layer on html::before, or
+       `isolation: isolate` on body, which makes body a stacking context so its
+       negative band paints inside body (stack level 0) and therefore above
+       html::before. Also confirmed against the harness.
+   (c) They were switched off rather than deleted because as written they pinned
+       two viewport-scale composited textures -- one behind a blur(32px) -- and
+       ran two infinite animations continuously while invisible. The
+       declarations stay so the design can be brought back.
+
+   inset: -20% oversizes the layer so the drift transform reveals a different
    slice of the gradient instead of an edge. */
 body::before {
   content: "";
+  display: none;
   position: fixed;
   inset: -20%;
   pointer-events: none;
@@ -180,8 +206,10 @@ body::before {
   backface-visibility: hidden;
 }
 
+/* DISABLED for the same reason as body::before above -- see that comment. */
 body::after {
   content: "";
+  display: none;
   position: fixed;
   inset: -20%;
   pointer-events: none;
@@ -220,9 +248,46 @@ html.dark body::after {
    a black backdrop in the print pipeline, and color-scheme: dark paints the
    page canvas (including margins) dark. */
 @media print {
+  /* Forcing a light sheet has to force light-sheet TYPE too. Without this the
+     `html.dark` token block above still applies on paper, so --foreground stays
+     #e4ecff and every surface/border token stays near-black: white text on a
+     white page, i.e. a blank sheet on any route that does not hard-code its own
+     print colours the way .token-dashboard-print does. These are the exact
+     :root light values, so print matches the light theme the app ships.
+     Decorative-only tokens (--gradient-*, --halo, --ios26-*, --focus-ring) are
+     left alone: they feed the aurora layers, which print hides outright. */
   html,
   html.dark {
     color-scheme: light;
+    --background: #f6f8fd;
+    --foreground: #0b1120;
+    --surface: rgba(255, 255, 255, 0.96);
+    --surface-muted: rgba(255, 255, 255, 0.9);
+    --surface-subtle: rgba(247, 249, 255, 0.92);
+    --surface-strong: #e9efff;
+    --surface-glass: rgba(255, 255, 255, 0.78);
+    --surface-floating: rgba(255, 255, 255, 0.66);
+    --surface-tint: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(236, 243, 255, 0.88));
+    --border-soft: rgba(178, 198, 255, 0.5);
+    --border-strong: rgba(146, 174, 255, 0.65);
+    --border-glass: rgba(111, 132, 185, 0.28);
+    --text-primary: #0b1120;
+    --text-secondary: #38435e;
+    --text-muted: #535f79;
+    --overlay: rgba(12, 18, 34, 0.55);
+    --tint-blue: rgba(223, 233, 255, 0.92);
+    --tint-blue-strong: rgba(211, 227, 255, 0.86);
+    --tint-purple: rgba(243, 230, 255, 0.94);
+    --tint-amber: rgba(255, 239, 214, 0.94);
+    --tint-green: rgba(222, 247, 236, 0.92);
+    --tint-soft: rgba(247, 248, 255, 0.96);
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.18);
+    --accent-strong: #1d4ed8;
+    --shadow-soft: 0 18px 44px rgba(15, 23, 42, 0.08);
+    --shadow-medium: 0 28px 60px rgba(15, 23, 42, 0.12);
+    --shadow-strong: 0 42px 84px rgba(15, 23, 42, 0.16);
+    --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.65);
   }
   html,
   body {

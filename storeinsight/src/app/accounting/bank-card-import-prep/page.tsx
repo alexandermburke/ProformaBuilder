@@ -206,21 +206,8 @@ type ReviewRowItemProps = {
 };
 
 const ReviewRowItem = memo(function ReviewRowItem({ row, onCommitProperty, onCommitAccount }: ReviewRowItemProps) {
-  const [propertyValue, setPropertyValue] = useState(row.propertyName);
-  const [accountValue, setAccountValue] = useState(row.account);
-  const propertyFocusedRef = useRef(false);
-  const accountFocusedRef = useRef(false);
-
-  useEffect(() => {
-    if (!propertyFocusedRef.current) setPropertyValue(row.propertyName);
-  }, [row.propertyName]);
-
-  useEffect(() => {
-    if (!accountFocusedRef.current) setAccountValue(row.account);
-  }, [row.account]);
-
-  const propertyInvalid = !propertyValue.trim();
-  const accountInvalid = !accountValue.trim() || !DIGITS_ONLY.test(accountValue.trim());
+  const propertyInvalid = !row.propertyName.trim();
+  const accountInvalid = !row.account.trim() || !DIGITS_ONLY.test(row.account.trim());
 
   return (
     <tr className="divide-x divide-[rgba(148,163,255,0.15)]">
@@ -255,18 +242,8 @@ const ReviewRowItem = memo(function ReviewRowItem({ row, onCommitProperty, onCom
                 ? "border-[#FCA5A5] bg-[#FEF2F2]"
                 : "border-[color:var(--border-soft)] bg-[color:var(--surface)]/80"
             }`}
-            value={propertyValue}
-            onChange={(event) => setPropertyValue(event.target.value)}
-            onFocus={() => {
-              propertyFocusedRef.current = true;
-            }}
-            onBlur={() => {
-              propertyFocusedRef.current = false;
-              onCommitProperty(row.rowNumber, propertyValue);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") onCommitProperty(row.rowNumber, propertyValue);
-            }}
+            value={row.propertyName}
+            onChange={(event) => onCommitProperty(row.rowNumber, event.target.value)}
           />
           {propertyInvalid && (
             <p className="text-[10px] text-[#B91C1C]">Property is required</p>
@@ -284,18 +261,10 @@ const ReviewRowItem = memo(function ReviewRowItem({ row, onCommitProperty, onCom
                 ? "border-[#FCA5A5] bg-[#FEF2F2]"
                 : "border-[color:var(--border-soft)] bg-[color:var(--surface)]/80"
             }`}
-            value={accountValue}
-            onChange={(event) => setAccountValue(event.target.value.replace(/[^0-9]/g, ""))}
-            onFocus={() => {
-              accountFocusedRef.current = true;
-            }}
-            onBlur={() => {
-              accountFocusedRef.current = false;
-              onCommitAccount(row.rowNumber, accountValue);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") onCommitAccount(row.rowNumber, accountValue);
-            }}
+            value={row.account}
+            onChange={(event) =>
+              onCommitAccount(row.rowNumber, event.target.value.replace(/[^0-9]/g, ""))
+            }
           />
           {accountInvalid && (
             <p className="text-[10px] text-[#B91C1C]">Digits only</p>
@@ -648,7 +617,7 @@ export default function BankCardImportPrepPage() {
   const startPolling = (id: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     fetchStatus(id);
-    pollRef.current = setInterval(() => fetchStatus(id), 1500);
+    pollRef.current = setInterval(() => fetchStatus(id), 750);
   };
 
   const copyText = async (text: string, label: string) => {
