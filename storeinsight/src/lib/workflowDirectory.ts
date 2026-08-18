@@ -129,7 +129,7 @@ export const workflowCategories: WorkflowCategory[] = [
     href: '/finance',
     title: 'Finance',
     summaryDescription: 'Planning, owner reporting, and intake workflows for underwriting, operator data prep, and asset performance.',
-    summaryHighlights: ['Proforma Data Drop', 'Owner Financials Extractor', 'Owner Reports'],
+    summaryHighlights: ['Owner Financials Extractor', 'Owner Reports', 'Proforma Lakehouse'],
     summaryTone: 'green',
     summaryIcon: 'spreadsheet',
     pageBadge: 'Finance tools',
@@ -137,20 +137,6 @@ export const workflowCategories: WorkflowCategory[] = [
     pageDescription:
       'Open the finance workflow you need for operator data preparation, owner-facing reporting, staging, and underwriting intake.',
     features: [
-      {
-        id: 'proforma-data-drop',
-        title: 'Proforma Data Drop',
-        description: 'Upload operator financial package and generate Proforma-ready dataset.',
-        status: 'Active',
-        tone: 'blue',
-        icon: 'spreadsheet',
-        highlights: [
-          'Parse Public-format P&L tabs into vertical monthly rows.',
-          'Apply COA mapping and surface unmapped accounts for review.',
-          'Export clean Data Drop CSV without blocking unmapped rows.',
-        ],
-        href: '/finance/proforma-import',
-      },
       {
         id: 'owner-financials-extractor',
         title: 'Owner Financials Extractor',

@@ -7,8 +7,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent, JSX } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, FocusEvent, FormEvent, JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import {
   getHistoricalTemplatePayload,
@@ -340,6 +340,64 @@ const detectPropertyIdFromFile = (
   const match = propertyOptions.find((option) => normalizedName.includes(normalizePropertyToken(option.id)));
   return match?.id ?? null;
 };
+
+type HistoricalJsonEditorProps = {
+  value: string;
+  onDraftChange: (value: string) => void;
+  onCommit: (value: string) => void;
+};
+
+// The pasted payload runs to thousands of lines, so the textarea keeps its own
+// draft state and only pushes into page state on blur. onDraftChange writes to a
+// ref on the page so validate/upload always read the newest text without forcing
+// a full page render on every keystroke.
+const HistoricalJsonEditor = memo(function HistoricalJsonEditor({
+  value,
+  onDraftChange,
+  onCommit,
+}: HistoricalJsonEditorProps): JSX.Element {
+  const [draft, setDraft] = useState(value);
+  const syncedValueRef = useRef(value);
+
+  // Adopt values pushed down from the page (Load template) without clobbering
+  // text the user is still typing.
+  useEffect(() => {
+    if (value === syncedValueRef.current) return;
+    syncedValueRef.current = value;
+    setDraft(value);
+  }, [value]);
+
+  const handleChange = useCallback(
+    (event: ChangeEvent<HTMLTextAreaElement>) => {
+      const next = event.target.value;
+      setDraft(next);
+      onDraftChange(next);
+    },
+    [onDraftChange],
+  );
+
+  const handleBlur = useCallback(
+    (event: FocusEvent<HTMLTextAreaElement>) => {
+      const next = event.target.value;
+      if (next === syncedValueRef.current) return;
+      syncedValueRef.current = next;
+      onCommit(next);
+    },
+    [onCommit],
+  );
+
+  return (
+    <textarea
+      className="owner-field-input min-h-[320px] w-full resize-y rounded-2xl p-4 font-mono text-[11px] text-[color:var(--text-primary)] shadow-inner focus:outline-none"
+      placeholder="Paste the historical data JSON payload here."
+      value={draft}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      spellCheck={false}
+    />
+  );
+});
+
 export default function HistoricalDataUploadPage(): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -349,6 +407,9 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const [historicalPropertyConfigs, setHistoricalPropertyConfigs] = useState<PropertyConfig[]>([]);
   const [propertyId, setPropertyId] = useState('');
   const [dataInput, setDataInput] = useState('');
+  // Mirrors the JSON editor draft between blurs so validate/upload never read a
+  // stale payload.
+  const dataInputRef = useRef('');
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataStatus, setDataStatus] = useState<string | null>(null);
   const [validationSummary, setValidationSummary] = useState<ReturnType<typeof validatePropertyHistoricalPayload> | null>(null);
@@ -538,10 +599,20 @@ export default function HistoricalDataUploadPage(): JSX.Element {
 
   const handleLoadTemplate = () => {
     setDataInput(templateString);
+    dataInputRef.current = templateString;
     setDataError(null);
     setDataStatus('Template loaded. Update values and upload to Firebase.');
     setValidationSummary(null);
   };
+
+  const handleDataDraftChange = useCallback((value: string) => {
+    dataInputRef.current = value;
+  }, []);
+
+  const handleDataCommit = useCallback((value: string) => {
+    dataInputRef.current = value;
+    setDataInput(value);
+  }, []);
 
   const handleCopyTemplate = async () => {
     setTemplateStatus(null);
@@ -890,11 +961,12 @@ export default function HistoricalDataUploadPage(): JSX.Element {
   const handleValidate = () => {
     setDataError(null);
     setDataStatus(null);
-    if (!dataInput.trim()) {
+    const currentInput = dataInputRef.current;
+    if (!currentInput.trim()) {
       setDataError('Paste JSON or load the template first.');
       return null;
     }
-    const parsed = parsePropertyHistoricalInput(dataInput, propertyId.trim() || undefined);
+    const parsed = parsePropertyHistoricalInput(currentInput, propertyId.trim() || undefined);
     if (!parsed.data) {
       setDataError(parsed.error ?? 'Unable to parse historical data payload.');
       return null;
@@ -1815,12 +1887,10 @@ export default function HistoricalDataUploadPage(): JSX.Element {
             </div>
           </div>
 
-          <textarea
-            className="owner-field-input min-h-[320px] w-full resize-y rounded-2xl p-4 font-mono text-[11px] text-[color:var(--text-primary)] shadow-inner focus:outline-none"
-            placeholder="Paste the historical data JSON payload here."
+          <HistoricalJsonEditor
             value={dataInput}
-            onChange={(event) => setDataInput(event.target.value)}
-            spellCheck={false}
+            onDraftChange={handleDataDraftChange}
+            onCommit={handleDataCommit}
           />
 
           {validationSummary ? (

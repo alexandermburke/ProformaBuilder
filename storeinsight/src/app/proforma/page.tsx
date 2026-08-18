@@ -15,7 +15,6 @@ import UploadZone from '@/components/UploadZone';
 import HeaderMapper from '@/components/HeaderMapper';
 import { useTheme } from '@/components/ThemeProvider';
 
-import { parseExcelFile } from '@/lib/parseExcel';
 import type { ParsedSheet, UploadParseResult } from '@/lib/types';
 import { subscribeSnapshots, createSnapshotRow } from '@/lib/snapshots';
 
@@ -468,6 +467,7 @@ export default function Home(): JSX.Element {
   }, [step, mapper, validateMsg, auto.vendorHint, recent.length]);
 
   const onFile = async (file: File): Promise<void> => {
+    const { parseExcelFile } = await import('@/lib/parseExcel');
     const parsed = await parseExcelFile(file);
     setParseResult(parsed);
 

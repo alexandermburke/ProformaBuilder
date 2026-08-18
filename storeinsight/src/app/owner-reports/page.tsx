@@ -19,6 +19,7 @@ import {
   Info,
 } from "lucide-react";
 import {
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -31,12 +32,13 @@ import Link from "next/link";
 import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
 import { usePreferences } from "@/components/PreferencesProvider";
-import { extractBudgetTableFields } from "@/lib/extractBudget";
 import { toNumber } from "@/lib/compute";
-import {
-  computeOwnerPerformance,
-  type OwnerPerformancePreviewRow,
-  type OwnerPerformanceTokenValues,
+// extractBudget and ownerPerformance both pull xlsx (~335KB) in at module scope, so
+// their value exports are imported on demand inside the upload handlers below. Only
+// the erased type imports stay static.
+import type {
+  OwnerPerformancePreviewRow,
+  OwnerPerformanceTokenValues,
 } from "@/lib/ownerPerformance";
 import type { PropertyConfig } from "@/types/dailySummary";
 
@@ -356,6 +358,10 @@ const budgetLogCurrency = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 const ownerLogNumber = new Intl.NumberFormat("en-US");
+const budgetPercentFormatter = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 function coerceNegativeZeroString(input: string): string {
   if (/^-\$0(\.0+)?$/.test(input)) return input.replace("-$", "$");
@@ -474,6 +480,163 @@ function UploadFieldHint({ title, fields }: UploadFieldHintProps) {
     </div>
   );
 }
+
+type BudgetCellProps = {
+  token: string;
+  columnLabel: string;
+  columnDescription: string;
+  detectedValue: number | undefined;
+  overrideValue: string | undefined;
+  onCommit: (token: string, value: string) => void;
+};
+
+// Step 3 renders 216 of these at once. The in-progress text lives in local state and
+// only commits upward on blur/Enter, so a keystroke re-renders one cell instead of the
+// whole page; memo() keeps the other 215 idle when a commit does land.
+const BudgetCell = memo(function BudgetCell({
+  token,
+  columnLabel,
+  columnDescription,
+  detectedValue,
+  overrideValue,
+  onCommit,
+}: BudgetCellProps) {
+  const baselineRaw =
+    overrideValue !== undefined
+      ? overrideValue
+      : detectedValue === undefined
+        ? ""
+        : String(detectedValue);
+  const hasOverride = overrideValue !== undefined;
+
+  const isPercentToken = token.endsWith("VARPER");
+  const overrideRaw = overrideValue;
+
+  const overrideNumeric = overrideRaw !== undefined ? toNumber(overrideRaw) : undefined;
+  const overrideNumber =
+    overrideNumeric !== undefined && Number.isFinite(overrideNumeric)
+      ? overrideNumeric
+      : undefined;
+  const detectedNumeric = typeof detectedValue === "number" ? detectedValue : undefined;
+  const baselineNumeric =
+    baselineRaw && baselineRaw.trim().length > 0 ? toNumber(baselineRaw) : undefined;
+  const baselineNumber =
+    baselineNumeric !== undefined && Number.isFinite(baselineNumeric)
+      ? baselineNumeric
+      : undefined;
+
+  const effectiveNumeric = overrideNumber !== undefined ? overrideNumber : detectedNumeric;
+
+  const formattedDetected =
+    isPercentToken && detectedNumeric !== undefined
+      ? `${budgetPercentFormatter.format(detectedNumeric)}%`
+      : detectedNumeric !== undefined
+        ? String(detectedNumeric)
+        : "";
+
+  const formattedBaseline =
+    isPercentToken && baselineNumber !== undefined
+      ? `${budgetPercentFormatter.format(baselineNumber)}%`
+      : baselineRaw;
+
+  const overrideDisplay =
+    overrideRaw !== undefined
+      ? isPercentToken
+        ? overrideNumber !== undefined
+          ? `${budgetPercentFormatter.format(overrideNumber)}%`
+          : `${overrideRaw}%`
+        : overrideRaw
+      : undefined;
+
+  const displayValue = overrideDisplay ?? (formattedDetected || formattedBaseline || "");
+
+  const placeholderValue =
+    formattedDetected || formattedBaseline || (isPercentToken ? "0.00%" : "Enter value");
+
+  const percentToneClass =
+    isPercentToken && effectiveNumeric !== undefined && Number.isFinite(effectiveNumeric)
+      ? effectiveNumeric > 0
+        ? "text-[#16a34a]"
+        : effectiveNumeric < 0
+          ? "text-[#dc2626]"
+          : ""
+      : "";
+
+  const { statusIcon, statusColorClass, statusTitle } = (() => {
+    if (hasOverride) {
+      return {
+        statusIcon: <Pencil size={14} />,
+        statusColorClass: "text-[#1d4ed8]",
+        statusTitle: "Manual override",
+      };
+    }
+    if (detectedValue !== undefined) {
+      return {
+        statusIcon: <CircleCheck size={14} />,
+        statusColorClass: "text-emerald-500",
+        statusTitle: "Detected",
+      };
+    }
+    return {
+      statusIcon: <Circle size={14} />,
+      statusColorClass: "text-[#dc2626]",
+      statusTitle: "Blank",
+    };
+  })();
+
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(displayValue);
+  // Mirrors the value we last handed to (or took from) the parent. Re-syncing only
+  // while unfocused means an external reset still lands without clobbering typing.
+  const [syncedValue, setSyncedValue] = useState(displayValue);
+
+  if (!focused && displayValue !== syncedValue) {
+    setSyncedValue(displayValue);
+    setDraft(displayValue);
+  }
+
+  const commitDraft = (next: string) => {
+    if (next === syncedValue) return;
+    setSyncedValue(next);
+    onCommit(token, next);
+  };
+
+  return (
+    <label className="owner-input-tile flex flex-col gap-2 p-3">
+      <span className="flex flex-col gap-1">
+        <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
+          {columnLabel}
+          <span
+            className={`inline-flex items-center justify-center text-sm ${statusColorClass}`}
+            aria-label={statusTitle}
+            title={statusTitle}
+          >
+            {statusIcon}
+          </span>
+        </span>
+        <span className="text-[11px] font-normal text-[color:var(--text-secondary)]">
+          {columnDescription}
+        </span>
+      </span>
+
+      <input
+        className={`owner-budget-input text-base ${percentToneClass}`}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={(event) => {
+          setFocused(false);
+          commitDraft(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commitDraft(event.currentTarget.value);
+        }}
+        placeholder={placeholderValue}
+      />
+
+    </label>
+  );
+});
 
 function downloadFromUrl(url: string, fileName: string) {
   const link = document.createElement("a");
@@ -628,6 +791,7 @@ export default function OwnerReportsPage() {
       setPerformanceLoading(true);
       setPerformanceStatus(null);
       try {
+        const { computeOwnerPerformance } = await import("@/lib/ownerPerformance");
         const [hbBuffer, rentChangeBuffer, rentChangeBuffer2] = await Promise.all([
           hb.arrayBuffer(),
           iprc ? iprc.arrayBuffer() : Promise.resolve(undefined),
@@ -881,6 +1045,7 @@ export default function OwnerReportsPage() {
       setBudgetLoading(true);
       setBudgetError(null);
       try {
+        const { extractBudgetTableFields } = await import("@/lib/extractBudget");
         const budgetBuffer = await nextBudget.arrayBuffer();
         const { tokens, details, count, debug, templateTokens, ownerGroup } = await extractBudgetTableFields(
           budgetBuffer,
@@ -1150,17 +1315,6 @@ export default function OwnerReportsPage() {
       return next;
     });
   }, []);
-  const getBudgetInputValue = useCallback(
-    (token: string): string => {
-      if (budgetOverrides[token] !== undefined) {
-        return budgetOverrides[token];
-      }
-      const detected = budgetTokens[token];
-      if (detected === undefined) return "";
-      return String(detected);
-    },
-    [budgetOverrides, budgetTokens],
-  );
   const displayedBudgetPage = Math.min(budgetPage, Math.max(BUDGET_PAGES.length - 1, 0));
   const totalBudgetPages = BUDGET_PAGES.length;
   const budgetPageMeta = BUDGET_PAGES[displayedBudgetPage] ?? BUDGET_PAGES[0];
@@ -1175,14 +1329,6 @@ export default function OwnerReportsPage() {
     }
   }, [displayedBudgetPage, panelScroll]);
 
-  const percentFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    [],
-  );
   const selectedProperty = useMemo(
     () =>
       properties.find((p) => p.id === selectedPropertyId) ??
@@ -2322,127 +2468,17 @@ export default function OwnerReportsPage() {
                               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 {BUDGET_COLUMNS.map((column) => {
                                   const token = `${line.baseKey}${column.suffix}`;
-                                  const baselineRaw = getBudgetInputValue(token);
-                                  const hasOverride = budgetOverrides[token] !== undefined;
-                                  const detectedValue = budgetTokens[token];
-
-                                  const isPercentToken = token.endsWith("VARPER");
-                                  const overrideRaw = budgetOverrides[token];
-
-                                  const overrideNumeric =
-                                    overrideRaw !== undefined ? toNumber(overrideRaw) : undefined;
-                                  const overrideNumber =
-                                    overrideNumeric !== undefined && Number.isFinite(overrideNumeric)
-                                      ? overrideNumeric
-                                      : undefined;
-                                  const detectedNumeric =
-                                    typeof detectedValue === "number" ? detectedValue : undefined;
-                                  const baselineNumeric =
-                                    baselineRaw && baselineRaw.trim().length > 0
-                                      ? toNumber(baselineRaw)
-                                      : undefined;
-                                  const baselineNumber =
-                                    baselineNumeric !== undefined && Number.isFinite(baselineNumeric)
-                                      ? baselineNumeric
-                                      : undefined;
-
-                                  const effectiveNumeric =
-                                    overrideNumber !== undefined ? overrideNumber : detectedNumeric;
-
-                                  const formattedDetected =
-                                    isPercentToken && detectedNumeric !== undefined
-                                      ? `${percentFormatter.format(detectedNumeric)}%`
-                                      : detectedNumeric !== undefined
-                                        ? String(detectedNumeric)
-                                        : "";
-
-                                  const formattedBaseline =
-                                    isPercentToken && baselineNumber !== undefined
-                                      ? `${percentFormatter.format(baselineNumber)}%`
-                                      : baselineRaw;
-
-                                  const overrideDisplay =
-                                    overrideRaw !== undefined
-                                      ? isPercentToken
-                                        ? overrideNumber !== undefined
-                                          ? `${percentFormatter.format(overrideNumber)}%`
-                                          : `${overrideRaw}%`
-                                        : overrideRaw
-                                      : undefined;
-
-                                  const displayValue =
-                                    overrideDisplay ??
-                                    (formattedDetected || formattedBaseline || "");
-
-                                  const placeholderValue =
-                                    formattedDetected ||
-                                    formattedBaseline ||
-                                    (isPercentToken ? "0.00%" : "Enter value");
-
-                                  const percentToneClass =
-                                    isPercentToken &&
-                                      effectiveNumeric !== undefined &&
-                                      Number.isFinite(effectiveNumeric)
-                                      ? effectiveNumeric > 0
-                                        ? "text-[#16a34a]"
-                                        : effectiveNumeric < 0
-                                          ? "text-[#dc2626]"
-                                          : ""
-                                      : "";
-
-                                  const { statusIcon, statusColorClass, statusTitle } = (() => {
-                                    if (hasOverride) {
-                                      return {
-                                        statusIcon: <Pencil size={14} />,
-                                        statusColorClass: "text-[#1d4ed8]",
-                                        statusTitle: "Manual override",
-                                      };
-                                    }
-                                    if (detectedValue !== undefined) {
-                                      return {
-                                        statusIcon: <CircleCheck size={14} />,
-                                        statusColorClass: "text-emerald-500",
-                                        statusTitle: "Detected",
-                                      };
-                                    }
-                                    return {
-                                      statusIcon: <Circle size={14} />,
-                                      statusColorClass: "text-[#dc2626]",
-                                      statusTitle: "Blank",
-                                    };
-                                  })();
-
-
 
                                   return (
-                                    <label
+                                    <BudgetCell
                                       key={token}
-                                      className="owner-input-tile flex flex-col gap-2 p-3"
-                                    >
-                                      <span className="flex flex-col gap-1">
-                                        <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#2563EB]">
-                                          {column.label}
-                                          <span
-                                            className={`inline-flex items-center justify-center text-sm ${statusColorClass}`}
-                                            aria-label={statusTitle}
-                                            title={statusTitle}
-                                          >
-                                            {statusIcon}
-                                          </span>
-                                        </span>
-                                        <span className="text-[11px] font-normal text-[color:var(--text-secondary)]">
-                                          {column.description}
-                                        </span>
-                                      </span>
-
-                                      <input
-                                        className={`owner-budget-input text-base ${percentToneClass}`}
-                                        value={displayValue}
-                                        onChange={(event) => updateBudgetOverride(token, event.target.value)}
-                                        placeholder={placeholderValue}
-                                      />
-
-                                    </label>
+                                      token={token}
+                                      columnLabel={column.label}
+                                      columnDescription={column.description}
+                                      detectedValue={budgetTokens[token]}
+                                      overrideValue={budgetOverrides[token]}
+                                      onCommit={updateBudgetOverride}
+                                    />
                                   );
                                 })}
                               </div>

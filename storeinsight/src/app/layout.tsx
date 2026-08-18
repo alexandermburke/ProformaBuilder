@@ -43,6 +43,10 @@ export const viewport: Viewport = {
   themeColor: '#ffffff',
 };
 
+// Runs before first paint so dark-mode users never see a light flash on hard navigation.
+// Must stay in sync with ThemeProvider's STORAGE_KEY ('storeinsight-theme').
+const themeInitScript = `(function(){try{var s=window.localStorage.getItem('storeinsight-theme');var t=s==='dark'||s==='light'?s:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');var e=document.documentElement;e.classList.remove('light','dark');e.classList.add(t);}catch(err){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -50,11 +54,14 @@ export default function RootLayout({
 }>): JSX.Element {
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={[
           geistSans.variable,
           geistMono.variable,
-          'min-h-screen text-[var(--foreground)] antialiased transition-colors duration-500',
+          'min-h-screen text-[var(--foreground)] antialiased',
         ].join(' ')}
       >
         <ThemeProvider>

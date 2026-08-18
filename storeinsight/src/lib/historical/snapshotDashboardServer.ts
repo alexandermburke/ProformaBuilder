@@ -188,7 +188,7 @@ const getLatestSnapshotMonth = (snapshots: MsrSnapshot[]): string | null => {
   return months.length ? months.reduce((max, value) => (value > max ? value : max), months[0]) : null;
 };
 
-async function maybeSyncProperty(option: HistoricalPropertyOption): Promise<void> {
+async function maybeSyncProperty(option: HistoricalPropertyOption): Promise<boolean> {
   const candidates = [option.id, option.propertyId, option.tenantPropertyId].filter(
     (value): value is string => Boolean(value?.trim()),
   );
@@ -197,12 +197,14 @@ async function maybeSyncProperty(option: HistoricalPropertyOption): Promise<void
     try {
       const result = await syncLatestMsrSnapshotForProperty(candidate);
       if (result.synced || result.reason !== 'missing-property-id') {
-        return;
+        return result.synced;
       }
     } catch {
       // ignore sync failures and continue loading stored data
     }
   }
+
+  return false;
 }
 
 const sortCandidates = (left: HistoricalDocCandidate, right: HistoricalDocCandidate): number => {
@@ -219,12 +221,13 @@ export async function loadHistoricalPropertyRecord(
   option: HistoricalPropertyOption,
   params?: { syncLatest?: boolean; canonicalAlias?: string | null },
 ): Promise<LoadedHistoricalPropertyRecord> {
-  if (params?.syncLatest) {
-    await maybeSyncProperty(option);
-  }
+  // The sync only refreshes the stored property_historical docs, so it runs alongside the
+  // reads instead of blocking them; when it actually wrote we re-read to pick the fresh doc up.
+  const syncPromise = params?.syncLatest ? maybeSyncProperty(option) : null;
 
   const db = firestore;
   if (!db) {
+    await syncPromise;
     return {
       matchedAlias: null,
       propertyName: option.label,
@@ -234,32 +237,39 @@ export async function loadHistoricalPropertyRecord(
     };
   }
 
-  const snapshotsByAlias = await Promise.all(
-    option.aliases.map(async (alias) => {
-      const snapshot = await db.collection(COLLECTION).doc(alias).get();
-      if (!snapshot.exists) return null;
+  const readAliasCandidates = async (): Promise<HistoricalDocCandidate[]> => {
+    const snapshotsByAlias = await Promise.all(
+      option.aliases.map(async (alias) => {
+        const snapshot = await db.collection(COLLECTION).doc(alias).get();
+        if (!snapshot.exists) return null;
 
-      const data = (snapshot.data() ?? {}) as Record<string, unknown>;
-      const snapshots = normalizeHistoricalSnapshots(getSnapshotArray(data));
-      const updatedAt = toIsoString(data.updated_at);
-      const propertyName = resolveHistoricalPropertyName(data, snapshots, option.label);
+        const data = (snapshot.data() ?? {}) as Record<string, unknown>;
+        const snapshots = normalizeHistoricalSnapshots(getSnapshotArray(data));
+        const updatedAt = toIsoString(data.updated_at);
+        const propertyName = resolveHistoricalPropertyName(data, snapshots, option.label);
 
-      return {
-        alias,
-        data,
-        propertyName,
-        snapshots,
-        historicalByRange: data.historicalByRange as HistoricalDataByRange | undefined,
-        momSeries: data.momSeries as MoMSeries | undefined,
-        updatedAt,
-        latestSnapshotMonth: getLatestSnapshotMonth(snapshots),
-      } satisfies HistoricalDocCandidate;
-    }),
-  );
+        return {
+          alias,
+          data,
+          propertyName,
+          snapshots,
+          historicalByRange: data.historicalByRange as HistoricalDataByRange | undefined,
+          momSeries: data.momSeries as MoMSeries | undefined,
+          updatedAt,
+          latestSnapshotMonth: getLatestSnapshotMonth(snapshots),
+        } satisfies HistoricalDocCandidate;
+      }),
+    );
 
-  const candidates = snapshotsByAlias
-    .filter((entry): entry is HistoricalDocCandidate => entry !== null)
-    .sort(sortCandidates);
+    return snapshotsByAlias.filter((entry): entry is HistoricalDocCandidate => entry !== null);
+  };
+
+  const [initialCandidates, didSync] = await Promise.all([
+    readAliasCandidates(),
+    syncPromise ?? Promise.resolve(false),
+  ]);
+
+  const candidates = (didSync ? await readAliasCandidates() : initialCandidates).sort(sortCandidates);
   const canonicalAlias = normalizeAliasKey(params?.canonicalAlias);
   const canonicalCandidate =
     canonicalAlias.length > 0 ? candidates.find((candidate) => normalizeAliasKey(candidate.alias) === canonicalAlias) : null;

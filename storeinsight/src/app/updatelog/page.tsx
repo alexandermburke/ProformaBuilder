@@ -15,22 +15,63 @@ type ValidationTone = "success" | "neutral" | "warning";
 
 type LogEntry = {
   id: string;
-  date: string;
+  dateLabel: string;
   session: string;
-  summary: string;
+  files: string[];
+  headline: string;
+  detail: string;
   validation: string;
+  showValidationDetail: boolean;
   validationTone: ValidationTone;
+  validationLabel: string;
   followUps: string;
+  version: string | null;
 };
 
 const AGENT_LOG_PATH = "src/context/agent-update-log.txt";
+const HEADLINE_MAX = 170;
 
 function classifyValidation(raw: string): ValidationTone {
   const value = raw.toLowerCase();
   if (!value || value === "not run" || value === "n/a" || value === "none") return "neutral";
   if (value.includes("fail") || value.includes("error")) return "warning";
-  if (value.includes("pass") || value.includes("clean") || value.includes("ok")) return "success";
+  if (value.includes("pass") || value.includes("clean") || value.includes("ok") || value.includes("verified")) return "success";
   return "neutral";
+}
+
+function validationLabel(raw: string, tone: ValidationTone): string {
+  if (tone === "success") return "Checks passed";
+  if (tone === "warning") return "Issues noted";
+  const value = raw.toLowerCase();
+  if (!value || value === "not run" || value === "n/a" || value === "none") return "Not validated";
+  return "Checks run";
+}
+
+function formatDate(iso: string): string {
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return iso;
+  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function extractVersion(text: string): string | null {
+  const match = text.match(/version[^0-9]{0,16}(\d+\.\d+\.\d+)/i);
+  return match ? `v${match[1]}` : null;
+}
+
+/** First sentence becomes the visible headline; anything past it collapses into the detail view. */
+function splitSummary(summary: string): { headline: string; detail: string } {
+  const text = summary.trim();
+  const sentence = text.match(/^(.{20,}?[.!?])\s+(?=[A-Z0-9(])/);
+  let headline = sentence ? sentence[1] : text;
+  let detail = sentence ? text.slice(sentence[0].length).trim() : "";
+  if (headline.length > HEADLINE_MAX) {
+    const cut = headline.slice(0, HEADLINE_MAX);
+    const lastSpace = cut.lastIndexOf(" ");
+    headline = `${cut.slice(0, lastSpace > 80 ? lastSpace : HEADLINE_MAX).trimEnd()}…`;
+    detail = text;
+  }
+  return { headline, detail };
 }
 
 function parseLogLine(line: string, index: number): LogEntry | null {
@@ -39,16 +80,30 @@ function parseLogLine(line: string, index: number): LogEntry | null {
   const parts = trimmed.split(" | ").map((part) => part.trim());
   if (parts.length < 4) return null;
 
-  const [date, session, , summary, validation = "Not run", followUps = ""] = parts;
+  const [date, session, filesRaw = "", summary, validation = "Not run", followUpsRaw = ""] = parts;
+  const { headline, detail } = splitSummary(summary);
+  const tone = classifyValidation(validation);
+  const followUps = followUpsRaw.toLowerCase() === "none" ? "" : followUpsRaw;
+  const validationValue = validation.toLowerCase();
+  const showValidationDetail =
+    Boolean(validation) && !["not run", "n/a", "none"].includes(validationValue);
 
   return {
     id: `${date}-${index}`,
-    date,
+    dateLabel: formatDate(date),
     session,
-    summary,
+    files: filesRaw
+      .split(";")
+      .map((file) => file.trim())
+      .filter(Boolean),
+    headline,
+    detail,
     validation,
-    validationTone: classifyValidation(validation),
+    showValidationDetail,
+    validationTone: tone,
+    validationLabel: validationLabel(validation, tone),
     followUps,
+    version: extractVersion(`${summary} ${followUpsRaw}`),
   };
 }
 
@@ -93,39 +148,73 @@ export default async function UpdateLogPage(): Promise<JSX.Element> {
           </div>
         </header>
 
-        <section className="ios-card ios-animate-up mt-6 p-2 sm:p-3">
-          {entries.length === 0 ? (
-            <div className="p-6 text-sm text-[color:var(--text-secondary)]">
-              No updates have been logged yet. Entries from <code>{AGENT_LOG_PATH}</code> appear here automatically.
-            </div>
-          ) : (
-            <ol className="max-h-[70vh] space-y-3 overflow-y-auto pr-2 sm:max-h-[75vh]">
-              {entries.map((entry) => (
-                <li key={entry.id} className="ios-list-card p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-mono text-xs uppercase tracking-wider text-[color:var(--accent-strong)]">
-                      v{entry.date}
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="ios-pill text-[10px]" data-tone="neutral">
-                        alex@storestorage.com
+        {entries.length === 0 ? (
+          <section className="ios-card ios-animate-up mt-6 p-6 text-sm text-[color:var(--text-secondary)]">
+            No updates have been logged yet. Entries from <code>{AGENT_LOG_PATH}</code> appear here automatically.
+          </section>
+        ) : (
+          <ol className="ios-animate-up mt-6 max-h-[72vh] space-y-3 overflow-y-auto overscroll-contain p-1 pr-2">
+            {entries.map((entry) => {
+              const hasDetail =
+                Boolean(entry.detail) ||
+                Boolean(entry.followUps) ||
+                entry.showValidationDetail ||
+                entry.files.length > 0;
+              return (
+                <li key={entry.id} className="ios-list-card p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                        {entry.dateLabel}
                       </span>
-                      <span className="ios-pill text-[10px]" data-tone={entry.validationTone}>
-                        {entry.validation}
-                      </span>
+                      {entry.version ? (
+                        <span className="ios-pill px-2.5 py-0.5 text-[10px]" data-tone="blue">
+                          {entry.version}
+                        </span>
+                      ) : null}
                     </div>
+                    <span className="ios-pill px-2.5 py-0.5 text-[10px]" data-tone={entry.validationTone}>
+                      {entry.validationLabel}
+                    </span>
                   </div>
-                  <p className="mt-2 text-sm leading-relaxed text-[color:var(--text-primary)]">{entry.summary}</p>
-                  {entry.followUps && entry.followUps.toLowerCase() !== "none" && (
-                    <p className="mt-2 text-xs text-[color:var(--text-muted)]">
-                      <span className="font-semibold uppercase tracking-wide">Follow-ups:</span> {entry.followUps}
-                    </p>
-                  )}
+
+                  <p className="mt-2.5 text-sm font-medium leading-relaxed text-[color:var(--text-primary)]">
+                    {entry.headline}
+                  </p>
+
+                  {hasDetail ? (
+                    <details className="group mt-2">
+                      <summary className="inline-flex cursor-pointer select-none list-none items-center gap-1.5 text-xs font-semibold text-[color:var(--accent-strong)] [&::-webkit-details-marker]:hidden">
+                        <span aria-hidden className="inline-block transition-transform duration-200 group-open:rotate-90">
+                          &rsaquo;
+                        </span>
+                        Details
+                      </summary>
+                      <div className="mt-2 space-y-2 border-l-2 border-[color:var(--border-soft)] pl-3 text-xs leading-relaxed text-[color:var(--text-secondary)]">
+                        {entry.detail ? <p>{entry.detail}</p> : null}
+                        {entry.followUps ? (
+                          <p>
+                            <span className="font-semibold text-[color:var(--text-primary)]">Follow-ups: </span>
+                            {entry.followUps}
+                          </p>
+                        ) : null}
+                        {entry.showValidationDetail ? (
+                          <p>
+                            <span className="font-semibold text-[color:var(--text-primary)]">Validation: </span>
+                            {entry.validation}
+                          </p>
+                        ) : null}
+                        <p className="break-words font-mono text-[10px] text-[color:var(--text-muted)]">
+                          {[entry.session, ...entry.files].join(" · ")}
+                        </p>
+                      </div>
+                    </details>
+                  ) : null}
                 </li>
-              ))}
-            </ol>
-          )}
-        </section>
+              );
+            })}
+          </ol>
+        )}
       </div>
     </div>
   );

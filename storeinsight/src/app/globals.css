@@ -102,15 +102,17 @@ html.dark {
   --ios26-sunset: rgba(255, 150, 210, 0.24);
 }
 
+/* Set while the theme is being swapped so several hundred surface transitions
+   do not all run at once. Transitions only -- killing animations here would
+   restart the aurora layers on every toggle. */
+html.theme-transitions-off *,
+html.theme-transitions-off *::before,
+html.theme-transitions-off *::after {
+  transition: none !important;
+}
+
 html,
 body {
-  background:
-    radial-gradient(160% 130% at 6% 12%, color-mix(in srgb, var(--ios26-sky) 70%, transparent), transparent 58%),
-    radial-gradient(140% 120% at 92% 0%, color-mix(in srgb, var(--ios26-iris) 85%, transparent), transparent 60%),
-    radial-gradient(130% 130% at 70% 92%, color-mix(in srgb, var(--ios26-sunset) 75%, transparent), transparent 62%),
-    conic-gradient(from 120deg at 52% 46%, color-mix(in srgb, var(--tint-blue) 36%, var(--tint-purple) 32%), transparent 54%),
-    linear-gradient(145deg, color-mix(in srgb, var(--tint-soft) 70%, var(--background) 30%), var(--background)),
-    var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, Arial, Helvetica, sans-serif;
   text-rendering: optimizeLegibility;
@@ -118,13 +120,48 @@ body {
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   position: relative;
-  background-attachment: fixed;
 }
 
-body::before {
+/* Opaque base colour. html paints the canvas, so this also covers overscroll. */
+html {
+  background: var(--background);
+}
+
+/* Transparent so the fixed canvas layer below shows through. */
+body {
+  background: transparent;
+}
+
+/* Page canvas. This gradient stack used to sit on `html, body` with
+   `background-attachment: fixed`, which disables composited scrolling and
+   re-rasterizes the whole viewport on every scroll frame. As its own fixed
+   layer it rasterizes once and is reused.
+
+   z-index -1, not -4: body's opaque background painted above body::before
+   (-2) and body::after (-3), so those two layers -- and every `-z-10`/`-z-20`
+   page overlay that is not inside an isolated ancestor -- were occluded.
+   Keeping this layer at -1 preserves that exact paint order. */
+html::before {
   content: "";
   position: fixed;
   inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(160% 130% at 6% 12%, color-mix(in srgb, var(--ios26-sky) 70%, transparent), transparent 58%),
+    radial-gradient(140% 120% at 92% 0%, color-mix(in srgb, var(--ios26-iris) 85%, transparent), transparent 60%),
+    radial-gradient(130% 130% at 70% 92%, color-mix(in srgb, var(--ios26-sunset) 75%, transparent), transparent 62%),
+    conic-gradient(from 120deg at 52% 46%, color-mix(in srgb, var(--tint-blue) 36%, var(--tint-purple) 32%), transparent 54%),
+    linear-gradient(145deg, color-mix(in srgb, var(--tint-soft) 70%, var(--background) 30%), var(--background)),
+    var(--background);
+}
+
+/* inset: -20% oversizes the layer so the drift transform reveals a different
+   slice of the gradient instead of an edge. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
   pointer-events: none;
   opacity: 0.9;
   background:
@@ -133,17 +170,20 @@ body::before {
     radial-gradient(75% 68% at 44% 16%, color-mix(in srgb, var(--ios26-sky) 78%, transparent), transparent 62%);
   background-size: 160% 160%, 150% 150%, 180% 180%;
   background-position: 12% 78%, 86% 24%, 42% 18%;
+  /* Static filter: rasterizes once. Animating it re-rasterizes every frame. */
   filter: blur(32px) saturate(120%);
   mix-blend-mode: screen;
   transition: opacity 0.6s var(--ease-smooth);
   z-index: -2;
   animation: ios26-glow 32s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 body::after {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: -20%;
   pointer-events: none;
   background:
     conic-gradient(from 140deg at 32% 32%, color-mix(in srgb, var(--ios26-iris) 85%, transparent), transparent 64%),
@@ -154,9 +194,12 @@ body::after {
   background-position: 10% 26%, 84% 72%, 52% 48%, 50% 52%;
   mix-blend-mode: screen;
   opacity: 0.85;
+  /* Mid-point of the saturate() the keyframes used to sweep through. */
   filter: saturate(115%);
   z-index: -3;
   animation: aurora-pan 28s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 html.dark body::before {
@@ -172,38 +215,55 @@ html.dark body::after {
   filter: saturate(125%);
 }
 
+/* Printing: force a light canvas and keep the decorative aurora layers off
+   paper. Chromium rasterizes the fixed mix-blend-mode pseudo-elements against
+   a black backdrop in the print pipeline, and color-scheme: dark paints the
+   page canvas (including margins) dark. */
+@media print {
+  html,
+  html.dark {
+    color-scheme: light;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+  }
+  html::before,
+  body::before,
+  body::after {
+    display: none !important;
+  }
+}
+
+/* Both keyframe sets are composite-only: transform and opacity, never
+   background-position or filter. Paint-phase properties would force the whole
+   viewport to be re-rasterized ~60x a second for as long as the page is open.
+   The translate range stands in for the background-position drift the old
+   steps produced; opacity is deliberately absent from aurora-pan so the
+   `html.dark body::after` opacity override keeps applying. */
 @keyframes aurora-pan {
   0% {
-    background-position: 10% 26%, 84% 72%, 52% 48%, 50% 52%;
-    filter: hue-rotate(0deg) saturate(110%);
-    transform: translate3d(-1%, -1%, 0) scale(1);
+    transform: translate3d(-3%, -2%, 0) scale(1);
   }
   50% {
-    background-position: 18% 38%, 76% 60%, 50% 54%, 50% 48%;
-    filter: hue-rotate(10deg) saturate(120%);
-    transform: translate3d(1%, 2%, 0) scale(1.015);
+    transform: translate3d(3%, 3%, 0) scale(1.015);
   }
   100% {
-    background-position: 14% 64%, 70% 78%, 48% 60%, 50% 50%;
-    filter: hue-rotate(-8deg) saturate(115%);
-    transform: translate3d(-1%, 1%, 0) scale(1.02);
+    transform: translate3d(-2%, 2%, 0) scale(1.02);
   }
 }
 
 @keyframes ios26-glow {
   0% {
-    background-position: 12% 78%, 86% 24%, 42% 18%;
-    transform: translate3d(-1%, -1%, 0) scale(1);
+    transform: translate3d(-3%, -3%, 0) scale(1);
     opacity: 0.88;
   }
   50% {
-    background-position: 16% 70%, 80% 28%, 46% 22%;
-    transform: translate3d(1%, 1%, 0) scale(1.025);
+    transform: translate3d(3%, 2%, 0) scale(1.025);
     opacity: 0.95;
   }
   100% {
-    background-position: 10% 82%, 90% 34%, 40% 16%;
-    transform: translate3d(-1%, 0.5%, 0) scale(1.015);
+    transform: translate3d(-2%, 1.5%, 0) scale(1.015);
     opacity: 0.9;
   }
 }
@@ -281,6 +341,8 @@ html.dark body::after {
   body::before,
   body::after {
     animation: none;
+    /* Nothing left to animate, so do not hold two viewport-sized layers. */
+    will-change: auto;
   }
 
   .ios-glow::after {

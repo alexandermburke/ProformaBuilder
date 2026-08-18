@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Copy, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 
 type UploadKey = "bank" | "card" | "otherBank" | "reference" | "exceptions" | "template" | "amazonOrders";
@@ -172,6 +172,139 @@ const formatBytes = (size: number): string => {
   const scaled = size / 1024 ** idx;
   return `${scaled.toFixed(scaled >= 10 ? 0 : 1)} ${units[idx]}`;
 };
+
+const sameStringList = (a: string[], b: string[]): boolean =>
+  a === b || (a.length === b.length && a.every((value, idx) => value === b[idx]));
+
+const shallowEqual = <T extends object>(a: T, b: T): boolean => {
+  if (a === b) return true;
+  const keys = Object.keys(a) as Array<keyof T>;
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => Object.is(a[key], b[key]));
+};
+
+const deepEqual = (a: unknown, b: unknown): boolean => {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((value, idx) => deepEqual(value, b[idx]));
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) return false;
+  return keys.every(
+    (key) => Object.prototype.hasOwnProperty.call(right, key) && deepEqual(left[key], right[key]),
+  );
+};
+
+type ReviewRowItemProps = {
+  row: ReviewRow;
+  onCommitProperty: (rowNumber: number, value: string) => void;
+  onCommitAccount: (rowNumber: number, value: string) => void;
+};
+
+const ReviewRowItem = memo(function ReviewRowItem({ row, onCommitProperty, onCommitAccount }: ReviewRowItemProps) {
+  const [propertyValue, setPropertyValue] = useState(row.propertyName);
+  const [accountValue, setAccountValue] = useState(row.account);
+  const propertyFocusedRef = useRef(false);
+  const accountFocusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!propertyFocusedRef.current) setPropertyValue(row.propertyName);
+  }, [row.propertyName]);
+
+  useEffect(() => {
+    if (!accountFocusedRef.current) setAccountValue(row.account);
+  }, [row.account]);
+
+  const propertyInvalid = !propertyValue.trim();
+  const accountInvalid = !accountValue.trim() || !DIGITS_ONLY.test(accountValue.trim());
+
+  return (
+    <tr className="divide-x divide-[rgba(148,163,255,0.15)]">
+      <td className="px-3 py-2 font-semibold text-[color:var(--text-primary)]">
+        {row.source === "other-bank"
+          ? SOURCE_LABELS.otherBank
+          : row.source === "card"
+            ? SOURCE_LABELS.card
+            : SOURCE_LABELS.bank}
+      </td>
+      <td className="px-3 py-2 text-[color:var(--text-secondary)]">
+        {row.journalDate || "-"}
+      </td>
+      <td className="px-3 py-2 text-[color:var(--text-secondary)]">
+        {row.notes || "-"}
+      </td>
+      <td className="px-3 py-2 text-[color:var(--text-secondary)]">
+        {row.detailNotes || "-"}
+      </td>
+      <td className="px-3 py-2 text-right text-[color:var(--text-primary)]">
+        {row.debit != null ? row.debit.toLocaleString() : "-"}
+      </td>
+      <td className="px-3 py-2 text-right text-[color:var(--text-primary)]">
+        {row.credit != null ? row.credit.toLocaleString() : "-"}
+      </td>
+      <td className="px-3 py-2">
+        <div className="space-y-1">
+          <input
+            type="text"
+            className={`w-full rounded-lg border px-2 py-1 text-sm text-[color:var(--text-primary)] shadow-sm focus:border-[color:var(--accent-strong)] focus:outline-none ${
+              propertyInvalid
+                ? "border-[#FCA5A5] bg-[#FEF2F2]"
+                : "border-[color:var(--border-soft)] bg-[color:var(--surface)]/80"
+            }`}
+            value={propertyValue}
+            onChange={(event) => setPropertyValue(event.target.value)}
+            onFocus={() => {
+              propertyFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              propertyFocusedRef.current = false;
+              onCommitProperty(row.rowNumber, propertyValue);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onCommitProperty(row.rowNumber, propertyValue);
+            }}
+          />
+          {propertyInvalid && (
+            <p className="text-[10px] text-[#B91C1C]">Property is required</p>
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <div className="space-y-1">
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className={`w-full rounded-lg border px-2 py-1 text-sm text-[color:var(--text-primary)] shadow-sm focus:border-[color:var(--accent-strong)] focus:outline-none ${
+              accountInvalid
+                ? "border-[#FCA5A5] bg-[#FEF2F2]"
+                : "border-[color:var(--border-soft)] bg-[color:var(--surface)]/80"
+            }`}
+            value={accountValue}
+            onChange={(event) => setAccountValue(event.target.value.replace(/[^0-9]/g, ""))}
+            onFocus={() => {
+              accountFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              accountFocusedRef.current = false;
+              onCommitAccount(row.rowNumber, accountValue);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onCommitAccount(row.rowNumber, accountValue);
+            }}
+          />
+          {accountInvalid && (
+            <p className="text-[10px] text-[#B91C1C]">Digits only</p>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+});
 
 export default function BankCardImportPrepPage() {
   const { theme } = useTheme();
@@ -449,29 +582,34 @@ export default function BankCardImportPrepPage() {
 
       setPercent(data.percent ?? 0);
       setStep(data.step ?? "Processing");
-      setLogs(data.logs ?? []);
-      setWarnings(data.warnings ?? []);
+      const nextLogs = data.logs ?? [];
+      setLogs((prev) => (sameStringList(prev, nextLogs) ? prev : nextLogs));
+      const nextWarnings = data.warnings ?? [];
+      setWarnings((prev) => (sameStringList(prev, nextWarnings) ? prev : nextWarnings));
       setDownloadReady(Boolean(data.downloadReady));
       setNeedsReview(Boolean(data.needsReview));
       const isMissingCash = Boolean(data.missingCashAccount);
       setMissingCashAccount(isMissingCash);
       const receivedCounts = data.counts ?? { bank: 0, card: 0, otherBank: 0, output: 0, transactions: 0 };
-      setCounts({
+      const nextCounts = {
         bank: receivedCounts.bank ?? 0,
         card: receivedCounts.card ?? 0,
         otherBank: receivedCounts.otherBank ?? 0,
         output: receivedCounts.output ?? 0,
         transactions: receivedCounts.transactions ?? 0,
-      });
+      };
+      setCounts((prev) => (shallowEqual(prev, nextCounts) ? prev : nextCounts));
       if (data.sources) {
-        setSourceSummaries(data.sources);
+        const nextSources = data.sources;
+        setSourceSummaries((prev) => (deepEqual(prev, nextSources) ? prev : nextSources));
       }
-      setTemplateStats({
+      const nextTemplateStats = {
         templateTxCount: data.templateTxCount ?? 0,
         matchedTxCount: data.matchedTxCount ?? 0,
         unmatchedSamples: data.unmatchedSamples ?? [],
         templateCashAccount: data.templateCashAccount ?? null,
-      });
+      };
+      setTemplateStats((prev) => (deepEqual(prev, nextTemplateStats) ? prev : nextTemplateStats));
 
       if (data.status === "error") {
         setProcessing(false);
@@ -510,7 +648,7 @@ export default function BankCardImportPrepPage() {
   const startPolling = (id: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     fetchStatus(id);
-    pollRef.current = setInterval(() => fetchStatus(id), 750);
+    pollRef.current = setInterval(() => fetchStatus(id), 1500);
   };
 
   const copyText = async (text: string, label: string) => {
@@ -654,6 +792,30 @@ export default function BankCardImportPrepPage() {
     !finalizing &&
     Boolean(jobId) &&
     !missingCashAccount;
+
+  const handleCommitProperty = useCallback((rowNumber: number, value: string) => {
+    setUnmappedRows((prev) => {
+      let changed = false;
+      const next = prev.map((existing) => {
+        if (existing.rowNumber !== rowNumber || existing.propertyName === value) return existing;
+        changed = true;
+        return { ...existing, propertyName: value };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const handleCommitAccount = useCallback((rowNumber: number, value: string) => {
+    setUnmappedRows((prev) => {
+      let changed = false;
+      const next = prev.map((existing) => {
+        if (existing.rowNumber !== rowNumber || existing.account === value) return existing;
+        changed = true;
+        return { ...existing, account: value };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
 
   const applyDefaultAccount = () => {
     const trimmed = defaultOffsetAccount.trim();
@@ -1448,88 +1610,14 @@ export default function BankCardImportPrepPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[rgba(148,163,255,0.2)] bg-[color:var(--surface)]">
-                        {unmappedRows.map((row) => {
-                          const propertyInvalid = !row.propertyName.trim();
-                          const accountInvalid = !row.account.trim() || !DIGITS_ONLY.test(row.account.trim());
-                          return (
-                            <tr key={row.rowNumber} className="divide-x divide-[rgba(148,163,255,0.15)]">
-                              <td className="px-3 py-2 font-semibold text-[color:var(--text-primary)]">
-                                {row.source === "other-bank"
-                                  ? SOURCE_LABELS.otherBank
-                                  : row.source === "card"
-                                    ? SOURCE_LABELS.card
-                                    : SOURCE_LABELS.bank}
-                              </td>
-                              <td className="px-3 py-2 text-[color:var(--text-secondary)]">
-                                {row.journalDate || "-"}
-                              </td>
-                              <td className="px-3 py-2 text-[color:var(--text-secondary)]">
-                                {row.notes || "-"}
-                              </td>
-                              <td className="px-3 py-2 text-[color:var(--text-secondary)]">
-                                {row.detailNotes || "-"}
-                              </td>
-                              <td className="px-3 py-2 text-right text-[color:var(--text-primary)]">
-                                {row.debit != null ? row.debit.toLocaleString() : "-"}
-                              </td>
-                              <td className="px-3 py-2 text-right text-[color:var(--text-primary)]">
-                                {row.credit != null ? row.credit.toLocaleString() : "-"}
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="space-y-1">
-                                  <input
-                                    type="text"
-                                    className={`w-full rounded-lg border px-2 py-1 text-sm text-[color:var(--text-primary)] shadow-sm focus:border-[color:var(--accent-strong)] focus:outline-none ${
-                                      propertyInvalid
-                                        ? "border-[#FCA5A5] bg-[#FEF2F2]"
-                                        : "border-[color:var(--border-soft)] bg-[color:var(--surface)]/80"
-                                    }`}
-                                    value={row.propertyName}
-                                    onChange={(event) =>
-                                      setUnmappedRows((prev) =>
-                                        prev.map((existing) =>
-                                          existing.rowNumber === row.rowNumber
-                                            ? { ...existing, propertyName: event.target.value }
-                                            : existing,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  {propertyInvalid && (
-                                    <p className="text-[10px] text-[#B91C1C]">Property is required</p>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="space-y-1">
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    className={`w-full rounded-lg border px-2 py-1 text-sm text-[color:var(--text-primary)] shadow-sm focus:border-[color:var(--accent-strong)] focus:outline-none ${
-                                      accountInvalid
-                                        ? "border-[#FCA5A5] bg-[#FEF2F2]"
-                                        : "border-[color:var(--border-soft)] bg-[color:var(--surface)]/80"
-                                    }`}
-                                    value={row.account}
-                                    onChange={(event) =>
-                                      setUnmappedRows((prev) =>
-                                        prev.map((existing) =>
-                                          existing.rowNumber === row.rowNumber
-                                            ? { ...existing, account: event.target.value.replace(/[^0-9]/g, "") }
-                                            : existing,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  {accountInvalid && (
-                                    <p className="text-[10px] text-[#B91C1C]">Digits only</p>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        {unmappedRows.map((row) => (
+                          <ReviewRowItem
+                            key={row.rowNumber}
+                            row={row}
+                            onCommitProperty={handleCommitProperty}
+                            onCommitAccount={handleCommitAccount}
+                          />
+                        ))}
                       </tbody>
                     </table>
                   </div>

@@ -268,12 +268,17 @@ Prefer:
 - If a task materially changes architecture or data-flow decisions, document the change or create the log file if it is missing.
 - For every material agent-made code, config, test, documentation, or context-file update, append a concise factual entry to `src/context/agent-update-log.txt` with:
   - date
-  - agent/session
+  - session, always the neutral label `Dev session`
   - files touched
   - summary
   - validation run
   - known follow-ups
-- Keep the log factual and brief.
+- Keep the log factual, brief, and readable by a non-engineer:
+  - lead the summary with one plain-language sentence stating what changed and why it matters; the `/updatelog` page shows that first sentence as the entry headline, so it must stand alone
+  - keep the whole summary under roughly 60 words; implementation detail that matters for future agents belongs in code comments or context docs, not the log
+  - keep the validation field to a short phrase (for example `tsc --noEmit clean; 12/12 tests pass`), never a test narrative
+  - keep follow-ups to one short sentence, or `None`
+  - never reference AI, LLMs, agents, or model/tool names anywhere in an entry; use the `Dev session` label and describe automated features in product terms (for example `auto-generated recommendation`, not `LLM-inferred recommendation`)
 - For the same material update, increment the app version in `package.json` and `package-lock.json` as part of the change.
 - Use conservative semver-style sizing:
   - patch for bug fixes, small workflow adjustments, safe config changes, internal process changes, and other low-risk maintenance updates
@@ -285,7 +290,7 @@ Prefer:
 
 ### Update log page (`/updatelog`)
 
-- The `/updatelog` route at `src/app/updatelog/page.tsx` reads `src/context/agent-update-log.txt` directly at request time and renders every entry as a video-game-style scrollable patch-notes list (newest first).
+- The `/updatelog` route at `src/app/updatelog/page.tsx` reads `src/context/agent-update-log.txt` directly at request time and renders every entry as a compact patch-note card (newest first): date, app version chip, validation status chip, and the summary's first sentence as the headline, with the rest of the summary, follow-ups, validation text, and touched files collapsed behind a Details toggle.
 - Every entry appended to `src/context/agent-update-log.txt` automatically appears on `/updatelog`. Do not maintain a parallel hardcoded list in the page file.
 - Preserve the established line format exactly so the parser keeps working:
   - one entry per line, fields separated by ` | ` (space, pipe, space)

@@ -299,6 +299,14 @@ const formatSignedNumber = (value: number | null | undefined): string => {
   return `${sign}${formatNumber(Math.abs(value))}`;
 };
 
+const formatCurrencyPoint = (value: number): string => formatCompactCurrency(value);
+
+const formatPercentPoint = (value: number): string => formatPercent(value, 1);
+
+const formatNumberPoint = (value: number): string => formatNumber(value);
+
+const formatSignedPoint = (value: number): string => formatSignedNumber(value);
+
 const formatMonthLabel = (monthIso: string): string => formatShortMonth(monthIso);
 
 const formatMonthAsOfLabel = (monthIso: string): string => {
@@ -480,7 +488,8 @@ function LazyBlock({
   minHeight?: number;
   rootMargin?: string;
 }): JSX.Element {
-  const { ref, isVisible } = useInViewOnce<HTMLDivElement>({ rootMargin });
+  const observerOptions = useMemo<IntersectionObserverInit>(() => ({ rootMargin }), [rootMargin]);
+  const { ref, isVisible } = useInViewOnce<HTMLDivElement>(observerOptions);
   return (
     <div ref={ref}>
       {isVisible ? (
@@ -656,10 +665,6 @@ export function HistoricalSnapshotDashboardView({
         ? Number(latestSnapshot?.rentals?.moveInsMtd ?? 0) - Number(latestSnapshot?.rentals?.moveOutsMtd ?? 0)
         : null;
   const grossPotentialRentValue = latestSnapshot?.revenue?.grossPotentialRevenue;
-  const formatCurrencyPoint = (value: number) => formatCompactCurrency(value);
-  const formatPercentPoint = (value: number) => formatPercent(value, 1);
-  const formatNumberPoint = (value: number) => formatNumber(value);
-  const formatSignedPoint = (value: number) => formatSignedNumber(value);
 
   const coreTrendRows = useMemo(
     () =>
@@ -756,7 +761,10 @@ export function HistoricalSnapshotDashboardView({
     noiCoreSeries.map((point) => point.value),
     financialSeriesEntries.length,
   );
-  const totalPastDueSeries = buildSeries(seriesEntries, (snapshot) => snapshot.ar?.totalPastDue);
+  const totalPastDueSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.ar?.totalPastDue),
+    [seriesEntries],
+  );
   const totalPastDueEmpty = getSeriesEmptyMessage(
     totalPastDueSeries.map((point) => point.value),
     seriesEntries.length,
@@ -827,24 +835,40 @@ export function HistoricalSnapshotDashboardView({
     [seriesEntries],
   );
   const leadsEmpty = getSeriesEmptyMessage(leadsSeries.map((point) => point.value), seriesEntries.length);
-  const promosDiscountsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
+  const promosDiscountsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd),
+    [seriesEntries],
+  );
   const promosDiscountsEmpty = getSeriesEmptyMessage(
     promosDiscountsSeries.map((point) => point.value),
     seriesEntries.length,
   );
-  const autopaySeries = buildSeries(seriesEntries, (snapshot) => snapshot.autopay?.autopayPct);
+  const autopaySeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.autopay?.autopayPct),
+    [seriesEntries],
+  );
   const autopayEmpty = getSeriesEmptyMessage(autopaySeries.map((point) => point.value), seriesEntries.length);
-  const tppEnrollmentSeries = buildSeries(seriesEntries, (snapshot) =>
-    isFiniteNumber(snapshot.coverage?.enrolledPct) ? snapshot.coverage?.enrolledPct : snapshot.coverage?.enrolledCount,
+  const tppEnrollmentSeries = useMemo(
+    () =>
+      buildSeries(seriesEntries, (snapshot) =>
+        isFiniteNumber(snapshot.coverage?.enrolledPct) ? snapshot.coverage?.enrolledPct : snapshot.coverage?.enrolledCount,
+      ),
+    [seriesEntries],
   );
   const tppEnrollmentUsesPct = seriesEntries.some((entry) => isFiniteNumber(entry.snapshot.coverage?.enrolledPct));
   const tppEnrollmentEmpty = getSeriesEmptyMessage(
     tppEnrollmentSeries.map((point) => point.value),
     seriesEntries.length,
   );
-  const moveInsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd);
+  const moveInsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd),
+    [seriesEntries],
+  );
   const moveInsEmpty = getSeriesEmptyMessage(moveInsSeries.map((point) => point.value), seriesEntries.length);
-  const moveOutsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd);
+  const moveOutsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd),
+    [seriesEntries],
+  );
   const moveOutsEmpty = getSeriesEmptyMessage(moveOutsSeries.map((point) => point.value), seriesEntries.length);
   const netRentalsSeries = useMemo(
     () =>
@@ -868,10 +892,16 @@ export function HistoricalSnapshotDashboardView({
     netRentalsSeries.map((point) => point.value),
     seriesEntries.length,
   );
-  const staleRentSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.noRentChange12MoCount);
+  const staleRentSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.noRentChange12MoCount),
+    [seriesEntries],
+  );
   const staleRentEmpty = getSeriesEmptyMessage(staleRentSeries.map((point) => point.value), seriesEntries.length);
 
-  const occupancySeries = buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct);
+  const occupancySeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.occupancy?.rsfOccPct),
+    [seriesEntries],
+  );
   const occupancyValues = useMemo(() => occupancySeries.map((point) => point.value), [occupancySeries]);
 
   useEffect(() => {
@@ -4147,22 +4177,34 @@ function OperationalSection({
   rangeKey: RangeKey;
   isDark: boolean;
 }): JSX.Element {
-  const formatPercentPoint = (value: number) => formatPercent(value, 1);
-  const formatNumberPoint = (value: number) => formatNumber(value);
-  const formatSignedPoint = (value: number) => formatSignedNumber(value);
-
-  const autopaySeries = buildSeries(seriesEntries, (snapshot) => snapshot.autopay?.autopayPct);
-  const coverageSeries = buildSeries(seriesEntries, (snapshot) =>
-    isFiniteNumber(snapshot.coverage?.enrolledPct) ? snapshot.coverage?.enrolledPct : snapshot.coverage?.enrolledCount,
+  const autopaySeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.autopay?.autopayPct),
+    [seriesEntries],
+  );
+  const coverageSeries = useMemo(
+    () =>
+      buildSeries(seriesEntries, (snapshot) =>
+        isFiniteNumber(snapshot.coverage?.enrolledPct) ? snapshot.coverage?.enrolledPct : snapshot.coverage?.enrolledCount,
+      ),
+    [seriesEntries],
   );
   const coverageIsPct = seriesEntries.some((entry) => isFiniteNumber(entry.snapshot.coverage?.enrolledPct));
   const autopayEmpty = getSeriesEmptyMessage(autopaySeries.map((point) => point.value), seriesEntries.length);
   const coverageEmpty = getSeriesEmptyMessage(coverageSeries.map((point) => point.value), seriesEntries.length);
-  const staleRentSeries = buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.noRentChange12MoCount);
+  const staleRentSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.pricing?.noRentChange12MoCount),
+    [seriesEntries],
+  );
   const staleRentEmpty = getSeriesEmptyMessage(staleRentSeries.map((point) => point.value), seriesEntries.length);
 
-  const moveInsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd);
-  const moveOutsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd);
+  const moveInsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveInsMtd),
+    [seriesEntries],
+  );
+  const moveOutsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.rentals?.moveOutsMtd),
+    [seriesEntries],
+  );
   const channelData = latestSnapshot?.leads?.byChannelMtd ?? {};
   const channelTotals = {
     web: isFiniteNumber(channelData.web) ? channelData.web : null,
@@ -4175,21 +4217,25 @@ function OperationalSection({
   const leadsTotal = isFiniteNumber(latestSnapshot?.leads?.totalMtd)
     ? latestSnapshot?.leads?.totalMtd
     : channelSum;
-  const netRentalsSeries = seriesEntries
-    .map((entry) => {
-      const rentals = entry.snapshot.rentals;
-      const netValue =
-        isFiniteNumber(rentals?.netMtd)
-          ? rentals?.netMtd
-          : isFiniteNumber(rentals?.moveInsMtd) && isFiniteNumber(rentals?.moveOutsMtd)
-            ? Number(rentals?.moveInsMtd ?? 0) - Number(rentals?.moveOutsMtd ?? 0)
-            : null;
-      return {
-        monthIso: entry.monthIso,
-        value: isFiniteNumber(netValue) ? netValue : null,
-      };
-    })
-    .filter((entry): entry is SeriesPoint => Boolean(entry.monthIso) && isFiniteNumber(entry.value));
+  const netRentalsSeries = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          const rentals = entry.snapshot.rentals;
+          const netValue =
+            isFiniteNumber(rentals?.netMtd)
+              ? rentals?.netMtd
+              : isFiniteNumber(rentals?.moveInsMtd) && isFiniteNumber(rentals?.moveOutsMtd)
+                ? Number(rentals?.moveInsMtd ?? 0) - Number(rentals?.moveOutsMtd ?? 0)
+                : null;
+          return {
+            monthIso: entry.monthIso,
+            value: isFiniteNumber(netValue) ? netValue : null,
+          };
+        })
+        .filter((entry): entry is SeriesPoint => Boolean(entry.monthIso) && isFiniteNumber(entry.value)),
+    [seriesEntries],
+  );
   const moveInsEmpty = getSeriesEmptyMessage(moveInsSeries.map((point) => point.value), seriesEntries.length);
   const moveOutsEmpty = getSeriesEmptyMessage(moveOutsSeries.map((point) => point.value), seriesEntries.length);
   const netRentalsEmpty = getSeriesEmptyMessage(netRentalsSeries.map((point) => point.value), seriesEntries.length);
@@ -4207,16 +4253,20 @@ function OperationalSection({
         ? Number(latestMoveIns ?? 0) - Number(latestMoveOuts ?? 0)
         : null;
   const staleRentCount = latestSnapshot?.pricing?.noRentChange12MoCount;
-  const conversionSeries = seriesEntries
-    .map((entry) => {
-      const totalLeads = entry.snapshot.leads?.totalMtd;
-      const moveIns = entry.snapshot.rentals?.moveInsMtd;
-      if (!isFiniteNumber(totalLeads) || !isFiniteNumber(moveIns) || totalLeads <= 0) {
-        return null;
-      }
-      return { monthIso: entry.monthIso, value: (moveIns / totalLeads) * 100 };
-    })
-    .filter((entry): entry is SeriesPoint => Boolean(entry?.monthIso) && isFiniteNumber(entry?.value));
+  const conversionSeries = useMemo(
+    () =>
+      seriesEntries
+        .map((entry) => {
+          const totalLeads = entry.snapshot.leads?.totalMtd;
+          const moveIns = entry.snapshot.rentals?.moveInsMtd;
+          if (!isFiniteNumber(totalLeads) || !isFiniteNumber(moveIns) || totalLeads <= 0) {
+            return null;
+          }
+          return { monthIso: entry.monthIso, value: (moveIns / totalLeads) * 100 };
+        })
+        .filter((entry): entry is SeriesPoint => Boolean(entry?.monthIso) && isFiniteNumber(entry?.value)),
+    [seriesEntries],
+  );
   const conversionEmptyMessage = getSeriesEmptyMessage(
     conversionSeries.map((point) => point.value),
     seriesEntries.length,
@@ -4477,11 +4527,21 @@ function FinancialsSection({
   laggedFinancialSeriesEntries: SnapshotEntry[];
   isDark: boolean;
 }): JSX.Element {
-  const netRevenueSeries = buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS));
-  const closedNetRevenueSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) =>
-    getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS),
+  const netRevenueSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS)),
+    [seriesEntries],
   );
-  const expensesSeries = buildSeries(laggedFinancialSeriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS));
+  const closedNetRevenueSeries = useMemo(
+    () =>
+      buildSeries(laggedFinancialSeriesEntries, (snapshot) =>
+        getSnapshotNumber(snapshot, NET_REVENUE_VALUE_PATHS),
+      ),
+    [laggedFinancialSeriesEntries],
+  );
+  const expensesSeries = useMemo(
+    () => buildSeries(laggedFinancialSeriesEntries, (snapshot) => getSnapshotNumber(snapshot, EXPENSES_VALUE_PATHS)),
+    [laggedFinancialSeriesEntries],
+  );
   const noiSeries = useMemo(
     () =>
       laggedFinancialSeriesEntries.flatMap((entry) => {
@@ -4499,9 +4559,18 @@ function FinancialsSection({
       }),
     [laggedFinancialSeriesEntries],
   );
-  const concessionsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd);
-  const creditsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.creditsAdjustmentsMtd);
-  const refundsSeries = buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.refundsWriteoffsMtd);
+  const concessionsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.promosDiscountsMtd),
+    [seriesEntries],
+  );
+  const creditsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.creditsAdjustmentsMtd),
+    [seriesEntries],
+  );
+  const refundsSeries = useMemo(
+    () => buildSeries(seriesEntries, (snapshot) => snapshot.concessions?.refundsWriteoffsMtd),
+    [seriesEntries],
+  );
 
   const netRevenueEmpty = getSeriesEmptyMessage(netRevenueSeries.map((point) => point.value), seriesEntries.length);
   const expensesEmpty = getSeriesEmptyMessage(expensesSeries.map((point) => point.value), laggedFinancialSeriesEntries.length);
