@@ -237,3 +237,71 @@ test("fast - legacy Yardi header layout still parses", async () => {
   assert.equal(result.tokens.RENTINCVAR, 10);
   assert.equal(result.ownerGroup, "Synthetic Partners LLC");
 });
+
+test("fast - L001 Asset Management Fee never overwrites the 6500 Management Fees line", async () => {
+  // L001's Other Expenses section carries "8120 Asset Management Fee", an
+  // owner-level cost. Its label contains "management fee" and it sits BELOW
+  // "6500 Management Fees" in the sheet, so with last-write-wins row order it
+  // used to overwrite MGMT with the asset fee (July 2026: $6,250 instead of
+  // $8,306.75). Below-the-line 8xxx/6999 accounts must resolve to nothing.
+  const row = (name: string, actual: number, budget: number): Cell[] => [
+    name,
+    actual,
+    budget,
+    actual - budget,
+    0.5,
+    actual * 7,
+    budget * 7,
+    (actual - budget) * 7,
+    0.5,
+  ];
+  const buffer = buildWorkbook([
+    ["L001 - Synthetic Grove"],
+    ["Budget vs. Actuals"],
+    ["January - July, 2026"],
+    [],
+    [null, "Jul 2026", null, null, null, "Total"],
+    [null, "Actual", "Budget", "Variance", "% Variance", "Actual", "Budget", "Variance", "% Variance"],
+    ["Income"],
+    row("   4100 Tenant Rental Income", 100, 90),
+    row("Total Income", 100, 90),
+    ["Expenses"],
+    row("   6500 Management Fees", 8306.75, 8107.04),
+    row("   6795 Property Taxes", 8233, 8233),
+    row("Total Expenses", 16539.75, 16340.04),
+    ["Other Expenses"],
+    row("   6999 Capital Expenditure", 1000, 0),
+    row("   8100 Interest Expense", 68335.45, 68750),
+    row("   8120 Asset Management Fee", 6250, 6250),
+    row("   8140 Depreciation", 33559.37, 33559.37),
+    row("Total Other Expenses", 109144.82, 108559.37),
+    row("Net Income", 1, 1),
+  ]);
+
+  const result = await extractBudgetTableFields(buffer, undefined, "l001");
+  assert.equal(result.tokens.MGMTCM, 8306.75, "MGMT must come from 6500 Management Fees");
+  assert.equal(result.tokens.MGMTPTD, 8107.04);
+  assert.equal(result.tokens.MGMTYTD, 8306.75 * 7);
+  // The below-the-line rows still roll up through the stated Other Expenses total.
+  assert.equal(result.tokens.TOTOTHEREXPCM, 109144.82);
+  assert.equal(result.tokens.TOTALPROPCM, 16539.75);
+  assert.equal(result.tokens.NETINCCM, 1);
+});
+
+test("fast - QBO 'Asset Management Fees' does not map to the Management Fees line", async () => {
+  const buffer = buildWorkbook([
+    ["W999 - Synthetic Property"],
+    ["Budget vs. Actuals"],
+    ["January-July, 2026"],
+    [],
+    [null, "Jul 2026", null, null, null, "Total"],
+    [null, "Actual", "Budget", "over Budget", "% of Budget", "Actual", "Budget", "over Budget", "% of Budget"],
+    ["Expenses"],
+    ["6500 Management Fees", 500, 450, 50, 0.1, 5000, 4500, 500, 0.1],
+    ["8120 Asset Management Fees", 99, 99, 0, 0, 990, 990, 0, 0],
+    ["Total for Expenses", 599, 549, 50, 0.09, 5990, 5490, 500, 0.09],
+  ]);
+  const result = await extractBudgetTableFields(buffer);
+  assert.equal(result.tokens.MGMTCM, 500);
+  assert.equal(result.tokens.MGMTYTD, 5000);
+});

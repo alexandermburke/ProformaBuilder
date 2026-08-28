@@ -207,6 +207,10 @@ const EXACT_LABEL_MAP = new Map(
 
 const INSURXP_EXCLUDED_TERMS = ["payable", "liabilit", "prepaid", "accrued", "accrual"];
 const DISC_EXCLUDED_TERMS = ["unrecognized", "unrecognised"];
+// "Asset Management Fee" is an owner-level cost that sits below the line in Other
+// Expenses; it is not the property Management Fees operating line. Its label
+// contains "management fee", so without this it silently overwrites MGMT.
+const MGMT_EXCLUDED_TERMS = ["asset management", "asset mgmt"];
 
 const LABEL_MAP: LabelEntry[] = [...RAW_LABEL_MAP]
   .map(([label, base]) => ({
@@ -364,16 +368,19 @@ const resolveLabelBase = (value: CellValue): string | null => {
   if (!normalized) return null;
   const isExcludedInsurxp = INSURXP_EXCLUDED_TERMS.some((term) => normalized.includes(term));
   const isExcludedDisc = DISC_EXCLUDED_TERMS.some((term) => normalized.includes(term));
+  const isExcludedMgmt = MGMT_EXCLUDED_TERMS.some((term) => normalized.includes(term));
   const exact = EXACT_LABEL_MAP.get(normalized);
   if (exact !== undefined) {
     if (exact === "INSURXP" && isExcludedInsurxp) return null;
     if (exact === "DISC" && isExcludedDisc) return null;
+    if (exact === "MGMT" && isExcludedMgmt) return null;
     return exact;
   }
   for (const entry of LABEL_MAP) {
     if (normalized.includes(entry.match)) {
       if (entry.base === "INSURXP" && isExcludedInsurxp) continue;
       if (entry.base === "DISC" && isExcludedDisc) continue;
+      if (entry.base === "MGMT" && isExcludedMgmt) continue;
       return entry.base;
     }
   }
@@ -838,6 +845,14 @@ const l001ResolveLabelBase = (value: CellValue): string | null => {
     return null;
   }
 
+  // Below-the-line ownership accounts (8xxx interest expense, asset management
+  // fee, depreciation, amortization; 6999 capital expenditure) roll into Total
+  // Other Expenses and must never be read as an operating line. Rows are applied
+  // in sheet order with last-write-wins, so without this "8120 Asset Management
+  // Fee" (below the line) overwrites "6500 Management Fees" (above it).
+  const accountCode = /^(\d{3,5})\s/.exec(norm)?.[1];
+  if (accountCode && (accountCode.startsWith("8") || accountCode === "6999")) return null;
+
   const s = stripL001Code(norm);
   if (s.includes("rental income")) return "RENTINC";
   if (s.includes("discount")) return "DISC";
@@ -855,7 +870,8 @@ const l001ResolveLabelBase = (value: CellValue): string | null => {
   if (s.includes("fire prevention")) return "FIRE";
   if (/\binsurance\b/.test(s) && !s.includes("tenant")) return "INSURXP";
   if (s.includes("licenses")) return "PERM";
-  if (s.includes("management fee")) return "MGMT";
+  // Guard again on the wording, for exports that drop the account codes.
+  if (s.includes("management fee") && !MGMT_EXCLUDED_TERMS.some((t) => s.includes(t))) return "MGMT";
   if (s.includes("office") && s.includes("supplies")) return "OFFSUP";
   if (s.includes("payroll")) return "MGMSTF";
   if (s.includes("professional")) return "PROF";
