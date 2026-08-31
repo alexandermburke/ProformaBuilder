@@ -268,10 +268,24 @@ export async function runFaciliqInvoiceIntake(
     messages = await fetchMailboxMessages({
       mailbox,
       accessToken,
+      // Filtered to the allowed senders by Graph itself, so the cap is spent on mail that
+      // could actually be an export instead of on whatever else landed in billing@ today.
+      fromAddresses: [...allowedSenders],
       maxMessages: options.maxMessages ?? DEFAULT_MAX_MESSAGES,
     });
   }
   summary.messagesScanned = messages.length;
+
+  // Graph now filters by sender, so `messagesScanned` counts candidate exports rather than
+  // everything in the mailbox, and `skippedOtherSenders` should be ~0. That makes an empty
+  // result ambiguous between "no mail from FacilIQ" and "the sender list is wrong", and the
+  // second used to be caught by seeing 100 scanned and 100 skipped. Say so loudly instead.
+  if (messages.length === 0 && !options.retryMessageId) {
+    console.warn(`${LOG} no mail from any allowed sender`, {
+      mailbox,
+      allowedSenders: [...allowedSenders],
+    });
+  }
 
   for (const message of messages) {
     const messageId = message.id;

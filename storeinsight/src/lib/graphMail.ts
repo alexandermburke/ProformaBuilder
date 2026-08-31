@@ -67,12 +67,37 @@ const failed = async (res: Response, what: string): Promise<never> => {
  * Newest-first messages from a mailbox, following `@odata.nextLink` so a backlog larger
  * than one page is not silently dropped.
  */
+/** OData string literals escape a single quote by doubling it. */
+const odataString = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+
+/**
+ * Page cap for a sender-filtered read. One vendor sending weekly needs a page every two
+ * years, so this is a runaway guard rather than a real limit.
+ */
+const MAX_FILTERED_PAGES = 20;
+
 export async function fetchMailboxMessages(params: {
   mailbox: string;
   accessToken: string;
   maxMessages?: number;
   select?: readonly string[];
   bodyContentType?: MailboxBodyContentType;
+  /**
+   * Restrict to these senders SERVER SIDE.
+   *
+   * Worth the special case because the alternative loses mail. Without it this reads the N
+   * newest messages in the mailbox and filters afterwards, and billing@ is a busy shared
+   * inbox: a real run on 2026-08-31 scanned 100 messages to find 7 that mattered, with 93
+   * discarded as other senders. One busy week and a weekly export falls off the end of that
+   * page, with no error anywhere, which for an invoice pipeline means a payable that simply
+   * never happens.
+   *
+   * Graph will NOT accept a sender filter alongside `$orderby: receivedDateTime desc`; it
+   * answers 400 InefficientFilter (verified against this mailbox). So the ordering is dropped
+   * for the filtered request and reapplied here instead, which is safe because filtering to
+   * one vendor's mail leaves few enough messages to fetch all of them.
+   */
+  fromAddresses?: readonly string[];
 }): Promise<GraphMailMessage[]> {
   const {
     mailbox,
@@ -80,19 +105,39 @@ export async function fetchMailboxMessages(params: {
     maxMessages = 100,
     select = ['id', 'receivedDateTime', 'subject', 'from', 'hasAttachments'],
     bodyContentType,
+    fromAddresses,
   } = params;
 
+  const senders = (fromAddresses ?? []).map((value) => value.trim()).filter(Boolean);
   const limit = Math.max(1, maxMessages);
   const query = new URLSearchParams({
     $top: String(Math.min(limit, PAGE_SIZE)),
     $select: select.join(','),
-    $orderby: 'receivedDateTime desc',
   });
+  if (senders.length > 0) {
+    query.set(
+      '$filter',
+      senders.map((address) => `from/emailAddress/address eq ${odataString(address)}`).join(' or '),
+    );
+  } else {
+    query.set('$orderby', 'receivedDateTime desc');
+  }
 
   const collected: GraphMailMessage[] = [];
   let nextUrl: string | null = `${GRAPH_BASE}/users/${encodeURIComponent(mailbox)}/messages?${query}`;
+  let pages = 0;
 
-  while (nextUrl && collected.length < limit) {
+  /**
+   * A filtered request cannot be sorted by Graph, so stopping at `limit` mid-collection would
+   * keep an ARBITRARY subset and only then sort it. Graph returns unsorted results oldest
+   * first in this mailbox, so that would quietly keep the oldest messages and drop the newest
+   * the moment a sender's history exceeded the limit. Read every page instead and let the
+   * sort below decide what `limit` keeps. Safe to do because the filter is one vendor's mail.
+   */
+  const readEveryPage = senders.length > 0;
+
+  while (nextUrl && (readEveryPage ? pages < MAX_FILTERED_PAGES : collected.length < limit)) {
+    pages += 1;
     const res: Response = await graphFetch(
       nextUrl,
       accessToken,
@@ -103,6 +148,12 @@ export async function fetchMailboxMessages(params: {
     const json = (await res.json()) as { value?: GraphMailMessage[]; '@odata.nextLink'?: string };
     if (Array.isArray(json.value)) collected.push(...json.value);
     nextUrl = json['@odata.nextLink'] ?? null;
+  }
+
+  // The filtered request could not ask Graph to sort, so restore newest-first here. Callers
+  // rely on that order to decide what a truncating limit keeps.
+  if (senders.length > 0) {
+    collected.sort((a, b) => (b.receivedDateTime ?? '').localeCompare(a.receivedDateTime ?? ''));
   }
 
   return collected.slice(0, limit);
