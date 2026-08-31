@@ -22,6 +22,7 @@ import { firestore } from '@/server/firebaseAdmin';
 import type { QuickBooksPropertyCode } from '@/lib/accounting/faciliqInvoiceImport/properties';
 import { getQuickBooksProperty } from '@/lib/accounting/faciliqInvoiceImport/properties';
 import type { QuickBooksEnvironment } from './config';
+import type { QuickBooksTokenSet } from './oauth';
 import { decryptToken, encryptToken } from './tokenCrypto';
 
 export const QBO_CONNECTION_COLLECTION = 'quickbooksConnections';
@@ -49,6 +50,11 @@ export type StoredQuickBooksConnection = {
   connectedAt: string;
   lastRefreshedAt: string | null;
   lastError: string | null;
+  /**
+   * ISO timestamp until which one actor holds the exclusive right to spend this
+   * connection's refresh token. See `claimTokenRefresh`.
+   */
+  refreshLeaseUntil: string | null;
 };
 
 /** Everything the browser is allowed to know about a connection. Never carries a token. */
@@ -90,7 +96,9 @@ const readStored = (
     createdAt?: unknown;
     updatedAt?: unknown;
   };
-  return rest;
+  // Connections saved before the lease existed carry no refreshLeaseUntil. Defaulting here
+  // keeps that a storage concern rather than an optional field every reader has to handle.
+  return { ...rest, refreshLeaseUntil: rest.refreshLeaseUntil ?? null };
 };
 
 export const QBO_OAUTH_STATE_COLLECTION = 'quickbooksOAuthStates';
@@ -181,6 +189,7 @@ export async function saveConnection(input: SaveConnectionInput): Promise<void> 
     connectedAt: input.nowIso,
     lastRefreshedAt: null,
     lastError: null,
+    refreshLeaseUntil: null,
   };
 
   await collection().doc(input.propertyCode).set(
@@ -189,29 +198,115 @@ export async function saveConnection(input: SaveConnectionInput): Promise<void> 
   );
 }
 
+/** Exactly the fields a token refresh rewrites, so a caller can update its own copy. */
+export type RefreshedConnectionFields = Pick<
+  StoredQuickBooksConnection,
+  | 'accessTokenEnc'
+  | 'accessTokenExpiresAt'
+  | 'refreshTokenEnc'
+  | 'refreshTokenExpiresAt'
+  | 'status'
+  | 'lastRefreshedAt'
+  | 'lastError'
+  | 'refreshLeaseUntil'
+>;
+
+export type TokenRefreshResult = QuickBooksTokenSet & { nowIso: string };
+
 /**
- * Persists a refreshed token pair. Intuit rotates the refresh token on most refreshes, so
- * the new one is always written back -- keeping the old one would break the next refresh.
+ * The stored form of a refreshed token pair. Split out from the write so a caller can bring
+ * its own copy of the connection forward by the exact values Firestore received, and so the
+ * shape can be asserted in a unit test without Firestore.
  */
-export async function updateConnectionTokens(input: {
-  propertyCode: QuickBooksPropertyCode;
-  accessToken: string;
-  accessTokenExpiresAt: string;
-  refreshToken: string;
-  refreshTokenExpiresAt: string;
-  nowIso: string;
-}): Promise<void> {
+export function refreshedConnectionFields(result: TokenRefreshResult): RefreshedConnectionFields {
+  return {
+    accessTokenEnc: encryptToken(result.accessToken),
+    accessTokenExpiresAt: result.accessTokenExpiresAt,
+    refreshTokenEnc: encryptToken(result.refreshToken),
+    refreshTokenExpiresAt: result.refreshTokenExpiresAt,
+    status: 'connected',
+    lastRefreshedAt: result.nowIso,
+    lastError: null,
+    // The refresh is done, so the lease is over regardless of who else is waiting.
+    refreshLeaseUntil: null,
+  };
+}
+
+/**
+ * Persists a refreshed token pair, and returns what it wrote so the caller can bring its own
+ * copy forward. Intuit rotates the refresh token on most refreshes, so the new one is always
+ * written back: keeping the old one would break the next refresh.
+ */
+export async function updateConnectionTokens(
+  input: TokenRefreshResult & { propertyCode: QuickBooksPropertyCode },
+): Promise<RefreshedConnectionFields> {
+  const written = refreshedConnectionFields(input);
+
   await collection().doc(input.propertyCode).set(
-    {
-      accessTokenEnc: encryptToken(input.accessToken),
-      accessTokenExpiresAt: input.accessTokenExpiresAt,
-      refreshTokenEnc: encryptToken(input.refreshToken),
-      refreshTokenExpiresAt: input.refreshTokenExpiresAt,
-      status: 'connected' satisfies QuickBooksConnectionStatus,
-      lastRefreshedAt: input.nowIso,
-      lastError: null,
-      updatedAt: stamp(),
-    },
+    { ...written, updatedAt: stamp() },
+    { merge: true },
+  );
+
+  return written;
+}
+
+/**
+ * How long one actor may hold the right to spend a refresh token. Short on purpose: a
+ * process that dies mid-refresh must not lock the property out, and a token exchange that
+ * takes longer than this has already failed in every way that matters.
+ */
+export const TOKEN_REFRESH_LEASE_MS = 20_000;
+
+export type TokenRefreshLease =
+  /** The caller may spend the refresh token on `connection`, which was just re-read. */
+  | { granted: true; connection: StoredQuickBooksConnection }
+  /** Someone else is refreshing. `connection` is the current stored state. */
+  | { granted: false; connection: StoredQuickBooksConnection; heldUntil: string }
+  /** The connection is gone. */
+  | { granted: false; connection: null; heldUntil: null };
+
+/**
+ * Claims the exclusive right to spend a property's refresh token, and returns the connection
+ * as Firestore holds it right now.
+ *
+ * Two actors that spend the same refresh token -- the daily cron and an operator clicking
+ * upload, two serverless invocations, or a local script against the same Firestore -- leave
+ * the second with a 400 from Intuit. The lease makes the spend exclusive, and because the
+ * read is inside the transaction the caller also cannot spend a token off a stale snapshot.
+ * The loser waits and re-reads instead of racing.
+ */
+export async function claimTokenRefresh(params: {
+  propertyCode: QuickBooksPropertyCode;
+  nowMs: number;
+  leaseMs?: number;
+}): Promise<TokenRefreshLease> {
+  const db = requireFirestore();
+  const ref = collection().doc(params.propertyCode);
+  const leaseMs = params.leaseMs ?? TOKEN_REFRESH_LEASE_MS;
+
+  return db.runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const stored = snapshot.exists ? readStored(snapshot) : null;
+    if (!stored) return { granted: false, connection: null, heldUntil: null };
+
+    const heldUntil = stored.refreshLeaseUntil;
+    if (heldUntil) {
+      const heldUntilMs = Date.parse(heldUntil);
+      if (Number.isFinite(heldUntilMs) && heldUntilMs > params.nowMs) {
+        return { granted: false, connection: stored, heldUntil };
+      }
+    }
+
+    const until = new Date(params.nowMs + leaseMs).toISOString();
+    tx.set(ref, { refreshLeaseUntil: until, updatedAt: stamp() }, { merge: true });
+    return { granted: true, connection: { ...stored, refreshLeaseUntil: until } };
+  });
+}
+
+/** Ends a lease early, so a failed refresh does not make everyone else wait it out. */
+export async function releaseTokenRefresh(propertyCode: QuickBooksPropertyCode): Promise<void> {
+  await collection().doc(propertyCode).set(
+    { refreshLeaseUntil: null, updatedAt: stamp() },
     { merge: true },
   );
 }
@@ -225,6 +320,7 @@ export async function markConnectionNeedsReauth(
     {
       status: 'needs_reauth' satisfies QuickBooksConnectionStatus,
       lastError: error,
+      refreshLeaseUntil: null,
       updatedAt: stamp(),
     },
     { merge: true },

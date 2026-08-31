@@ -16,6 +16,12 @@ import { emptyBillCounts } from "../src/lib/accounting/quickbooks/billRecords";
 import { escapeQueryValue, normalizeRefKey } from "../src/lib/accounting/quickbooks/resolveRefs";
 import { decryptToken, encryptToken } from "../src/lib/accounting/quickbooks/tokenCrypto";
 import { signOAuthState, verifyOAuthState } from "../src/lib/accounting/quickbooks/oauth";
+import { isAccessTokenFresh } from "../src/lib/accounting/quickbooks/client";
+import {
+  readConnectionTokens,
+  refreshedConnectionFields,
+  type StoredQuickBooksConnection,
+} from "../src/lib/accounting/quickbooks/connections";
 
 /** Header taken verbatim from the real weekly export. */
 const HEADER = [
@@ -314,4 +320,81 @@ test("the OAuth state round-trips the property and rejects tampering and expiry"
   assert.equal(verifyOAuthState(null).ok, false);
   assert.equal(verifyOAuthState("nonsense").ok, false);
   assert.equal(verifyOAuthState(`${body}.${signature}`, Date.now() + 20 * 60 * 1000).ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// Token refresh. W002 and W003 both died in August 2026 one second after a
+// refresh that worked: a spent refresh token got sent a second time, and Intuit
+// answers that with 400 "Incorrect or invalid refresh token". The lease in
+// connections.ts is the actual guarantee against it and needs a Firestore fake
+// to test; what is unit-testable is the pair of values a refresh produces and
+// the freshness predicate the whole path turns on.
+// ---------------------------------------------------------------------------
+
+const storedConnection = (input: {
+  accessTokenExpiresAt: string;
+  accessToken?: string;
+  refreshToken?: string;
+}): StoredQuickBooksConnection => ({
+  propertyCode: "W003",
+  realmId: "9341457708674385",
+  environment: "sandbox",
+  companyName: "IES Sandbox Company US 8a1b Parent",
+  companyLegalName: "IES Sandbox Company US 8a1b Parent",
+  companyNameVerified: false,
+  status: "connected",
+  accessTokenEnc: encryptToken(input.accessToken ?? "A1"),
+  accessTokenExpiresAt: input.accessTokenExpiresAt,
+  refreshTokenEnc: encryptToken(input.refreshToken ?? "R1"),
+  refreshTokenExpiresAt: "2026-12-05T17:16:23.927Z",
+  connectedBy: "alex@storestorage.com",
+  connectedAt: "2026-08-24T22:44:59.408Z",
+  lastRefreshedAt: null,
+  lastError: null,
+  refreshLeaseUntil: null,
+});
+
+test("a connection advanced by a refresh stops looking expired and stops holding the spent token", () => {
+  // The state W003 was in at 17:16:24 on 2026-08-26: a token an hour past expiry.
+  const before = storedConnection({
+    accessToken: "A1",
+    refreshToken: "R1",
+    accessTokenExpiresAt: "2026-08-26T18:16:23.927Z",
+  });
+  const nowMs = Date.parse("2026-08-27T17:16:24.000Z");
+
+  assert.equal(isAccessTokenFresh(before, nowMs), false);
+  assert.equal(readConnectionTokens(before).refreshToken, "R1");
+
+  const written = refreshedConnectionFields({
+    accessToken: "A2",
+    accessTokenExpiresAt: new Date(nowMs + 3600_000).toISOString(),
+    refreshToken: "R2",
+    refreshTokenExpiresAt: "2026-12-06T17:16:24.000Z",
+    nowIso: new Date(nowMs).toISOString(),
+  });
+  const after: StoredQuickBooksConnection = { ...before, ...written };
+
+  // The second request in the same run reads these. Both must have moved.
+  assert.equal(isAccessTokenFresh(after, nowMs), true);
+  assert.equal(readConnectionTokens(after).accessToken, "A2");
+  assert.equal(
+    readConnectionTokens(after).refreshToken,
+    "R2",
+    "an advanced snapshot must not carry the refresh token that was just spent",
+  );
+  assert.equal(after.status, "connected");
+  assert.equal(after.lastError, null);
+  // A completed refresh ends the lease, or every other actor waits it out for nothing.
+  assert.equal(after.refreshLeaseUntil, null);
+});
+
+test("the refresh margin refuses a token inside the margin, or one with an unreadable expiry", () => {
+  const nowMs = Date.parse("2026-08-27T17:16:24.000Z");
+  const expiringAt = (accessTokenExpiresAt: string) => storedConnection({ accessTokenExpiresAt });
+
+  assert.equal(isAccessTokenFresh(expiringAt(new Date(nowMs + 90_000).toISOString()), nowMs), false);
+  assert.equal(isAccessTokenFresh(expiringAt(new Date(nowMs + 600_000).toISOString()), nowMs), true);
+  // An unparseable expiry must read as expired, not as valid forever.
+  assert.equal(isAccessTokenFresh(expiringAt("not a date"), nowMs), false);
 });

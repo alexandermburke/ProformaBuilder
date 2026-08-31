@@ -1,26 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authorizeCronRequest } from '@/lib/cronAuth';
 import { ingestInvoiceEmails } from '@/lib/ingestInvoiceEmails';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const isCronRequest = (req: NextRequest): boolean =>
-  req.headers.get('user-agent')?.toLowerCase().startsWith('vercel-cron') === true;
-
-const authorize = (req: NextRequest): boolean => {
-  const header = req.headers.get('x-cron-secret');
-  const secret = process.env.CRON_SECRET;
-  if (header != null) {
-    return !!secret && header === secret;
-  }
-  if (isCronRequest(req)) {
-    return true;
-  }
-  return false;
-};
-
 const handle = async (request: NextRequest): Promise<NextResponse> => {
-  if (!authorize(request)) {
+  const auth = authorizeCronRequest(request);
+  if (!auth.ok) {
+    console.warn('[cron/invoice-ingest] unauthorized', { reason: auth.reason });
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

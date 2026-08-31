@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cronAuth";
 import { runDailyMsrIngestion } from "@/lib/runDailyMsrIngestion";
 
 export const runtime = "nodejs";
@@ -20,22 +21,10 @@ const getTodayMstDate = (): string => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
-const isCronRequest = (req: NextRequest): boolean => req.headers.get("user-agent")?.toLowerCase().startsWith("vercel-cron") === true;
-
-const authorize = (req: NextRequest): boolean => {
-  const header = req.headers.get("x-cron-secret");
-  const secret = process.env.CRON_SECRET;
-  if (header != null) {
-    return !!secret && header === secret;
-  }
-  if (isCronRequest(req)) {
-    return true;
-  }
-  return false;
-};
-
 const handle = async (request: NextRequest): Promise<NextResponse> => {
-  if (!authorize(request)) {
+  const auth = authorizeCronRequest(request);
+  if (!auth.ok) {
+    console.warn("[cron/msr-ingest] unauthorized", { reason: auth.reason });
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

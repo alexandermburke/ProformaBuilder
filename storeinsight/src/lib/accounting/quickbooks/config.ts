@@ -45,11 +45,57 @@ export const resolveEnvironment = (): QuickBooksEnvironment =>
   process.env.QUICKBOOKS_ENVIRONMENT?.trim().toLowerCase() === 'production' ? 'production' : 'sandbox';
 
 /**
- * True only when someone has explicitly allowed writes. Everything else in the uploader
- * runs identically either way, so a dry run exercises resolution and payload building.
+ * True only when someone has explicitly allowed writes, FOR THAT PROPERTY. Everything else
+ * in the uploader runs identically either way, so a dry run exercises resolution and payload
+ * building.
+ *
+ * QUICKBOOKS_LIVE_CREATE takes either a blanket `true`, or a comma-separated list of property
+ * codes. The list form is what makes a staged rollout possible: pointing one facility at a
+ * real company file while the rest keep running as dry runs is otherwise a choice between
+ * all of them and none.
+ *
+ *     QUICKBOOKS_LIVE_CREATE=false        nothing is created anywhere
+ *     QUICKBOOKS_LIVE_CREATE=W003         only W003 creates bills
+ *     QUICKBOOKS_LIVE_CREATE=W003,L001    those two create bills
+ *     QUICKBOOKS_LIVE_CREATE=true        every connected property creates bills
+ *
+ * Writes are also refused off Vercel. `.env.local` points a developer machine at the same
+ * Firestore and the same Intuit app as production, so without this a stray script run from a
+ * laptop could post real payables. Set QUICKBOOKS_ALLOW_LOCAL_WRITES=true to override that
+ * deliberately for a one-off.
  */
-export const isLiveCreateEnabled = (): boolean =>
-  process.env.QUICKBOOKS_LIVE_CREATE?.trim().toLowerCase() === 'true';
+export const isLiveCreateEnabled = (propertyCode?: string): boolean => {
+  const setting = process.env.QUICKBOOKS_LIVE_CREATE?.trim().toLowerCase();
+  if (!setting || setting === 'false') return false;
+
+  const onVercel = Boolean(process.env.VERCEL);
+  const localOverride = process.env.QUICKBOOKS_ALLOW_LOCAL_WRITES?.trim().toLowerCase() === 'true';
+  if (!onVercel && !localOverride) return false;
+
+  if (setting === 'true') return true;
+
+  // A list without a property to check against cannot be answered yes: the caller is asking
+  // "is anything live", and the per-property call is the one that decides.
+  if (!propertyCode) return true;
+
+  return setting
+    .split(',')
+    .map((code) => code.trim())
+    .filter(Boolean)
+    .includes(propertyCode.trim().toLowerCase());
+};
+
+/** Which properties the current setting would create bills for, for the connections page. */
+export const liveCreateScope = (): 'none' | 'all' | string[] => {
+  const setting = process.env.QUICKBOOKS_LIVE_CREATE?.trim();
+  if (!setting || setting.toLowerCase() === 'false') return 'none';
+  if (!isLiveCreateEnabled()) return 'none';
+  if (setting.toLowerCase() === 'true') return 'all';
+  return setting
+    .split(',')
+    .map((code) => code.trim().toUpperCase())
+    .filter(Boolean);
+};
 
 export const apiBaseUrl = (environment: QuickBooksEnvironment): string => API_BASE[environment];
 

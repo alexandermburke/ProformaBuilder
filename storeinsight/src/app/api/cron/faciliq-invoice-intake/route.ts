@@ -5,29 +5,21 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { authorizeCronRequest } from '@/lib/cronAuth';
 import { runFaciliqInvoiceIntake } from '@/lib/accounting/faciliqInvoiceIntake/runFaciliqInvoiceIntake';
+import {
+  keepQuickBooksTokensAlive,
+  type TokenKeepAliveResult,
+} from '@/lib/accounting/quickbooks/tokenKeepAlive';
 import { uploadPendingFaciliqExports } from '@/lib/accounting/quickbooks/uploadPendingExports';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const isCronRequest = (req: NextRequest): boolean =>
-  req.headers.get('user-agent')?.toLowerCase().startsWith('vercel-cron') === true;
-
-const authorize = (req: NextRequest): boolean => {
-  const header = req.headers.get('x-cron-secret');
-  const secret = process.env.CRON_SECRET;
-  if (header != null) {
-    return !!secret && header === secret;
-  }
-  if (isCronRequest(req)) {
-    return true;
-  }
-  return false;
-};
-
 const handle = async (request: NextRequest): Promise<NextResponse> => {
-  if (!authorize(request)) {
+  const auth = authorizeCronRequest(request);
+  if (!auth.ok) {
+    console.warn('[cron/faciliq-invoice-intake] unauthorized', { reason: auth.reason });
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -36,6 +28,20 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
   const url = new URL(request.url);
   const dryRunParam = url.searchParams.get('dryRun');
   const dryRun = dryRunParam === '1' || dryRunParam === 'true';
+
+  // Token maintenance has nothing to do with the mailbox, so it runs FIRST and outside the
+  // intake's failure domain: a Graph outage must not also cost a day of token refreshing.
+  // It also leaves a fresh token in place for the upload step below.
+  let tokens: TokenKeepAliveResult[] | null = null;
+  let tokenError: string | null = null;
+  if (!dryRun) {
+    try {
+      tokens = await keepQuickBooksTokensAlive();
+    } catch (err) {
+      console.error('[cron/faciliq-invoice-intake] token keep-alive failed', err);
+      tokenError = err instanceof Error ? err.message : 'Unexpected error during the token keep-alive';
+    }
+  }
 
   try {
     const intake = await runFaciliqInvoiceIntake({ dryRun });
@@ -53,12 +59,14 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
       return NextResponse.json({
         mode: 'scheduled',
         intake,
+        tokens,
+        tokenError,
         upload: null,
         uploadError: err instanceof Error ? err.message : 'Unexpected error during the upload step',
       });
     }
 
-    return NextResponse.json({ mode: 'scheduled', intake, upload });
+    return NextResponse.json({ mode: 'scheduled', intake, tokens, tokenError, upload });
   } catch (err) {
     console.error('[cron/faciliq-invoice-intake] failed', err);
     return NextResponse.json(
@@ -73,9 +81,10 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
 
 // Vercel Cron:
 // - Path: /api/cron/faciliq-invoice-intake · Method: GET/POST · Header x-cron-secret: <CRON_SECRET>
-// - Reads billing@ (FACILIQ_MAILBOX_USER_ID, falling back to INVOICE_MAILBOX_USER_ID) via
-//   Microsoft Graph, converts the weekly FacilIQ QuickBooks export, then sends any bills
-//   still outstanding to each property's QuickBooks company.
+// - Refreshes any QuickBooks token that has gone a day without one, then reads billing@
+//   (FACILIQ_MAILBOX_USER_ID, falling back to INVOICE_MAILBOX_USER_ID) via Microsoft Graph,
+//   converts the weekly FacilIQ QuickBooks export, then sends any bills still outstanding
+//   to each property's QuickBooks company.
 // - Runs daily rather than weekly on purpose: a late or re-sent export still gets picked
 //   up, and the intake ledger makes a repeat run a no-op.
 // - Schedule: 0 17 * * *, i.e. somewhere in 17:00-17:59 UTC on Hobby, which fires at the

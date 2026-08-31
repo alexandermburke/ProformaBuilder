@@ -18,6 +18,7 @@ import {
   type QuickBooksPropertyCode,
 } from '@/lib/accounting/faciliqInvoiceImport/properties';
 import type { QuickBooksConnectionsResponse } from '@/lib/accounting/quickbooks/apiContract';
+import { forgetConnection } from '@/lib/accounting/quickbooks/client';
 import {
   hasQuickBooksCredentials,
   isLiveCreateEnabled,
@@ -80,6 +81,9 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
         console.warn('[quickbooks/connections] revoke failed, removing the record anyway', { property }, err);
       }
       await deleteConnection(property);
+      // A warm serverless process caches the last connection it saw per property. Without
+      // this it could still hand out a live access token for a property just disconnected.
+      forgetConnection(property);
       console.info('[quickbooks/connections] disconnected', { property, realmId: connection.realmId });
     }
     return NextResponse.json({ disconnected: property });

@@ -286,24 +286,57 @@ export async function recordBillNeedsMapping(params: {
   );
 }
 
+/**
+ * Records a failure, and refuses to overwrite a bill that is already settled.
+ *
+ * Transactional because the read and the write have to be one step. A property-level failure
+ * reports against every bill in that property, including ones already created in QuickBooks,
+ * and writing `failed` over an `uploaded` record loses the QuickBooks bill id and leaves the
+ * ledger claiming a bill was never sent while it sits in the company's books. That is not
+ * hypothetical: it is what erased the record of bill 147 in August 2026.
+ *
+ * NOTE the difference from `claimBillForUpload`, which applies the same terminal-status rule
+ * only when `record.realmId` matches the destination. This guard is deliberately NOT scoped
+ * by realm, because the caller that needs it has no client and therefore no realm to compare.
+ * It is the more conservative of the two: it can decline to record a failure against a bill
+ * settled in a different company, which costs a log line, where the reverse would cost the
+ * audit trail.
+ *
+ * `realmId` is only written when the caller knows one, for the same reason: null would erase
+ * the realm a bill actually landed in.
+ */
 export async function recordBillFailed(params: {
   billKey: string;
   realmId: string | null;
   error: string;
   dryRun: boolean;
   nowIso: string;
-}): Promise<void> {
-  await collection().doc(params.billKey).set(
-    {
-      status: 'failed' satisfies BillUploadStatus,
-      realmId: params.realmId,
-      error: params.error,
-      lastRunWasDryRun: params.dryRun,
-      lastRunAt: params.nowIso,
-      updatedAt: stamp(),
-    },
-    { merge: true },
-  );
+}): Promise<{ settled: FaciliqBillRecord | null }> {
+  const ref = collection().doc(params.billKey);
+
+  return requireFirestore().runTransaction(async (tx) => {
+    const snapshot = await tx.get(ref);
+    const existing = snapshot.exists ? readRecord(snapshot) : null;
+
+    if (existing && !isBillRetryable(existing.status)) {
+      tx.set(ref, { lastRunAt: params.nowIso, updatedAt: stamp() }, { merge: true });
+      return { settled: existing };
+    }
+
+    tx.set(
+      ref,
+      {
+        status: 'failed' satisfies BillUploadStatus,
+        ...(params.realmId ? { realmId: params.realmId } : {}),
+        error: params.error,
+        lastRunWasDryRun: params.dryRun,
+        lastRunAt: params.nowIso,
+        updatedAt: stamp(),
+      },
+      { merge: true },
+    );
+    return { settled: null };
+  });
 }
 
 /** A dry run leaves the bill attemptable; it records what WOULD have happened. */

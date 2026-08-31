@@ -15,9 +15,10 @@
  * and this can re-run without touching email.
  *
  * Safety model:
- *   - Live creation requires BOTH an explicit request and QUICKBOOKS_LIVE_CREATE=true.
- *     Asking for live without the flag downgrades to a dry run and says so, rather than
- *     silently doing nothing or silently doing it.
+ *   - Live creation requires BOTH an explicit request and QUICKBOOKS_LIVE_CREATE allowing
+ *     THAT PROPERTY, and it is refused off Vercel. Asking for live without it downgrades to
+ *     a dry run and says so, rather than silently doing nothing or silently doing it. The
+ *     decision is per property so one facility can go live while the others stay dry.
  *   - Every bill is claimed transactionally, and a bill already `uploaded` is refused, so
  *     a cron, a retry, or two concurrent runs cannot create it twice.
  *   - Before creating, QuickBooks itself is asked whether a bill with that DocNumber and
@@ -153,9 +154,12 @@ export async function uploadFaciliqExportBills(
   const environment = resolveEnvironment();
 
   const requestedLive = options.dryRun === false;
+  // Whether anything at all may be created. The decision that matters is per property, and
+  // is taken inside the loop below, so one facility can go live while the rest stay dry.
   const liveAllowed = isLiveCreateEnabled();
   const liveCreateSuppressed = requestedLive && !liveAllowed;
-  const dryRun = !requestedLive || !liveAllowed;
+  /** Properties this run was actually allowed to write to, so the summary can tell the truth. */
+  const liveProperties = new Set<QuickBooksPropertyCode>();
   if (liveCreateSuppressed) {
     console.warn(
       `${LOG} live creation requested but QUICKBOOKS_LIVE_CREATE is not true; running as a dry run`,
@@ -222,6 +226,11 @@ export async function uploadFaciliqExportBills(
   }
 
   for (const [propertyCode, propertyDrafts] of byProperty) {
+    // Per property, so QUICKBOOKS_LIVE_CREATE=W003 sends W003's bills for real and leaves
+    // every other property's as a dry run in the same pass.
+    const propertyDryRun = !requestedLive || !isLiveCreateEnabled(propertyCode);
+    if (!propertyDryRun) liveProperties.add(propertyCode);
+
     let client;
     let resolver;
     try {
@@ -234,8 +243,30 @@ export async function uploadFaciliqExportBills(
         err instanceof QuickBooksNotConnectedError ? err.message : errorText(err);
       console.error(`${LOG} property unavailable`, { propertyCode, messageId: options.messageId }, err);
       for (const draft of propertyDrafts) {
-        await recordBillFailed({ billKey: draft.billKey, realmId: null, error: detail, dryRun, nowIso });
-        results.push(toResult(draft, 'failed', null, detail));
+        // A bill already settled in QuickBooks keeps its status: the property being
+        // unreachable today says nothing about a bill created last week. recordBillFailed
+        // makes that decision inside a transaction, because a concurrent operator-triggered
+        // upload can settle a bill between a read and a write here.
+        const { settled } = await recordBillFailed({
+          billKey: draft.billKey,
+          realmId: null,
+          error: detail,
+          dryRun: propertyDryRun,
+          nowIso,
+        });
+        if (!settled) {
+          results.push(toResult(draft, 'failed', null, detail));
+          continue;
+        }
+        skippedAlreadyUploaded += 1;
+        results.push(
+          toResult(
+            draft,
+            settled.status,
+            settled.quickBooksBillId,
+            `Already settled as bill ${settled.quickBooksBillId ?? 'unknown'}; ${propertyCode} was unreachable this run.`,
+          ),
+        );
       }
       continue;
     }
@@ -295,7 +326,7 @@ export async function uploadFaciliqExportBills(
             unresolvedVendor: vendor.resolved ? null : draft.vendorName,
             unresolvedAccounts: [...new Set(unresolvedAccounts)],
             candidates: [...new Set(candidates)].slice(0, 10),
-            dryRun,
+            dryRun: propertyDryRun,
             nowIso,
           });
           results.push(toResult(draft, 'needs_mapping', null, reason));
@@ -312,7 +343,7 @@ export async function uploadFaciliqExportBills(
             billKey: draft.billKey,
             realmId: client.realmId,
             error: payload.reason,
-            dryRun,
+            dryRun: propertyDryRun,
             nowIso,
           });
           results.push(toResult(draft, 'failed', null, payload.reason));
@@ -342,7 +373,7 @@ export async function uploadFaciliqExportBills(
           continue;
         }
 
-        if (dryRun) {
+        if (propertyDryRun) {
           await recordBillDryRunReady({
             billKey: draft.billKey,
             realmId: client.realmId,
@@ -432,7 +463,7 @@ export async function uploadFaciliqExportBills(
           billKey: draft.billKey,
           realmId: client.realmId,
           error: detail,
-          dryRun,
+          dryRun: propertyDryRun,
           nowIso,
         }).catch(() => {});
         results.push(toResult(draft, 'failed', null, detail));
@@ -449,13 +480,17 @@ export async function uploadFaciliqExportBills(
       ? 'nothing_to_upload'
       : deriveExportUploadStatus(counts);
   const firstError = results.find((result) => result.status === 'failed')?.detail ?? null;
+  // Reported per run rather than from the flag: with a per-property allowlist, an export
+  // whose properties are all still dry is a dry run even when live creation is enabled
+  // somewhere. Saying otherwise would claim bills reached QuickBooks that never did.
+  const ranDry = liveProperties.size === 0;
 
   await updateExportUploadState({
     messageId: options.messageId,
     uploadStatus,
     uploadCounts: counts,
     lastUploadError: firstError,
-    dryRun,
+    dryRun: ranDry,
     nowIso,
   });
 
@@ -463,7 +498,7 @@ export async function uploadFaciliqExportBills(
     messageId: options.messageId,
     sourceFilename,
     environment,
-    dryRun,
+    dryRun: ranDry,
     liveCreateSuppressed,
     billsConsidered: drafts.length,
     uploaded: createdThisRun,
@@ -479,7 +514,8 @@ export async function uploadFaciliqExportBills(
   console.info(`${LOG} run complete`, {
     messageId: options.messageId,
     environment,
-    dryRun,
+    dryRun: ranDry,
+    liveProperties: [...liveProperties],
     liveCreateSuppressed,
     billsConsidered: summary.billsConsidered,
     uploaded: summary.uploaded,

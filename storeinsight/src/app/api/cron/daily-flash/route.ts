@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeCronRequest } from "@/lib/cronAuth";
 import { POST as runAutoFlash } from "@/app/api/flash-report/auto/daily/route";
 
 export const runtime = "nodejs";
@@ -23,20 +24,6 @@ function getTodayMstDateFor(date: Date): string {
 
 const isValidDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
-const isCronRequest = (req: NextRequest): boolean => req.headers.get("user-agent")?.toLowerCase().startsWith("vercel-cron") === true;
-
-const authorize = (req: NextRequest): boolean => {
-  const header = req.headers.get("x-cron-secret");
-  const secret = process.env.CRON_SECRET;
-  if (header != null) {
-    return !!secret && header === secret;
-  }
-  if (isCronRequest(req)) {
-    return true;
-  }
-  return false;
-};
-
 type CronFlashBody = {
   reportDate?: string;
   propertyCodes?: string[];
@@ -50,8 +37,9 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
     ua: request.headers.get("user-agent") ?? "",
   });
   try {
-    if (!authorize(request)) {
-      console.warn("[cron/daily-flash] unauthorized");
+    const auth = authorizeCronRequest(request);
+    if (!auth.ok) {
+      console.warn("[cron/daily-flash] unauthorized", { reason: auth.reason });
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
     }
 
