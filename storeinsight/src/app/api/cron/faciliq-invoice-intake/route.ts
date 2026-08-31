@@ -7,6 +7,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { authorizeCronRequest } from '@/lib/cronAuth';
 import { runFaciliqInvoiceIntake } from '@/lib/accounting/faciliqInvoiceIntake/runFaciliqInvoiceIntake';
+import { sendQuickBooksAlerts } from '@/lib/accounting/quickbooks/alerts';
 import {
   keepQuickBooksTokensAlive,
   type TokenKeepAliveResult,
@@ -15,6 +16,16 @@ import { uploadPendingFaciliqExports } from '@/lib/accounting/quickbooks/uploadP
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+
+/** Alerting must never be the reason a run reports failure, so its own errors are captured. */
+const runAlerts = async (dryRun: boolean) => {
+  try {
+    return await sendQuickBooksAlerts({ dryRun });
+  } catch (err) {
+    console.error('[cron/faciliq-invoice-intake] alert step failed', err);
+    return { error: err instanceof Error ? err.message : 'Unexpected error while sending alerts' };
+  }
+};
 
 const handle = async (request: NextRequest): Promise<NextResponse> => {
   const auth = authorizeCronRequest(request);
@@ -52,21 +63,28 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
     // QUICKBOOKS_LIVE_CREATE decides whether bills are actually created; without it this
     // resolves references and builds payloads and writes nothing.
     let upload = null;
+    let uploadError: string | null = null;
     try {
       upload = await uploadPendingFaciliqExports({ dryRun });
     } catch (err) {
       console.error('[cron/faciliq-invoice-intake] upload step failed', err);
-      return NextResponse.json({
-        mode: 'scheduled',
-        intake,
-        tokens,
-        tokenError,
-        upload: null,
-        uploadError: err instanceof Error ? err.message : 'Unexpected error during the upload step',
-      });
+      uploadError = err instanceof Error ? err.message : 'Unexpected error during the upload step';
     }
 
-    return NextResponse.json({ mode: 'scheduled', intake, tokens, tokenError, upload });
+    // Last, so it sees the state the run actually left behind rather than the state it
+    // started in. Never fatal, and never allowed to mask the result above: an alert that
+    // fails to send is a smaller problem than a run that reports nothing.
+    const alerts = await runAlerts(dryRun);
+
+    return NextResponse.json({
+      mode: 'scheduled',
+      intake,
+      tokens,
+      tokenError,
+      upload,
+      uploadError,
+      alerts,
+    });
   } catch (err) {
     console.error('[cron/faciliq-invoice-intake] failed', err);
     return NextResponse.json(
@@ -84,7 +102,9 @@ const handle = async (request: NextRequest): Promise<NextResponse> => {
 // - Refreshes any QuickBooks token that has gone a day without one, then reads billing@
 //   (FACILIQ_MAILBOX_USER_ID, falling back to INVOICE_MAILBOX_USER_ID) via Microsoft Graph,
 //   converts the weekly FacilIQ QuickBooks export, then sends any bills still outstanding
-//   to each property's QuickBooks company.
+//   to each property's QuickBooks company, then emails QUICKBOOKS_ALERT_TO about anything
+//   that needs a person (a disconnected company, bills that did not send, a missing vendor
+//   or GL code, an authorization about to lapse).
 // - Runs daily rather than weekly on purpose: a late or re-sent export still gets picked
 //   up, and the intake ledger makes a repeat run a no-op.
 // - Schedule: 0 17 * * *, i.e. somewhere in 17:00-17:59 UTC on Hobby, which fires at the

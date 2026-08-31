@@ -173,6 +173,53 @@ test("rows the converter held back are never turned into bills", () => {
   assert.equal(drafts[0].invoiceNumber, "INV5001");
 });
 
+test("one held line holds its WHOLE invoice, rather than posting a bill for the rest", () => {
+  // A credit line is only a warning, so on its own it would be withheld while its two clean
+  // siblings ($100 + $50) posted as a complete bill for $150 against an invoice that is
+  // actually worth $50. Nothing downstream could catch it: the export carries no invoice
+  // total to check against, and the file still reconciles because no row was lost.
+  const credit = row({
+    invoiceNo: "INV5001",
+    customer: "FM irrigation",
+    invoiceDate: "8/4/2026",
+    dueDate: "8/4/2026",
+    item: "Site-Grounds",
+    description: "Credit for a prior overcharge",
+    rate: "-100",
+    amount: "-100",
+    property: "W003 - STORE on Baseline",
+    glCode: "5100-1110",
+  });
+
+  const report = reportFor([W003_LINE_A, W003_LINE_B, credit]);
+  const drafts = buildBillDrafts(report);
+
+  assert.deepEqual(drafts, [], "a partly held invoice must not post at all");
+
+  const bucket = report.properties.find((property) => property.code === "W003");
+  assert.equal(bucket?.readyRows.length, 0);
+  assert.equal(bucket?.reviewRows.length, 3, "all three lines go to review together");
+  assert.ok(
+    bucket?.reviewRows.some((reviewed) =>
+      reviewed.flags.some((flag) => flag.code === "invoice-partially-held"),
+    ),
+    "the clean siblings say why they were held",
+  );
+  // The money still has to add up, or the report would be hiding a row.
+  assert.equal(report.totals.reconciles, true);
+  assert.equal(report.totals.readyAmount, 0, "nothing is eligible to post");
+  assert.equal(report.totals.reviewAmount, 50, "the invoice is really worth 100 + 50 - 100");
+});
+
+test("an invoice whose lines are all clean is untouched by the partial-hold rule", () => {
+  const report = reportFor([W003_LINE_A, W003_LINE_B]);
+  const bucket = report.properties.find((property) => property.code === "W003");
+
+  assert.equal(bucket?.readyRows.length, 2);
+  assert.equal(bucket?.reviewRows.length, 0);
+  assert.equal(buildBillDrafts(report).length, 1);
+});
+
 test("the duplicate key is stable across runs and reacts to what identifies a bill", () => {
   const base = {
     propertyCode: "W003" as const,

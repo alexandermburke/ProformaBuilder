@@ -235,6 +235,22 @@ export async function uploadFaciliqExportBills(
     let resolver;
     try {
       client = await getQuickBooksClient(propertyCode);
+
+      // The API host comes from the connection, not from QUICKBOOKS_ENVIRONMENT, so a
+      // property still connected to a sandbox company would happily accept writes while
+      // this run believes it is working in production. Those bills would come back with
+      // real ids, be recorded `uploaded`, and settle the export, so nothing would ever
+      // revisit them once the property was reconnected properly. Refuse instead: this is
+      // retryable, it alerts, and it self-heals the moment the property is reconnected.
+      if (client.environment !== environment) {
+        throw new QuickBooksNotConnectedError(
+          propertyCode,
+          `${propertyCode} is connected to a ${client.environment} QuickBooks company (${
+            client.companyName || client.realmId
+          }) but this deployment is configured for ${environment}. Reconnect ${propertyCode} before its bills can be sent.`,
+        );
+      }
+
       resolver = await createRefResolver(client);
     } catch (err) {
       // No usable connection: fail this property's bills with the reason, and carry on to
@@ -356,9 +372,35 @@ export async function uploadFaciliqExportBills(
           'Bill',
           `SELECT Id, DocNumber, TotalAmt, VendorRef FROM Bill WHERE DocNumber = '${escapeQueryValue(draft.invoiceNumber)}'`,
         );
-        const alreadyThere = existingBills.find(
+        const sameDocAndVendor = existingBills.filter(
           (bill) => bill.VendorRef?.value === vendor.ref.id && Boolean(bill.Id),
         );
+        // Matching on DocNumber and vendor alone is not enough to call it the same bill. A
+        // vendor that reissues an invoice at a corrected amount keeps the number, and
+        // recording that as `duplicate` is TERMINAL: the corrected amount would never post
+        // and nothing would retry. An amount mismatch is a question for a person.
+        const alreadyThere = sameDocAndVendor.find(
+          (bill) => Math.abs((bill.TotalAmt ?? 0) - draft.amount) < 0.005,
+        );
+        const mismatched = alreadyThere ? null : sameDocAndVendor[0];
+        if (mismatched?.Id) {
+          const reason = `QuickBooks already holds bill ${mismatched.Id} with DocNumber ${
+            draft.invoiceNumber
+          } for ${vendor.ref.label}, but at $${(mismatched.TotalAmt ?? 0).toFixed(
+            2,
+          )} rather than $${draft.amount.toFixed(
+            2,
+          )}. Check which amount is right before this is sent.`;
+          await recordBillFailed({
+            billKey: draft.billKey,
+            realmId: client.realmId,
+            error: reason,
+            dryRun: propertyDryRun,
+            nowIso,
+          });
+          results.push(toResult(draft, 'failed', mismatched.Id, reason));
+          continue;
+        }
         if (alreadyThere?.Id) {
           const detail = `QuickBooks already holds bill ${alreadyThere.Id} with DocNumber ${draft.invoiceNumber} for ${vendor.ref.label}.`;
           await recordBillDuplicate({
@@ -407,8 +449,13 @@ export async function uploadFaciliqExportBills(
               'Bill',
               `SELECT Id, DocNumber, TotalAmt, VendorRef FROM Bill WHERE DocNumber = '${escapeQueryValue(draft.invoiceNumber)}'`,
             );
+            // Amount included for the same reason as the probe above: a bill sharing this
+            // DocNumber and vendor at a different total is somebody else's, not ours.
             const landed = recheck.find(
-              (bill) => bill.VendorRef?.value === vendor.ref.id && Boolean(bill.Id),
+              (bill) =>
+                bill.VendorRef?.value === vendor.ref.id &&
+                Boolean(bill.Id) &&
+                Math.abs((bill.TotalAmt ?? 0) - draft.amount) < 0.005,
             );
             if (landed?.Id) {
               await recordBillUploaded({

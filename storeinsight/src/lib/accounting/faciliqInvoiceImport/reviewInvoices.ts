@@ -65,7 +65,8 @@ export type InvoiceFlagCode =
   | 'invoice-conflicting-vendor'
   | 'invoice-conflicting-date'
   | 'duplicate-line'
-  | 'gl-code-conflict-at-property';
+  | 'gl-code-conflict-at-property'
+  | 'invoice-partially-held';
 
 type FlagDefinition = { severity: FlagSeverity; label: string };
 
@@ -119,6 +120,10 @@ export const FLAG_DEFINITIONS: Record<InvoiceFlagCode, FlagDefinition> = {
   'gl-code-conflict-at-property': {
     severity: 'warning',
     label: 'Same service coded to different GL codes at one property',
+  },
+  'invoice-partially-held': {
+    severity: 'error',
+    label: 'Another line on this invoice was held back',
   },
 };
 
@@ -527,6 +532,8 @@ export function reviewInvoiceCsv(text: string, options: ReviewOptions): FaciliqI
   applyInvoiceLevelFlags(rows);
   applyDuplicateLineFlags(rows);
   notes.push(...applyGlConsistencyFlags(rows));
+  // LAST, because it reacts to whatever the passes above decided.
+  applyPartialInvoiceFlags(rows);
 
   // --- Bucket the rows ------------------------------------------------------
   const finalRows: ReviewedInvoiceRow[] = rows.map((row) => ({
@@ -699,6 +706,61 @@ function applyInvoiceLevelFlags(rows: WorkingRow[]): void {
  * usually a double-send from FacilIQ, but can legitimately be two units billed the
  * same way -- so this is a warning for a person, not an automatic drop.
  */
+/**
+ * The bill builder groups an invoice's rows with THIS normalization, not `groupKey`. It is
+ * more aggressive (it strips punctuation, so "INV-4242" and "INV 4242" are one invoice), and
+ * the propagation below has to group at least as aggressively as the builder or it would
+ * miss a pair the builder later merges.
+ */
+const billBuilderInvoiceKey = (value: string): string =>
+  value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+/**
+ * An invoice posts whole or not at all.
+ *
+ * Every other flag is decided per row, and the bucketing that follows is per row too, so
+ * without this a three-line invoice carrying one warning sends its two clean lines onward as
+ * a complete bill. That bill would carry the real invoice number and a total that is not the
+ * invoice's total: a $400 + $150 + (-$100) invoice posts as $550 against a $450 invoice,
+ * because a credit line is only a warning. Nothing downstream could notice, because FacilIQ's
+ * export has no invoice-total column to check against, and `reconciles` only proves no money
+ * vanished from the FILE total, not that an invoice stayed intact.
+ *
+ * `buildBillPayload` already refuses a whole bill when one line has no resolved account. This
+ * holds the converter to the same standard for the lines it withholds itself.
+ *
+ * Grouped by invoice number alone, deliberately not by property: the passes above already
+ * treat one invoice number as one invoice across the whole file, and holding too much is
+ * recoverable by a person while posting a wrong total is not.
+ */
+function applyPartialInvoiceFlags(rows: WorkingRow[]): void {
+  const groups = new Map<string, WorkingRow[]>();
+  for (const row of rows) {
+    const key = billBuilderInvoiceKey(row.fields.invoiceNumber);
+    if (!key) continue;
+    const existing = groups.get(key);
+    if (existing) existing.push(row);
+    else groups.set(key, [row]);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const held = group.filter((row) => holdsRowBack(row.flags));
+    if (held.length === 0 || held.length === group.length) continue;
+
+    const heldLines = listLines(held.map((row) => row.sourceLine));
+    for (const row of group) {
+      if (holdsRowBack(row.flags)) continue;
+      addFlag(
+        row,
+        'invoice-partially-held',
+        null,
+        `Row ${heldLines} on the same invoice was held for review, so the whole invoice is held rather than posting a bill for part of it.`,
+      );
+    }
+  }
+}
+
 function applyDuplicateLineFlags(rows: WorkingRow[]): void {
   const groups = new Map<string, WorkingRow[]>();
   for (const row of rows) {

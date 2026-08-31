@@ -43,8 +43,33 @@ const NEEDS_ANOTHER_PASS: readonly FaciliqExportUploadStatus[] = [
   'upload_failed',
 ];
 
+/**
+ * The scheduled path ignores exports received before this date.
+ *
+ * This exists for one moment: the switch from a sandbox company to a real one. The ledger
+ * still holds every export from the sandbox period, and the ones that never fully settled are
+ * exactly the ones this function retries. Without a floor, the first scheduled run after
+ * QUICKBOOKS_LIVE_CREATE names a real property would post months of already-hand-keyed
+ * invoices into the real books, unattended, on a timer.
+ *
+ * Set it to the cutover date. Older exports stay reachable through an explicit single-export
+ * run, which is a person choosing to send them.
+ */
+const uploadFromIso = (): string | null => {
+  const raw = process.env.QUICKBOOKS_UPLOAD_FROM?.trim();
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) {
+    console.warn(`${LOG} QUICKBOOKS_UPLOAD_FROM is not a readable date; ignoring it`, { raw });
+    return null;
+  }
+  return new Date(parsed).toISOString();
+};
+
 export type PendingUploadSummary = {
   dryRun: boolean;
+  /** Exports skipped because they predate QUICKBOOKS_UPLOAD_FROM. Never silently dropped. */
+  exportsBeforeCutover: number;
   exportsConsidered: number;
   exportsRun: number;
   billsUploaded: number;
@@ -67,11 +92,24 @@ export async function uploadPendingFaciliqExports(options?: {
   const maxExports = options?.maxExports ?? DEFAULT_MAX_EXPORTS;
 
   const parsed = await listParsedExports(50);
-  const pending = parsed.filter((record) => NEEDS_ANOTHER_PASS.includes(record.uploadStatus));
+  const retryable = parsed.filter((record) => NEEDS_ANOTHER_PASS.includes(record.uploadStatus));
+
+  const cutoff = uploadFromIso();
+  const pending = cutoff ? retryable.filter((record) => record.receivedAt >= cutoff) : retryable;
+  const beforeCutover = retryable.length - pending.length;
+  if (beforeCutover > 0) {
+    console.warn(`${LOG} skipped exports received before the upload cutover`, {
+      cutoff,
+      skipped: beforeCutover,
+      messageIds: retryable.filter((record) => record.receivedAt < cutoff!).map((r) => r.messageId),
+    });
+  }
+
   const batch = pending.slice(0, maxExports);
 
   const summary: PendingUploadSummary = {
     dryRun,
+    exportsBeforeCutover: beforeCutover,
     exportsConsidered: pending.length,
     exportsRun: 0,
     billsUploaded: 0,
@@ -109,6 +147,7 @@ export async function uploadPendingFaciliqExports(options?: {
 
   console.info(`${LOG} run complete`, {
     dryRun,
+    exportsBeforeCutover: summary.exportsBeforeCutover,
     exportsConsidered: summary.exportsConsidered,
     exportsRun: summary.exportsRun,
     billsUploaded: summary.billsUploaded,
