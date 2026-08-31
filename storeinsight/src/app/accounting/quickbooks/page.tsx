@@ -10,6 +10,7 @@ import type { QuickBooksConnectionsResponse } from '@/lib/accounting/quickbooks/
 import {
   hasQuickBooksCredentials,
   isLiveCreateEnabled,
+  liveCreateScope,
   resolveEnvironment,
 } from '@/lib/accounting/quickbooks/config';
 import { listConnections, toConnectionSummary } from '@/lib/accounting/quickbooks/connections';
@@ -36,6 +37,7 @@ export default async function QuickBooksConnectionsPage({
     data = {
       environment: resolveEnvironment(),
       liveCreateEnabled: isLiveCreateEnabled(),
+      liveCreateScope: liveCreateScope(),
       credentialsConfigured: hasQuickBooksCredentials(),
       connections: QUICKBOOKS_PROPERTIES.map((property) =>
         toConnectionSummary(property.code, byCode.get(property.code) ?? null),

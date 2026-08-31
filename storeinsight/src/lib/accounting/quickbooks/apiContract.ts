@@ -18,6 +18,14 @@ export type QuickBooksConnectionsResponse = {
   environment: QuickBooksEnvironment;
   /** False means every upload runs as a dry run, whatever the caller asks for. */
   liveCreateEnabled: boolean;
+  /**
+   * WHICH properties may create bills: 'none', 'all', or the specific codes.
+   *
+   * `liveCreateEnabled` alone cannot answer that, and during a staged rollout the difference
+   * is the whole point: "creation is on" while three of four properties are still dry runs
+   * is the kind of half-truth someone acts on.
+   */
+  liveCreateScope: 'none' | 'all' | string[];
   credentialsConfigured: boolean;
   connections: QuickBooksConnectionSummary[];
 };

@@ -31,6 +31,37 @@ const formatDate = (iso: string | null): string => {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString('en-US') : iso;
 };
 
+type LiveCreateScope = QuickBooksConnectionsResponse['liveCreateScope'];
+
+/**
+ * Bill creation is decided per property, so the page says which ones rather than just yes or
+ * no. During a staged rollout "Bill creation enabled" on its own reads as all of them.
+ */
+const liveCreateLabel = (scope: LiveCreateScope | undefined): string => {
+  if (!scope || scope === 'none') return 'Dry run only';
+  if (scope === 'all') return 'Bill creation enabled';
+  return `Bill creation enabled: ${scope.join(', ')}`;
+};
+
+const liveCreateDescription = (scope: LiveCreateScope | undefined): string => {
+  if (!scope || scope === 'none') {
+    return 'Every upload runs as a dry run: vendors and accounts are resolved and the payload is built, but nothing is written to QuickBooks. Set QUICKBOOKS_LIVE_CREATE to a property code, a comma-separated list of codes, or true to allow creation.';
+  }
+  const reviewNote =
+    'Bills still go through the normal QuickBooks review and approval before anything is paid.';
+  if (scope === 'all') {
+    return `Uploads can create real bills in every connected company. ${reviewNote}`;
+  }
+  return `Uploads can create real bills for ${scope.join(', ')}. Every other property stays a dry run and writes nothing. ${reviewNote}`;
+};
+
+/** True when this specific property is one the uploader may write to. */
+const propertyCreatesBills = (scope: LiveCreateScope | undefined, propertyCode: string): boolean => {
+  if (!scope || scope === 'none') return false;
+  if (scope === 'all') return true;
+  return scope.some((code) => code.toUpperCase() === propertyCode.toUpperCase());
+};
+
 export type QuickBooksConnectionsScreenProps = {
   data: QuickBooksConnectionsResponse | null;
   loadError: string | null;
@@ -143,7 +174,7 @@ export default function QuickBooksConnectionsScreen({
               className="ios-pill text-[11px]"
               data-tone={data?.liveCreateEnabled ? 'warning' : 'success'}
             >
-              {data?.liveCreateEnabled ? 'Bill creation enabled' : 'Dry run only'}
+              {liveCreateLabel(data?.liveCreateScope)}
             </span>
             {data && !data.credentialsConfigured && (
               <span className="ios-pill text-[11px]" data-tone="warning">
@@ -152,9 +183,7 @@ export default function QuickBooksConnectionsScreen({
             )}
           </div>
           <p className="mt-3 text-sm text-[color:var(--text-secondary)]">
-            {data?.liveCreateEnabled
-              ? 'Uploads can create real bills in the connected companies. Bills still go through the normal QuickBooks review and approval before anything is paid.'
-              : 'Every upload runs as a dry run: vendors and accounts are resolved and the payload is built, but nothing is written to QuickBooks. Set QUICKBOOKS_LIVE_CREATE=true to allow creation.'}
+            {liveCreateDescription(data?.liveCreateScope)}
           </p>
         </section>
 
@@ -180,6 +209,20 @@ export default function QuickBooksConnectionsScreen({
                     {connection.connected && !connection.companyNameVerified && (
                       <span className="ios-pill text-[10px]" data-tone="amber">
                         Company name not verified
+                      </span>
+                    )}
+                    {connection.connected && (
+                      <span
+                        className="ios-pill text-[10px]"
+                        data-tone={
+                          propertyCreatesBills(data?.liveCreateScope, connection.propertyCode)
+                            ? 'warning'
+                            : 'success'
+                        }
+                      >
+                        {propertyCreatesBills(data?.liveCreateScope, connection.propertyCode)
+                          ? 'Creates bills'
+                          : 'Dry run'}
                       </span>
                     )}
                   </div>

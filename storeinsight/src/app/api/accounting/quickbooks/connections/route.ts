@@ -22,6 +22,7 @@ import { forgetConnection } from '@/lib/accounting/quickbooks/client';
 import {
   hasQuickBooksCredentials,
   isLiveCreateEnabled,
+  liveCreateScope,
   resolveEnvironment,
 } from '@/lib/accounting/quickbooks/config';
 import {
@@ -46,6 +47,7 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({
       environment: resolveEnvironment(),
       liveCreateEnabled: isLiveCreateEnabled(),
+      liveCreateScope: liveCreateScope(),
       credentialsConfigured: hasQuickBooksCredentials(),
       connections: QUICKBOOKS_PROPERTIES.map((property) =>
         toConnectionSummary(property.code, byCode.get(property.code) ?? null),
