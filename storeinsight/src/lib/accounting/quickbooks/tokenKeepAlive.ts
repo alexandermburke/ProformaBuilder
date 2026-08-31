@@ -8,13 +8,18 @@
  * The scheduled side of the QuickBooks token path: exercise every live connection once a
  * day, whether or not there is anything to upload.
  *
- * A refresh token stays alive by being used. Intuit issues a new one with a fresh 100-day
- * window on each refresh, and before this existed tokens were only ever refreshed as a side
- * effect of having bills to send, so a property with a quiet few months would find its
- * connection dead at exactly the moment an invoice arrived.
+ * What this does NOT do, measured against real Intuit on 2026-08-31: it does not extend the
+ * refresh token's life. A connection made at 17:57 reported x_refresh_token_expires_in
+ * ending 2026-12-10T17:57, and a refresh at 20:13 reported the same absolute instant rather
+ * than 100 days from then. The window is anchored to the ORIGINAL authorization, so every
+ * property has to be reconnected by a person roughly every 100 days no matter how faithfully
+ * this runs. Do not let the name imply otherwise.
  *
- * Running it daily has a second benefit that matters more in practice: a connection that
- * has genuinely died is reported the day it dies, not the next time somebody needs it.
+ * What it does do, and why it earns its place:
+ *   - a property with no invoices for months still has a working ACCESS token when one
+ *     finally arrives, instead of discovering the connection lapsed at the worst moment; and
+ *   - a connection that has genuinely died is reported the day it dies rather than the next
+ *     time somebody needs it, which is how the August 2026 outage went unnoticed for a week.
  *
  * Sits beside client.ts rather than inside it for the same reason uploadPendingExports.ts
  * sits beside uploadFaciliqBills.ts: this sweeps every property, and client.ts is about one.

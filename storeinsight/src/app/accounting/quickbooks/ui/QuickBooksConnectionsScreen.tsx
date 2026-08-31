@@ -8,7 +8,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useState, type JSX } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 import { AlertTriangle, CheckCircle2, Link2, Loader2, Unlink } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import type { QuickBooksConnectionsResponse } from '@/lib/accounting/quickbooks/apiContract';
@@ -62,6 +62,35 @@ const propertyCreatesBills = (scope: LiveCreateScope | undefined, propertyCode: 
   return scope.some((code) => code.toUpperCase() === propertyCode.toUpperCase());
 };
 
+/** Start warning this far ahead of a refresh token's expiry. */
+const RECONNECT_WARNING_DAYS = 14;
+
+/**
+ * How close a connection is to needing a person.
+ *
+ * Intuit anchors a refresh token's 100-day life to the ORIGINAL authorization and does NOT
+ * extend it on refresh (measured against the sandbox on 2026-08-31: a connection made at
+ * 17:57 still reported the same absolute expiry after a refresh at 20:13). So every
+ * connection has a hard date past which uploads fail until somebody clicks Reconnect, and no
+ * amount of keep-alive moves it. Showing that date is the difference between a planned
+ * two-minute reconnect and a week of silently failed uploads, which is how August 2026 went.
+ *
+ * `nowMs` is null until the component has mounted, because this is a client component and
+ * comparing against the clock during a server prerender risks a hydration mismatch. The
+ * expiry date itself comes from props and renders immediately either way.
+ */
+const reconnectUrgency = (
+  iso: string | null,
+  nowMs: number | null,
+): { daysLeft: number; tone: 'warning' | 'amber' } | null => {
+  if (!iso || nowMs === null) return null;
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return null;
+  const daysLeft = Math.floor((parsed - nowMs) / 86_400_000);
+  if (daysLeft > RECONNECT_WARNING_DAYS) return null;
+  return { daysLeft, tone: daysLeft <= 0 ? 'warning' : 'amber' };
+};
+
 export type QuickBooksConnectionsScreenProps = {
   data: QuickBooksConnectionsResponse | null;
   loadError: string | null;
@@ -79,6 +108,10 @@ export default function QuickBooksConnectionsScreen({
   const router = useRouter();
   const [busyWith, setBusyWith] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Set after mount only, so the reconnect countdown never differs between the server
+  // prerender and the browser. See reconnectUrgency.
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => setNowMs(Date.now()), []);
 
   const disconnect = useCallback(
     async (propertyCode: string): Promise<void> => {
@@ -225,6 +258,17 @@ export default function QuickBooksConnectionsScreen({
                           : 'Dry run'}
                       </span>
                     )}
+                    {(() => {
+                      const urgency = reconnectUrgency(connection.refreshTokenExpiresAt, nowMs);
+                      if (!connection.connected || !urgency) return null;
+                      return (
+                        <span className="ios-pill text-[10px]" data-tone={urgency.tone}>
+                          {urgency.daysLeft <= 0
+                            ? 'Authorization expired'
+                            : `Reconnect within ${urgency.daysLeft} day${urgency.daysLeft === 1 ? '' : 's'}`}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {connection.connected || connection.status === 'needs_reauth' ? (
@@ -239,6 +283,12 @@ export default function QuickBooksConnectionsScreen({
                           ? `, token last refreshed ${formatDate(connection.lastRefreshedAt)}`
                           : ''}
                       </p>
+                      {connection.refreshTokenExpiresAt && (
+                        <p className="text-xs text-[color:var(--text-muted)]">
+                          Reconnect by {formatDate(connection.refreshTokenExpiresAt)}. QuickBooks ends
+                          this authorization then whether or not it has been used.
+                        </p>
+                      )}
                       {connection.lastError && (
                         <p className="text-xs leading-snug text-[rgb(220,38,38)]">{connection.lastError}</p>
                       )}
