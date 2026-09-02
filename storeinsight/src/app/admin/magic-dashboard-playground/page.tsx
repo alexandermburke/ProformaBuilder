@@ -87,10 +87,10 @@ const extractToken = (input: string): string | null => {
 };
 
 // One Firestore document read per call (the property_historical doc the dashboard itself loads).
-const fetchHistoricalStatus = async (propertyId: string): Promise<FirebaseStatus> => {
+const fetchHistoricalStatus = async (propertyId: string, signal?: AbortSignal): Promise<FirebaseStatus> => {
   const response = await fetch(
     `/api/firebase/property-historical/status?propertyId=${encodeURIComponent(propertyId)}`,
-    { cache: 'no-store' },
+    { cache: 'no-store', signal },
   );
   const data = await response.json();
   if (!response.ok) {
@@ -233,24 +233,25 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
       setPinPreviewError(null);
       return;
     }
-    let cancelled = false;
+    // Abort a superseded request (e.g. arrow-keying through the select) so it never reaches Firestore.
+    const controller = new AbortController();
     setIsLoadingPinPreview(true);
     setPinPreviewError(null);
-    fetchHistoricalStatus(selected)
+    fetchHistoricalStatus(selected, controller.signal)
       .then((status) => {
-        if (!cancelled) setPinPreviewStatus(status);
+        if (!controller.signal.aborted) setPinPreviewStatus(status);
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setPinPreviewStatus(null);
           setPinPreviewError('Could not load snapshot months for this property.');
         }
       })
       .finally(() => {
-        if (!cancelled) setIsLoadingPinPreview(false);
+        if (!controller.signal.aborted) setIsLoadingPinPreview(false);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [propertyId]);
 
