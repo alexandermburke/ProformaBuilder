@@ -21,6 +21,7 @@ export type MsrSnapshot = {
   monthIso?: string;
   month?: string;
   reportMonth?: string;
+  reportMonthIso?: string;
   reportDate?: string;
   asOfDate?: string | Date | { toDate?: () => Date };
   propertyName?: string;

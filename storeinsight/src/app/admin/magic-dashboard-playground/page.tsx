@@ -11,6 +11,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { resolveDashboardEmailPropertyId } from '@/lib/flash/dashboardEmailConfig';
+import {
+  resolvePinnedSnapshotPreview,
+  type PinnedSnapshotPreview,
+  type SnapshotMonthSummary,
+} from '@/lib/historical/snapshotDashboard';
+import { formatSnapshotDisplayDate, formatSnapshotMonthLabel } from '@/lib/historical/snapshotDates';
 
 type ShareLinkRecord = {
   id: string;
@@ -45,6 +51,7 @@ type FirebaseStatus = {
   updatedAt: string | null;
   rangesAvailable: string[];
   latestMonth: string | null;
+  snapshotMonths?: SnapshotMonthSummary[];
 };
 
 type MonthlyFinancialRow = {
@@ -79,13 +86,53 @@ const extractToken = (input: string): string | null => {
   return trimmed;
 };
 
+// One Firestore document read per call (the property_historical doc the dashboard itself loads).
+const fetchHistoricalStatus = async (propertyId: string): Promise<FirebaseStatus> => {
+  const response = await fetch(
+    `/api/firebase/property-historical/status?propertyId=${encodeURIComponent(propertyId)}`,
+    { cache: 'no-store' },
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error('Failed to load Firebase status.');
+  }
+  return data as FirebaseStatus;
+};
+
+const describePinPreview = (preview: PinnedSnapshotPreview): string => {
+  const pinLabel = formatSnapshotMonthLabel(preview.pinnedMonthIso);
+  if (!preview.effective) {
+    return pinLabel
+      ? `No snapshots exist for ${pinLabel} or earlier. The link would open to "Pinned period unavailable".`
+      : 'No snapshots are stored for this property yet.';
+  }
+  const effectiveLabel = formatSnapshotMonthLabel(preview.effective.monthIso) ?? preview.effective.monthIso;
+  const asOf = formatSnapshotDisplayDate(preview.effective.reportDate) ?? 'an unknown date';
+  const parts = [
+    pinLabel
+      ? `Investor sees data through ${effectiveLabel}, currently as of ${asOf}.`
+      : `Investor sees the latest data, currently ${effectiveLabel} as of ${asOf}. New months appear as MSRs arrive.`,
+  ];
+  if (preview.monthInProgress) {
+    parts.push(`${effectiveLabel} is still in progress, so the as-of date will advance until the month closes.`);
+  }
+  if (preview.excludedMonths.length) {
+    const excluded = preview.excludedMonths.map((month) => formatSnapshotMonthLabel(month) ?? month).join(', ');
+    parts.push(`Hidden by this pin: ${excluded}.`);
+  }
+  return parts.join(' ');
+};
+
 export default function MagicDashboardPlaygroundPage(): JSX.Element {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
   const [propertyId, setPropertyId] = useState('');
   const [investorId, setInvestorId] = useState('');
-  const [snapshotDateIso, setSnapshotDateIso] = useState('');
+  const [snapshotMonthIso, setSnapshotMonthIso] = useState('');
+  const [pinPreviewStatus, setPinPreviewStatus] = useState<FirebaseStatus | null>(null);
+  const [pinPreviewError, setPinPreviewError] = useState<string | null>(null);
+  const [isLoadingPinPreview, setIsLoadingPinPreview] = useState(false);
   const [ttlHours, setTtlHours] = useState('24');
   const [createResult, setCreateResult] = useState<CreateResult | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -177,6 +224,49 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
     void loadPropertyOptions();
   }, []);
 
+  // Preview what a pin resolves to for the selected property. This is the only Firebase read the
+  // generate form adds: one document per property selection, nothing on keystrokes or timers.
+  useEffect(() => {
+    const selected = propertyId.trim();
+    if (!selected) {
+      setPinPreviewStatus(null);
+      setPinPreviewError(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingPinPreview(true);
+    setPinPreviewError(null);
+    fetchHistoricalStatus(selected)
+      .then((status) => {
+        if (!cancelled) setPinPreviewStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPinPreviewStatus(null);
+          setPinPreviewError('Could not load snapshot months for this property.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingPinPreview(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId]);
+
+  const currentMonthIso = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const pinPreview = useMemo<PinnedSnapshotPreview | null>(() => {
+    if (!pinPreviewStatus?.exists) return null;
+    return resolvePinnedSnapshotPreview(pinPreviewStatus.snapshotMonths ?? [], snapshotMonthIso || null, currentMonthIso);
+  }, [pinPreviewStatus, snapshotMonthIso, currentMonthIso]);
+
+  // Only block generation when we positively know the pin would show nothing.
+  const pinBlocksGeneration = Boolean(pinPreview && pinPreview.pinnedMonthIso && !pinPreview.effective);
+
   const handleCreate = async () => {
     setCreateError(null);
     setCreateStatus(null);
@@ -197,7 +287,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         body: JSON.stringify({
           propertyId,
           investorId,
-          snapshotDateIso: snapshotDateIso || null,
+          snapshotMonthIso: snapshotMonthIso || null,
           ttlHours: ttlHoursNumber,
         }),
       });
@@ -310,7 +400,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
         body: JSON.stringify({
           propertyId,
           investorId,
-          snapshotDateIso: snapshotDateIso || null,
+          snapshotMonthIso: snapshotMonthIso || null,
           ttlHours: ttlHoursNumber,
         }),
       });
@@ -341,15 +431,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
     }
     setIsCheckingStatus(true);
     try {
-      const response = await fetch(
-        `/api/firebase/property-historical/status?propertyId=${encodeURIComponent(statusPropertyId.trim())}`,
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        setFirebaseError('Failed to load Firebase status.');
-        return;
-      }
-      setFirebaseStatus(data as FirebaseStatus);
+      setFirebaseStatus(await fetchHistoricalStatus(statusPropertyId.trim()));
     } catch {
       setFirebaseError('Failed to load Firebase status.');
     } finally {
@@ -516,7 +598,8 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
             <div className="space-y-1">
               <div className="text-base font-semibold text-[color:var(--text-primary)]">Generate token</div>
               <p className="text-xs text-[color:var(--text-secondary)]">
-                Optionally pin the token to data through a specific date and customize the TTL in hours.
+                Optionally pin the token to a month and customize the TTL in hours. Each month holds one snapshot, so a
+                pinned link shows that month&apos;s latest snapshot; leave the month blank for a link that follows the newest data.
               </p>
             </div>
 
@@ -558,10 +641,11 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <input
-                type="date"
+                type="month"
+                aria-label="Pinned month"
                 className="owner-field-input rounded-2xl px-4 py-2 text-sm"
-                value={snapshotDateIso}
-                onChange={(event) => setSnapshotDateIso(event.target.value)}
+                value={snapshotMonthIso}
+                onChange={(event) => setSnapshotMonthIso(event.target.value)}
               />
               <input
                 type="number"
@@ -574,8 +658,27 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
               />
             </div>
 
+            {propertyId.trim() ? (
+              <p className={`text-[11px] ${pinBlocksGeneration ? 'text-red-500' : 'text-[color:var(--text-secondary)]'}`}>
+                {isLoadingPinPreview
+                  ? 'Checking stored snapshots...'
+                  : pinPreviewError
+                    ? pinPreviewError
+                    : pinPreviewStatus && !pinPreviewStatus.exists
+                      ? 'No historical data is stored for this property yet.'
+                      : pinPreview
+                        ? describePinPreview(pinPreview)
+                        : null}
+              </p>
+            ) : null}
+
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className="ios-button px-4 py-2 text-sm" onClick={handleCreate} disabled={isCreating}>
+              <button
+                type="button"
+                className="ios-button px-4 py-2 text-sm"
+                onClick={handleCreate}
+                disabled={isCreating || pinBlocksGeneration}
+              >
                 {isCreating ? 'Generating...' : 'Generate token'}
               </button>
               <button
@@ -583,7 +686,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                 className="ios-button px-4 py-2 text-sm"
                 data-variant="secondary"
                 onClick={handleGenerateAndValidate}
-                disabled={isCreating || isTesting}
+                disabled={isCreating || isTesting || pinBlocksGeneration}
               >
                 {isTesting ? 'Testing...' : 'Generate + Validate'}
               </button>
@@ -614,7 +717,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                 <div className="text-[color:var(--text-secondary)]">id: {createResult.id}</div>
                 <div className="text-[color:var(--text-secondary)]">expires: {createResult.expiresAt}</div>
                 <div className="text-[color:var(--text-secondary)]">
-                  pinned date: {createResult.snapshotDateIso ?? createResult.snapshotMonthIso ?? 'latest'}
+                  pinned month: {createResult.snapshotMonthIso ?? createResult.snapshotDateIso?.slice(0, 7) ?? 'latest'}
                 </div>
                 <div className="text-[color:var(--text-secondary)]">ttl hours: {createResult.ttlHours ?? '24'}</div>
                 <a
@@ -691,7 +794,8 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                     <div className="text-[color:var(--text-secondary)]">property: {validateResult.record.propertyId}</div>
                     <div className="text-[color:var(--text-secondary)]">investor: {validateResult.record.investorId}</div>
                     <div className="text-[color:var(--text-secondary)]">
-                      pinned date: {validateResult.record.snapshotDateIso ?? validateResult.record.snapshotMonthIso ?? 'latest'}
+                      pinned month:{' '}
+                      {validateResult.record.snapshotMonthIso ?? validateResult.record.snapshotDateIso?.slice(0, 7) ?? 'latest'}
                     </div>
                     <div className="text-[color:var(--text-secondary)]">expires: {validateResult.record.expiresAt}</div>
                     <div className="text-[color:var(--text-secondary)]">revoked: {validateResult.record.revokedAt ?? 'n/a'}</div>
@@ -786,7 +890,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                   <span className="col-span-2">Token id</span>
                   <span>Property</span>
                   <span>Investor</span>
-                  <span>Date</span>
+                  <span>Month</span>
                   <span>Expires</span>
                   <span>Usage</span>
                 </div>
@@ -816,7 +920,7 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                           </div>
                           <div>{token.propertyId}</div>
                           <div>{token.investorId}</div>
-                          <div>{token.snapshotDateIso ?? token.snapshotMonthIso ?? 'latest'}</div>
+                          <div>{token.snapshotMonthIso ?? token.snapshotDateIso?.slice(0, 7) ?? 'latest'}</div>
                           <div>{token.expiresAt ?? 'n/a'}</div>
                           <div>{token.useCount}</div>
                         </div>
@@ -874,6 +978,17 @@ export default function MagicDashboardPlaygroundPage(): JSX.Element {
                   ranges: {firebaseStatus.rangesAvailable?.length ? firebaseStatus.rangesAvailable.join(', ') : 'n/a'}
                 </div>
                 <div className="text-[color:var(--text-secondary)]">latest month: {firebaseStatus.latestMonth ?? 'n/a'}</div>
+                {firebaseStatus.snapshotMonths?.length ? (
+                  <div className="space-y-1 pt-1">
+                    <div className="text-[color:var(--text-primary)]">Stored snapshots (one per month)</div>
+                    {firebaseStatus.snapshotMonths.map((entry) => (
+                      <div key={entry.monthIso} className="text-[color:var(--text-secondary)]">
+                        {formatSnapshotMonthLabel(entry.monthIso) ?? entry.monthIso}: as of{' '}
+                        {formatSnapshotDisplayDate(entry.reportDate) ?? 'unknown'}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

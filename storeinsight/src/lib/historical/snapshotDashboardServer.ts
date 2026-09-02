@@ -3,12 +3,17 @@ import type { HistoricalDataByRange } from '@/lib/historical/dataInput';
 import type { HistoricalPropertyOption, MsrSnapshot } from '@/lib/historical/dashboardTypes';
 import type { MoMSeries } from '@/lib/flash/momSeries';
 import {
+  filterSnapshotsByPinnedMonth,
   getSnapshotArray,
+  getSnapshotMonthIso,
   normalizeHistoricalSnapshots,
-  normalizeMonthIso,
   resolveHistoricalPropertyName,
 } from '@/lib/historical/snapshotDashboard';
 import { syncLatestMsrSnapshotForProperty } from '@/lib/historical/syncLatestMsrSnapshot';
+
+// The pin filter is pure and lives in the client-safe module now; re-exported so existing
+// imports from this server module keep working.
+export { filterSnapshotsByPinnedMonth };
 
 const COLLECTION = 'property_historical';
 
@@ -52,33 +57,6 @@ const deepMergeSnapshotValues = (base: unknown, overlay: unknown): unknown => {
   }
   return overlay;
 };
-
-const getSnapshotMonthIso = (snapshot: MsrSnapshot): string | null =>
-  normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate);
-
-const normalizeDateIso = (value: unknown): string | null => {
-  if (!value) return null;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-    const parsed = new Date(trimmed);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
-  }
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10);
-  }
-  if (typeof value === 'number') {
-    return new Date(value).toISOString().slice(0, 10);
-  }
-  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate().toISOString().slice(0, 10);
-  }
-  return null;
-};
-
-const getSnapshotDateIso = (snapshot: MsrSnapshot): string | null =>
-  normalizeDateIso(snapshot.reportDate ?? snapshot.asOfDate);
 
 export const mergeHistoricalSnapshotsByMonth = (
   canonicalSnapshots: MsrSnapshot[],
@@ -129,33 +107,6 @@ export const mergeHistoricalSnapshotsByMonth = (
     }, []);
 };
 
-export const filterSnapshotsByPinnedMonth = (
-  snapshots: MsrSnapshot[],
-  pinnedMonthIso: string | null | undefined,
-  pinnedDateIso?: string | null,
-): MsrSnapshot[] => {
-  const normalizedPinnedDate = normalizeDateIso(pinnedDateIso);
-  const normalizedPinnedMonth = normalizeMonthIso(pinnedMonthIso);
-  if (!normalizedPinnedDate && !normalizedPinnedMonth) {
-    return snapshots;
-  }
-
-  return snapshots.filter((snapshot) => {
-    if (normalizedPinnedDate) {
-      const dateIso = getSnapshotDateIso(snapshot);
-      if (dateIso) {
-        return dateIso <= normalizedPinnedDate;
-      }
-    }
-
-    const monthIso = getSnapshotMonthIso(snapshot);
-    if (!monthIso) {
-      return false;
-    }
-    return monthIso <= (normalizedPinnedMonth ?? normalizedPinnedDate?.slice(0, 7) ?? '');
-  });
-};
-
 export type LoadedHistoricalPropertyRecord = {
   matchedAlias: string | null;
   propertyName: string;
@@ -182,7 +133,7 @@ const toIsoString = (value: unknown): string | null => {
 
 const getLatestSnapshotMonth = (snapshots: MsrSnapshot[]): string | null => {
   const months = snapshots
-    .map((snapshot) => normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate))
+    .map((snapshot) => getSnapshotMonthIso(snapshot))
     .filter((month): month is string => Boolean(month));
 
   return months.length ? months.reduce((max, value) => (value > max ? value : max), months[0]) : null;

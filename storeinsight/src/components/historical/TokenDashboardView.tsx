@@ -29,11 +29,12 @@ import {
   INTERNAL_SNAPSHOT_RANGE_OPTIONS,
   TOKEN_DEFAULT_SNAPSHOT_RANGE,
   TOKEN_SNAPSHOT_RANGE_OPTIONS,
-  normalizeMonthIso,
+  getSnapshotMonthIso,
   sliceLaggedFinancialEntriesByRange,
   sliceSnapshotEntriesByRange,
   toMonthKey,
 } from '@/lib/historical/snapshotDashboard';
+import { formatSnapshotDisplayDate, formatSnapshotIsoDate } from '@/lib/historical/snapshotDates';
 import {
   INTERNAL_DEFAULT_OVERVIEW_WIDGETS,
   OVERVIEW_WIDGET_OPTIONS,
@@ -250,8 +251,7 @@ const buildPathFromPoints = (points: Array<{ x: number; y: number } | null>): st
   return path;
 };
 
-const getMonthFromSnapshot = (snapshot: MsrSnapshot): string | null =>
-  normalizeMonthIso(snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate);
+const getMonthFromSnapshot = (snapshot: MsrSnapshot): string | null => getSnapshotMonthIso(snapshot);
 
 const buildSeries = (
   entries: SnapshotEntry[],
@@ -370,47 +370,8 @@ const looksLikeOwnerLabel = (value: string | null | undefined): boolean => {
   return /^owner\s*=/i.test(value.trim()) || /stor ?spaces/i.test(value);
 };
 
-const toDateFromUnknown = (value: unknown): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === 'number') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  if (typeof (value as { toDate?: () => Date }).toDate === 'function') {
-    const parsed = (value as { toDate: () => Date }).toDate();
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = new Date(trimmed);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-  return null;
-};
-
-const formatSnapshotDisplayDate = (value: unknown): string | null => {
-  if (!value) return null;
-  const parsed = toDateFromUnknown(value);
-  if (parsed) {
-    return parsed.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    return trimmed || null;
-  }
-  return null;
-};
-
-const formatSnapshotIsoDate = (value: unknown): string | null => {
-  const parsed = toDateFromUnknown(value);
-  return parsed ? parsed.toISOString().slice(0, 10) : null;
-};
+// Snapshot date labels come from '@/lib/historical/snapshotDates' so the "As of" badge, the print
+// title and the admin preview all print the stored calendar day regardless of viewer timezone.
 
 const getTopDelinquencies = (snapshot: MsrSnapshot) => {
   const direct = snapshot.topDelinquencies;

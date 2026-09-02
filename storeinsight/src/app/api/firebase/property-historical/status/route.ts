@@ -6,7 +6,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const propertyId = request.nextUrl.searchParams.get('propertyId')?.trim() ?? '';
   if (!propertyId) {
     return NextResponse.json(
-      { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null },
+      { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null, snapshotMonths: [] },
       { status: 400 },
     );
   }
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(status);
   } catch {
     return NextResponse.json(
-      { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null },
+      { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null, snapshotMonths: [] },
       { status: 500 },
     );
   }

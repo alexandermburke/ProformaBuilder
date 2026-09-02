@@ -5,8 +5,11 @@ import {
   INTERNAL_DEFAULT_SNAPSHOT_RANGE,
   buildHistoricalPropertyOptions,
   findHistoricalPropertyOption,
+  getSnapshotMonthIso,
   normalizeHistoricalSnapshots,
   resolveHistoricalPropertyName,
+  resolvePinnedMonthIso,
+  resolvePinnedSnapshotPreview,
   sliceLaggedFinancialEntriesByRange,
   sliceSnapshotEntriesByRange,
   toMonthKey,
@@ -28,7 +31,7 @@ test('normalizeHistoricalSnapshots normalizes month iso values from mixed raw sn
   assert.equal(snapshots[1]?.monthIso, '2026-03');
 });
 
-test('filterSnapshotsByPinnedMonth respects exact pinned dates when provided', () => {
+test('filterSnapshotsByPinnedMonth resolves a pinned day to its month', () => {
   const snapshots = normalizeHistoricalSnapshots([
     { reportDate: '2026-02-28', propertyName: 'STORE on Baseline' },
     { reportDate: '2026-03-28', propertyName: 'STORE on Baseline' },
@@ -36,12 +39,84 @@ test('filterSnapshotsByPinnedMonth respects exact pinned dates when provided', (
     { reportDate: '2026-04-01', propertyName: 'STORE on Baseline' },
   ]);
 
-  const visible = filterSnapshotsByPinnedMonth(snapshots, '2026-03', '2026-03-31');
+  // A pin on March 15 shows every March snapshot, including ones dated after the 15th, and hides April.
+  const visible = filterSnapshotsByPinnedMonth(snapshots, '2026-03', '2026-03-15');
 
   assert.deepEqual(
     visible.map((snapshot) => snapshot.reportDate),
     ['2026-02-28', '2026-03-28', '2026-03-31'],
   );
+});
+
+test('filterSnapshotsByPinnedMonth keeps the pinned month even when its only snapshot is dated after the pinned day', () => {
+  // Mirrors the live P006 doc on 2026-09-01: one snapshot per month, August's carrying the 31st.
+  const snapshots = [
+    { monthIso: '2026-06', reportMonthIso: '2026-06', reportDate: '2026-06-30' },
+    { monthIso: '2026-07', reportMonthIso: '2026-07', reportDate: '2026-07-27' },
+    { monthIso: '2026-08', reportMonthIso: '2026-08', reportDate: '2026-08-31' },
+  ];
+  const months = (visible: typeof snapshots) => visible.map((snapshot) => snapshot.monthIso);
+
+  for (const pinnedDay of ['2026-08-01', '2026-08-07', '2026-08-15', '2026-08-31']) {
+    assert.deepEqual(
+      months(filterSnapshotsByPinnedMonth(snapshots, pinnedDay.slice(0, 7), pinnedDay)),
+      ['2026-06', '2026-07', '2026-08'],
+      `pin ${pinnedDay} should show August`,
+    );
+  }
+  assert.deepEqual(months(filterSnapshotsByPinnedMonth(snapshots, '2026-07', '2026-07-31')), ['2026-06', '2026-07']);
+  assert.deepEqual(months(filterSnapshotsByPinnedMonth(snapshots, '2026-08')), ['2026-06', '2026-07', '2026-08']);
+  assert.deepEqual(months(filterSnapshotsByPinnedMonth(snapshots, null, '2026-08-07')), ['2026-06', '2026-07', '2026-08']);
+  assert.deepEqual(filterSnapshotsByPinnedMonth(snapshots, '2026-01', '2026-01-15'), []);
+  assert.deepEqual(months(filterSnapshotsByPinnedMonth(snapshots, '2026-09', '2026-09-15')), ['2026-06', '2026-07', '2026-08']);
+  assert.deepEqual(months(filterSnapshotsByPinnedMonth(snapshots, null, null)), ['2026-06', '2026-07', '2026-08']);
+});
+
+test('getSnapshotMonthIso falls back through the stored month and date fields', () => {
+  assert.equal(getSnapshotMonthIso({ monthIso: '2026-08' }), '2026-08');
+  assert.equal(getSnapshotMonthIso({ reportMonthIso: '2026-07' }), '2026-07');
+  assert.equal(getSnapshotMonthIso({ reportDate: '2026-06-14' }), '2026-06');
+  assert.equal(getSnapshotMonthIso({ asOfDate: new Date('2026-05-19T00:00:00.000Z') }), '2026-05');
+  assert.equal(getSnapshotMonthIso({}), null);
+});
+
+test('resolvePinnedMonthIso prefers the stored month and reduces a stored day to its month', () => {
+  assert.equal(resolvePinnedMonthIso('2026-08', '2026-08-01'), '2026-08');
+  assert.equal(resolvePinnedMonthIso(null, '2026-08-07'), '2026-08');
+  assert.equal(resolvePinnedMonthIso(undefined, null), null);
+});
+
+test('resolvePinnedSnapshotPreview reports what a pin resolves to and flags an in-progress month', () => {
+  const months = [
+    { monthIso: '2026-08', reportDate: '2026-08-31' },
+    { monthIso: '2026-06', reportDate: '2026-06-30' },
+    { monthIso: '2026-07', reportDate: '2026-07-27' },
+  ];
+
+  const pinnedAugust = resolvePinnedSnapshotPreview(months, '2026-08', '2026-09');
+  assert.equal(pinnedAugust.pinnedMonthIso, '2026-08');
+  assert.equal(pinnedAugust.effective?.monthIso, '2026-08');
+  assert.equal(pinnedAugust.effective?.reportDate, '2026-08-31');
+  assert.equal(pinnedAugust.monthInProgress, false);
+  assert.deepEqual(pinnedAugust.excludedMonths, []);
+
+  const pinnedJuly = resolvePinnedSnapshotPreview(months, '2026-07', '2026-09');
+  assert.equal(pinnedJuly.effective?.monthIso, '2026-07');
+  assert.deepEqual(pinnedJuly.excludedMonths, ['2026-08']);
+
+  const floating = resolvePinnedSnapshotPreview(months, null, '2026-08');
+  assert.equal(floating.pinnedMonthIso, null);
+  assert.equal(floating.effective?.monthIso, '2026-08');
+  assert.equal(floating.monthInProgress, true);
+  assert.deepEqual(floating.excludedMonths, []);
+
+  const tooEarly = resolvePinnedSnapshotPreview(months, '2026-01', '2026-09');
+  assert.equal(tooEarly.effective, null);
+  assert.equal(tooEarly.excludedMonths.length, 3);
+
+  const empty = resolvePinnedSnapshotPreview([], '2026-08', '2026-09');
+  assert.equal(empty.effective, null);
+  assert.deepEqual(empty.excludedMonths, []);
 });
 
 test('resolveHistoricalPropertyName prefers stored property names before falling back', () => {

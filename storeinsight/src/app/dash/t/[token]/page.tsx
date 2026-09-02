@@ -4,9 +4,12 @@ import { listProperties } from '@/app/api/daily-summary/store';
 import { PROPERTY_OPTIONS } from '@/lib/propertyDirectory';
 import {
   buildHistoricalPropertyOptions,
+  filterSnapshotsByPinnedMonth,
   findHistoricalPropertyOption,
+  resolvePinnedMonthIso,
 } from '@/lib/historical/snapshotDashboard';
-import { filterSnapshotsByPinnedMonth, loadHistoricalPropertyRecord } from '@/lib/historical/snapshotDashboardServer';
+import { loadHistoricalPropertyRecord } from '@/lib/historical/snapshotDashboardServer';
+import { formatSnapshotMonthLabel } from '@/lib/historical/snapshotDates';
 import { validateShareToken } from '@/lib/shareLinks';
 
 export const dynamic = 'force-dynamic';
@@ -107,15 +110,16 @@ export default async function TokenDashboardPage({ params }: TokenPageProps): Pr
     });
   }
 
-  const pinnedMonthIso = validation.record.snapshotMonthIso;
-  const pinnedDateIso = validation.record.snapshotDateIso;
-  const visibleSnapshots = filterSnapshotsByPinnedMonth(historicalRecord.snapshots, pinnedMonthIso, pinnedDateIso);
+  // Pins resolve at month granularity. The store holds one snapshot per month, so a link pinned
+  // to any day in August shows August's snapshot; older links that stored a day reduce to its month.
+  const pinnedMonthIso = resolvePinnedMonthIso(validation.record.snapshotMonthIso, validation.record.snapshotDateIso);
+  const visibleSnapshots = filterSnapshotsByPinnedMonth(historicalRecord.snapshots, pinnedMonthIso);
 
   if (!visibleSnapshots.length) {
-    const pinnedLabel = pinnedDateIso ?? pinnedMonthIso;
+    const pinnedLabel = formatSnapshotMonthLabel(pinnedMonthIso) ?? 'the pinned month';
     return renderStatus({
       title: 'Pinned period unavailable',
-      message: `No historical snapshots are available on or before ${pinnedLabel}.`,
+      message: `No historical snapshots are available for ${pinnedLabel} or earlier.`,
     });
   }
 

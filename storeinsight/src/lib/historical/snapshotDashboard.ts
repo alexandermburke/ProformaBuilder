@@ -146,11 +146,94 @@ export function normalizeHistoricalSnapshots(rawSnapshots: unknown[]): MsrSnapsh
     .map((snapshot) => sanitizeFirebaseValue(snapshot))
     .filter((snapshot): snapshot is Record<string, unknown> => Boolean(snapshot) && typeof snapshot === 'object')
     .map((snapshot) => {
-      const monthIso = normalizeMonthIso(
-        snapshot.monthIso ?? snapshot.month ?? snapshot.reportMonth ?? snapshot.asOfDate,
-      );
+      const monthIso = getSnapshotMonthIso(snapshot as MsrSnapshot);
       return monthIso ? ({ ...snapshot, monthIso } as MsrSnapshot) : (snapshot as MsrSnapshot);
     });
+}
+
+/**
+ * Every "which month is this snapshot" question goes through here so the fields the MSR sync
+ * writes (`reportMonthIso`, `reportDate`) and the legacy month fields resolve the same way.
+ */
+export function getSnapshotMonthIso(snapshot: MsrSnapshot): string | null {
+  return normalizeMonthIso(
+    snapshot.monthIso ??
+      snapshot.reportMonthIso ??
+      snapshot.month ??
+      snapshot.reportMonth ??
+      snapshot.reportDate ??
+      snapshot.asOfDate,
+  );
+}
+
+/** A share link stores its pin as a month and, on older links, also a day. The day reduces to its month. */
+export function resolvePinnedMonthIso(
+  pinnedMonthIso: string | null | undefined,
+  pinnedDateIso?: string | null,
+): string | null {
+  return normalizeMonthIso(pinnedMonthIso) ?? normalizeMonthIso(pinnedDateIso);
+}
+
+/**
+ * The store keeps ONE snapshot per month and overwrites it with the newest MSR each time a
+ * dashboard for the property loads, so a pin can only be honored at month granularity: a link
+ * pinned anywhere in August shows August's snapshot, whatever day that snapshot currently
+ * carries. Comparing the pin against the snapshot's day (the previous behaviour) hid the whole
+ * month as soon as its snapshot advanced past the pinned day, and the link fell back to July.
+ */
+export function filterSnapshotsByPinnedMonth<T extends MsrSnapshot>(
+  snapshots: T[],
+  pinnedMonthIso: string | null | undefined,
+  pinnedDateIso?: string | null,
+): T[] {
+  const effectiveMonth = resolvePinnedMonthIso(pinnedMonthIso, pinnedDateIso);
+  if (!effectiveMonth) {
+    return snapshots;
+  }
+
+  return snapshots.filter((snapshot) => {
+    const monthIso = getSnapshotMonthIso(snapshot);
+    return monthIso !== null && monthIso <= effectiveMonth;
+  });
+}
+
+export type SnapshotMonthSummary = {
+  monthIso: string;
+  reportDate: string | null;
+};
+
+export type PinnedSnapshotPreview = {
+  pinnedMonthIso: string | null;
+  /** The snapshot an investor would see as "latest" under this pin, or null when nothing qualifies. */
+  effective: SnapshotMonthSummary | null;
+  /** True when the effective snapshot is the current month, so its as-of day keeps advancing until month end. */
+  monthInProgress: boolean;
+  /** Stored months the pin excludes, so an operator can see what they are hiding. */
+  excludedMonths: string[];
+};
+
+/** Pure preview of what a pinned (or floating) link resolves to, given a property's stored months. */
+export function resolvePinnedSnapshotPreview(
+  months: SnapshotMonthSummary[],
+  pinnedMonthIso: string | null | undefined,
+  currentMonthIso: string,
+): PinnedSnapshotPreview {
+  const normalizedPin = resolvePinnedMonthIso(pinnedMonthIso);
+  const sorted = months
+    .filter((entry) => Boolean(entry?.monthIso))
+    .slice()
+    .sort((left, right) => left.monthIso.localeCompare(right.monthIso));
+  const visible = normalizedPin ? sorted.filter((entry) => entry.monthIso <= normalizedPin) : sorted;
+  const effective = visible[visible.length - 1] ?? null;
+
+  return {
+    pinnedMonthIso: normalizedPin,
+    effective,
+    monthInProgress: effective ? effective.monthIso === currentMonthIso : false,
+    excludedMonths: normalizedPin
+      ? sorted.filter((entry) => entry.monthIso > normalizedPin).map((entry) => entry.monthIso)
+      : [],
+  };
 }
 
 export function resolveHistoricalPropertyName(

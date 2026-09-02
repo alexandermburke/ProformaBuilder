@@ -9,6 +9,13 @@ import { firestore } from '@/server/firebaseAdmin';
 import type { PropertyHistoricalPayload } from '@/lib/historical/dataInput';
 import type { MsrSnapshotPayload } from '@/lib/historical/msrSnapshotParser';
 import { RANGE_KEYS, type RangeKey } from '@/lib/historical/placeholder';
+import {
+  getSnapshotArray,
+  getSnapshotMonthIso,
+  normalizeHistoricalSnapshots,
+  type SnapshotMonthSummary,
+} from '@/lib/historical/snapshotDashboard';
+import { toSnapshotIsoDate } from '@/lib/historical/snapshotDates';
 
 const COLLECTION = 'property_historical';
 
@@ -150,43 +157,74 @@ export async function getPropertyHistoricalFromFirebase(
   };
 }
 
-export async function getPropertyHistoricalStatus(propertyId: string): Promise<{
+export type PropertyHistoricalStatus = {
   exists: boolean;
   updatedAt: string | null;
   rangesAvailable: RangeKey[];
   latestMonth: string | null;
-}> {
+  /** One entry per stored MSR snapshot month with the day that snapshot currently carries. */
+  snapshotMonths: SnapshotMonthSummary[];
+};
+
+const emptyPropertyHistoricalStatus = (): PropertyHistoricalStatus => ({
+  exists: false,
+  updatedAt: null,
+  rangesAvailable: [],
+  latestMonth: null,
+  snapshotMonths: [],
+});
+
+const summarizeSnapshotMonths = (data: Record<string, unknown>): SnapshotMonthSummary[] => {
+  const byMonth = new Map<string, SnapshotMonthSummary>();
+  normalizeHistoricalSnapshots(getSnapshotArray(data)).forEach((snapshot) => {
+    const monthIso = getSnapshotMonthIso(snapshot);
+    if (!monthIso) return;
+    byMonth.set(monthIso, { monthIso, reportDate: toSnapshotIsoDate(snapshot.reportDate ?? snapshot.asOfDate) });
+  });
+  return Array.from(byMonth.values()).sort((left, right) => left.monthIso.localeCompare(right.monthIso));
+};
+
+/** One document read: the same property_historical doc the dashboard itself loads. */
+export async function getPropertyHistoricalStatus(propertyId: string): Promise<PropertyHistoricalStatus> {
   if (!firestore) {
-    return { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null };
+    return emptyPropertyHistoricalStatus();
   }
   const normalizedId = propertyId.trim();
   if (!normalizedId) {
-    return { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null };
+    return emptyPropertyHistoricalStatus();
   }
   const snapshot = await firestore.collection(COLLECTION).doc(normalizedId).get();
   if (!snapshot.exists) {
-    return { exists: false, updatedAt: null, rangesAvailable: [], latestMonth: null };
+    return emptyPropertyHistoricalStatus();
   }
-  const doc = snapshot.data() as Partial<PropertyHistoricalPayload> & { updated_at?: unknown };
+  const raw = (snapshot.data() ?? {}) as Record<string, unknown>;
+  const doc = raw as Partial<PropertyHistoricalPayload> & { updated_at?: unknown };
+  const snapshotMonths = summarizeSnapshotMonths(raw);
+  const latestSnapshotMonth = snapshotMonths.length ? snapshotMonths[snapshotMonths.length - 1].monthIso : null;
   const historicalByRange = doc.historicalByRange;
   if (!historicalByRange) {
     return {
       exists: true,
       updatedAt: toIsoString(doc.updated_at),
       rangesAvailable: [],
-      latestMonth: null,
+      latestMonth: latestSnapshotMonth,
+      snapshotMonths,
     };
   }
 
   const rangesAvailable = RANGE_KEYS.filter((range) => hasRangeSeries(historicalByRange[range]));
   const months = collectMonths({ historicalByRange, momSeries: doc.momSeries ?? undefined });
-  const latestMonth = months.length ? months.reduce((max, value) => (value > max ? value : max), months[0]) : null;
+  const latestSeriesMonth = months.length ? months.reduce((max, value) => (value > max ? value : max), months[0]) : null;
+  const latestMonth = [latestSeriesMonth, latestSnapshotMonth]
+    .filter((value): value is string => Boolean(value))
+    .reduce<string | null>((max, value) => (max === null || value > max ? value : max), null);
 
   return {
     exists: true,
     updatedAt: toIsoString(doc.updated_at),
     rangesAvailable,
     latestMonth,
+    snapshotMonths,
   };
 }
 
