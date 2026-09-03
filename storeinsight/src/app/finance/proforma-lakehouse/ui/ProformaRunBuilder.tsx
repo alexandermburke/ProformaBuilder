@@ -235,7 +235,7 @@ export default function ProformaRunBuilder() {
       <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-6 py-10 lg:px-10 lg:py-16">
         <header className="ios-card ios-animate-up rounded-3xl bg-[linear-gradient(145deg,color-mix(in_srgb,var(--surface)_88%,transparent),color-mix(in_srgb,var(--tint-green)_58%,transparent))] p-8 shadow-lg">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-4">
+            <div className="min-w-0 grow basis-full sm:basis-0 space-y-4">
               <span className="ios-badge text-[10px]">Database-backed proforma runs</span>
               <div className="space-y-3">
                 <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Public Proforma Pipeline</h1>

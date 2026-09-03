@@ -1034,7 +1034,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
 
         <header className="ios-card ios-animate-up space-y-4 p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
+            <div className="min-w-0 grow basis-full sm:basis-0 space-y-2">
               <span className="ios-badge text-[10px]">Historical data upload</span>
               <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)]">
                 Upload historical data to Firebase

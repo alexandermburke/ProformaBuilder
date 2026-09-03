@@ -2191,7 +2191,7 @@ export function HistoricalSnapshotDashboardView({
       <div className="token-dashboard-screen token-dashboard-print__content relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 pt-10 pb-28 sm:pb-10">
         <header className="ios-card ios-animate-up space-y-4 p-4 sm:space-y-6 sm:p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
-            <div className={hideHeaderDetailsOnMobile ? 'hidden space-y-3 sm:block' : 'space-y-3'}>
+            <div className={hideHeaderDetailsOnMobile ? 'hidden min-w-0 grow basis-full space-y-3 sm:block sm:basis-0' : 'min-w-0 grow basis-full space-y-3 sm:basis-0'}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="ios-badge text-[10px]">{headerBadgeLabel}</span>
                 <span className="ios-pill text-[10px]" data-tone="neutral">

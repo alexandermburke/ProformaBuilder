@@ -316,7 +316,7 @@ export function HistoricalDashboardView({
       <div className="relative mx-auto flex max-w-[1200px] flex-col gap-8 px-6 py-10">
         <header className="ios-card ios-animate-up space-y-6 p-6 md:p-8" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-3">
+            <div className="min-w-0 grow basis-full sm:basis-0 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="ios-badge text-[10px]">
                   {viewMode === 'internal' ? 'Historical data' : 'Investor dashboard'}

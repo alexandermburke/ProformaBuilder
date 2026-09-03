@@ -134,7 +134,7 @@ export default async function UpdateLogPage(): Promise<JSX.Element> {
       <div className="relative mx-auto max-w-3xl px-6 py-10 lg:px-8 lg:py-14">
         <header className="ios-card ios-animate-up flex flex-col gap-4 p-6" data-tone="blue">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
+            <div className="min-w-0 grow basis-full sm:basis-0 space-y-2">
               <span className="ios-badge text-[10px]">Patch notes</span>
               <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)]">Update log</h1>
               <p className="text-xs text-[color:var(--text-secondary)]">

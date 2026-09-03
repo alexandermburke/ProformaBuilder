@@ -152,7 +152,7 @@ export default function QuickBooksConnectionsScreen({
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-10 lg:px-10 lg:py-16">
         <header className="ios-card ios-animate-up rounded-3xl bg-[linear-gradient(140deg,color-mix(in_srgb,var(--surface) 88%,transparent),color-mix(in_srgb,var(--tint-blue) 58%,transparent))] p-8 shadow-lg">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-3">
+            <div className="min-w-0 grow basis-full sm:basis-0 space-y-3">
               <span className="ios-badge text-[10px]">Automated accounting</span>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
                 QuickBooks connections

@@ -32,7 +32,7 @@ export function InternalHistoricalRouteBar({
     <div className="mx-auto mt-8 flex w-full max-w-[1200px] flex-col gap-4 px-6">
       <div className="ios-card ios-animate-up space-y-4 p-6" data-tone="amber">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
+          <div className="min-w-0 grow basis-full sm:basis-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="ios-badge text-[10px]">Historical data</span>
               {statusLabel ? (
