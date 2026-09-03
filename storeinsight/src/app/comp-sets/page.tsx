@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
@@ -299,10 +299,7 @@ export default function CompSetsPage() {
                 ready-to-share PPTX.
               </p>
             </div>
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-              Back to directory
-            </Link>
+            <BackLink href="/automations" label="Back to automations" />
           </div>
         </header>
 

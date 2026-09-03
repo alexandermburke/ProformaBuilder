@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useCallback, useMemo, useRef, useState, type DragEvent, type JSX } from 'react';
 import {
   AlertTriangle,
@@ -234,12 +234,7 @@ export default function OwnerFinancialsExtractorPage(): JSX.Element {
                 extractor runs and which Chart of Accounts table is applied.
               </p>
             </div>
-            <Link href="/finance" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">
-                &larr;
-              </span>
-              Back to finance
-            </Link>
+            <BackLink href="/finance" label="Back to finance" />
           </div>
         </header>
 

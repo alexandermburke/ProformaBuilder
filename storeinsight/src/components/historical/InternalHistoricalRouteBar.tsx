@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { JSX } from 'react';
 import type { HistoricalPropertyOption } from '@/lib/historical/dashboardTypes';
@@ -46,14 +47,12 @@ export function InternalHistoricalRouteBar({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-              Back to directory
-            </Link>
             {showUploadLink ? (
               <Link href="/historical-data-upload" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
                 Upload data
               </Link>
             ) : null}
+            <BackLink href="/other" label="Back to historical data" />
           </div>
         </div>
 

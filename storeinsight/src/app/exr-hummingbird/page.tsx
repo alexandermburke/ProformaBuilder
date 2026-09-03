@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import BackLink from '@/components/BackLink';
 import { useMemo, useState, type ChangeEvent, type JSX } from "react";
 import { CheckCircle2, CircleAlert, Download, FileSpreadsheet, Upload } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -214,7 +214,7 @@ export default function ExrHummingbirdPage(): JSX.Element {
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-6 py-12 lg:px-10 lg:py-16">
         <header className="ios-card flex flex-col gap-6 p-10">
           <span className="ios-badge text-[10px]">Automation tools</span>
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-3">
               <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
                 EXR to Hummingbird Tenant Transfer
@@ -224,12 +224,7 @@ export default function ExrHummingbirdPage(): JSX.Element {
                 import workbook from the managed template.
               </p>
             </div>
-            <Link href="/automations" className="ios-button shrink-0 px-4 py-2 text-sm" data-variant="ghost">
-              <span aria-hidden className="-ml-1 mr-1 text-base">
-                &larr;
-              </span>
-              Back to automations
-            </Link>
+            <BackLink href="/automations" label="Back to automations" />
           </div>
         </header>
 

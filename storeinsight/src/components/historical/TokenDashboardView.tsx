@@ -7,6 +7,7 @@
 'use client';
 
 import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, JSX, ReactNode } from 'react';
@@ -2206,12 +2207,7 @@ export function HistoricalSnapshotDashboardView({
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {isInternal ? (
-                <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                  <span aria-hidden className="-ml-1 mr-1 text-base">
-                    &larr;
-                  </span>
-                  Back to directory
-                </Link>
+                <BackLink href="/other" label="Back to historical data" />
               ) : null}
             </div>
           </div>

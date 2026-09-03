@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FocusEvent, FormEvent, JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
@@ -1044,12 +1044,7 @@ export default function HistoricalDataUploadPage(): JSX.Element {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                <span aria-hidden className="-ml-1 mr-1 text-base">
-                  &larr;
-                </span>
-                Back to directory
-              </Link>
+              <BackLink href="/other" label="Back to historical data" />
             </div>
           </div>
         </header>

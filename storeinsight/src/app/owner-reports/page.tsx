@@ -29,6 +29,7 @@ import {
   type ChangeEvent,
 } from "react";
 import Link from "next/link";
+import BackLink from '@/components/BackLink';
 import type { OwnerFields } from "@/types/ownerReport";
 import { useTheme } from "@/components/ThemeProvider";
 import { usePreferences } from "@/components/PreferencesProvider";
@@ -1858,17 +1859,14 @@ export default function OwnerReportsPage() {
 
           <main className="ios-card ios-animate-up space-y-6 p-8" style={{ overflow: "visible" }}>
             <div className="flex flex-col gap-6">
-              <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1.5">
                   <h1 className="text-2xl font-semibold text-[color:var(--text-primary)]">Create Owner Report</h1>
                   <p className="text-sm text-[color:var(--text-secondary)]">
                     Follow the guided flow to review extracted fields and merge them into the PowerPoint template.
                   </p>
                 </div>
-                <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                  <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-                  Back
-                </Link>
+                <BackLink href="/finance" label="Back to finance" />
               </header>
 
               <div>

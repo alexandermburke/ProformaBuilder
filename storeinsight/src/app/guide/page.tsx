@@ -7,6 +7,7 @@
 "use client";
 
 import Link from "next/link";
+import BackLink from '@/components/BackLink';
 import { useState, type JSX } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 
@@ -225,10 +226,7 @@ export default function GuidePage(): JSX.Element {
               </h1>
               <p className="max-w-2xl text-sm text-[color:var(--text-secondary)]">{activeGuide.description}</p>
             </div>
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-              Back to directory
-            </Link>
+            <BackLink href="/owner-reports" label="Back to owner reports" />
           </div>
           <nav aria-label="Guide topics" className="flex flex-wrap gap-2">
             {guides.map((guide) => {

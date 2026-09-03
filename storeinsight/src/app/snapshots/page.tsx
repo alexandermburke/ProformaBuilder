@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import React from 'react';
 import type { JSX } from 'react';
 
@@ -78,16 +78,14 @@ export default function SnapshotsPage(): JSX.Element {
       <div className={`pointer-events-none absolute inset-0 -z-20 ${overlayBottom}`} />
 
       <div className="relative mx-auto max-w-[1200px] px-6 py-10">
-        <header className="ios-card ios-animate-up flex flex-wrap items-center justify-between gap-4 p-6" data-tone="blue">
+        <header className="ios-card ios-animate-up flex flex-wrap items-start justify-between gap-4 p-6" data-tone="blue">
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold tracking-tight text-[color:var(--text-primary)] sm:text-[27px]">Snapshots</h1>
             <p className="text-sm text-[color:var(--text-secondary)]">
               Live view of generated proforma snapshots with quick facility trends.
             </p>
           </div>
-          <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-            Back to report builder
-          </Link>
+          <BackLink href="/proforma" label="Back to report builder" />
         </header>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">

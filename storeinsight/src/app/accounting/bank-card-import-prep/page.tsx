@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import BackLink from '@/components/BackLink';
 import { Copy, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -935,14 +935,11 @@ export default function BankCardImportPrepPage() {
 
       <main className="relative mx-auto flex max-w-6xl flex-col gap-10 px-6 py-12 lg:gap-12 lg:px-10 lg:py-16">
         <header className="ios-card ios-animate-up grid gap-6 p-8">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <span className="owner-status-badge" data-tone={statusTone}>
               {statusLabel}
             </span>
-            <Link href="/accounting" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-              Back to accounting
-            </Link>
+            <BackLink href="/accounting" label="Back to accounting" />
           </div>
           <div className="grid gap-4 md:flex md:items-end md:justify-between">
             <div className="space-y-2">

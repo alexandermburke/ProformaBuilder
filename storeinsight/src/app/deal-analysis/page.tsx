@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import type { JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import DealAnalysisForm from './ui/DealAnalysisForm';
@@ -27,7 +28,7 @@ export default function DealAnalysisPage(): JSX.Element {
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-16">
         <header className="ios-card ios-animate-up flex flex-col gap-6 p-10">
           <span className="ios-badge text-[10px]">Automation tools</span>
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-4 sm:flex-1">
               <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
                 Deal Analysis
@@ -42,12 +43,7 @@ export default function DealAnalysisPage(): JSX.Element {
               <Link href="/deal-analysis/saved" className="ios-button px-4 py-2 text-sm">
                 View saved deals
               </Link>
-              <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                <span aria-hidden className="-ml-1 mr-1 text-base">
-                  &larr;
-                </span>
-                Back to directory
-              </Link>
+              <BackLink href="/automations" label="Back to automations" />
             </div>
           </div>
         </header>

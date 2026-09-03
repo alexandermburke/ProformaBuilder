@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { AlertTriangle, CheckCircle2, Link2, Loader2, Unlink } from 'lucide-react';
@@ -164,12 +164,7 @@ export default function QuickBooksConnectionsScreen({
                 property is refused outright.
               </p>
             </div>
-            <Link href="/accounting/faciliq-invoice-import" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">
-                &larr;
-              </span>
-              Back to invoice import
-            </Link>
+            <BackLink href="/accounting" label="Back to accounting" />
           </div>
         </header>
 

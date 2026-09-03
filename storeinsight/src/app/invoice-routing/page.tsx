@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import {
   Fragment,
   useCallback,
@@ -319,12 +319,7 @@ export default function InvoiceRoutingPage(): JSX.Element {
                 R&amp;M from the ticket prefix, and forwards it to the matching property billing inbox.
               </p>
             </div>
-            <Link href="/automations" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">
-                &larr;
-              </span>
-              Back to automations
-            </Link>
+            <BackLink href="/automations" label="Back to automations" />
           </div>
         </header>
 

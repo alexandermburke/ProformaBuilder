@@ -7,7 +7,7 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, FormEvent } from 'react';
 import { Trash2 } from 'lucide-react';
@@ -656,10 +656,7 @@ export default function DailySummaryPage() {
                 send emails when needed.
               </p>
             </div>
-            <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-              Back to directory
-            </Link>
+            <BackLink href="/automations" label="Back to automations" />
           </div>
         </header>
 

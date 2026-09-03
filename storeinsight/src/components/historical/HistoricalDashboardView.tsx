@@ -8,6 +8,7 @@
 'use client';
 
 import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, JSX } from 'react';
 import { CollectionsArSection } from './CollectionsArSection';
@@ -342,12 +343,7 @@ export function HistoricalDashboardView({
                 </Link>
               ) : null}
               {showDirectoryLink ? (
-                <Link href="/" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-                  <span aria-hidden className="-ml-1 mr-1 text-base">
-                    &larr;
-                  </span>
-                  Back to directory
-                </Link>
+                <BackLink href="/other" label="Back to historical data" />
               ) : null}
             </div>
           </div>

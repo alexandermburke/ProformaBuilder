@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { use, useEffect, useState, type JSX } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { AnalysisDisplay, VerdictPill, type Analysis } from '../ui/AnalysisDisplay';
@@ -139,7 +140,7 @@ export default function DealAnalysisDetailPage({
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col gap-12 px-6 py-12 lg:gap-16 lg:px-10 lg:py-16">
         <header className="ios-card ios-animate-up flex flex-col gap-6 p-10">
           <span className="ios-badge text-[10px]">Deal analysis history</span>
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-3 sm:flex-1">
               <h1 className="text-3xl font-semibold leading-tight text-[color:var(--text-primary)] sm:text-4xl">
                 {state.kind === 'ready' && state.data.latest
@@ -168,12 +169,7 @@ export default function DealAnalysisDetailPage({
               <Link href="/deal-analysis/saved" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
                 All saved
               </Link>
-              <Link href="/deal-analysis" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-                <span aria-hidden className="-ml-1 mr-1 text-base">
-                  &larr;
-                </span>
-                Analyzer
-              </Link>
+              <BackLink href="/deal-analysis" label="Back to analyzer" />
             </div>
           </div>
         </header>

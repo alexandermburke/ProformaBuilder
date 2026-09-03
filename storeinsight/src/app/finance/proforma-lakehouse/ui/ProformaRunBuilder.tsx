@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useMemo, useState } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -245,10 +245,7 @@ export default function ProformaRunBuilder() {
                 </p>
               </div>
             </div>
-            <Link href="/finance" className="ios-button px-4 py-2 text-sm" data-variant="ghost">
-              <span aria-hidden className="-ml-1 mr-1 text-base">&larr;</span>
-              Back to directory
-            </Link>
+            <BackLink href="/finance" label="Back to finance" />
           </div>
         </header>
 

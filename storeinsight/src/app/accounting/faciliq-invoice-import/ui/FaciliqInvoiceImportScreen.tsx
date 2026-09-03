@@ -6,7 +6,7 @@
 
 'use client';
 
-import Link from 'next/link';
+import BackLink from '@/components/BackLink';
 import { useCallback, useMemo, useRef, useState, type DragEvent, type JSX } from 'react';
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
@@ -164,12 +164,7 @@ export default function FaciliqInvoiceImportScreen({
                 held back for review instead of being imported.
               </p>
             </div>
-            <Link href="/accounting" className="ios-button px-4 py-2 text-sm" data-variant="secondary">
-              <span aria-hidden className="-ml-1 mr-1 text-base">
-                &larr;
-              </span>
-              Back to accounting
-            </Link>
+            <BackLink href="/accounting" label="Back to accounting" />
           </div>
         </header>
 
